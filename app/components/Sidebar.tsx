@@ -15,39 +15,39 @@ import {
   MegaphoneIcon,
   DocumentDuplicateIcon,
   LightBulbIcon,
+  FolderIcon,
+  DocumentCheckIcon,
+  SparklesIcon,
+  UserIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 const navigation = [
   {
-    section: 'Overview',
+    name: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+      { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
+      { name: 'Writing', href: '/dashboard/writing', icon: DocumentTextIcon },
       { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
     ],
   },
   {
-    section: 'Fundraising',
+    name: 'Fundraising',
     items: [
       { name: 'Donors', href: '/dashboard/donors', icon: UserGroupIcon },
+      { name: 'Grants', href: '/dashboard/grants', icon: DocumentCheckIcon },
+      { name: 'Campaigns', href: '/dashboard/campaigns', icon: MegaphoneIcon },
       { name: 'Events', href: '/dashboard/events', icon: CalendarIcon },
-      { name: 'Fundraising Strategy', href: '/dashboard/fundraising-strategy', icon: MegaphoneIcon },
     ],
   },
   {
-    section: 'Programs',
+    name: 'Community',
     items: [
-      { name: 'Projects', href: '/dashboard/projects', icon: ClipboardDocumentListIcon },
-      { name: 'Grant Writing', href: '/dashboard/grant-writing', icon: DocumentDuplicateIcon },
-      { name: 'AI Insights', href: '/dashboard/ai-insights', icon: LightBulbIcon },
-    ],
-  },
-  {
-    section: 'Community',
-    items: [
-      { name: 'Volunteers', href: '/dashboard/volunteers', icon: UsersIcon },
-      { name: 'Community Hub', href: '/dashboard/community', icon: BuildingOfficeIcon },
+      { name: 'Volunteers', href: '/dashboard/volunteers', icon: UserIcon },
+      { name: 'Stakeholders', href: '/dashboard/stakeholders', icon: BuildingOfficeIcon },
     ],
   },
 ];
@@ -74,11 +74,19 @@ export default function Sidebar() {
 
   return (
     <div className={`flex flex-col h-screen bg-white border-r transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'}`}>
-      <div className="flex items-center justify-between h-16 px-4 border-b">
-        {!isCollapsed && <h1 className="text-xl font-bold text-gray-900">Civis</h1>}
+      <div className="flex items-center justify-between h-16 px-4">
+        {!isCollapsed && (
+          <Image
+            src="/civislogo.png"
+            alt="Civis"
+            width={120}
+            height={32}
+            className="h-8 w-auto"
+          />
+        )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 rounded-md hover:bg-gray-100"
+          className={`p-2 rounded-md hover:bg-gray-100 ${isCollapsed ? 'mx-auto' : ''}`}
         >
           <svg
             className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
@@ -93,10 +101,10 @@ export default function Sidebar() {
       
       <nav className="flex-1 px-2 py-4 space-y-6 overflow-y-auto">
         {navigation.map((section) => (
-          <div key={section.section}>
+          <div key={section.name}>
             {!isCollapsed && (
               <h2 className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                {section.section}
+                {section.name}
               </h2>
             )}
             <div className="mt-2 space-y-1">

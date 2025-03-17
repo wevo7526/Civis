@@ -1,3 +1,14 @@
+export interface WritingItem {
+  id: string;
+  title: string;
+  content: string;
+  type: 'grant' | 'fundraising';
+  project_id: string;
+  status: 'draft' | 'in_review' | 'approved' | 'rejected';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Grant {
   id: string;
   title: string;
@@ -82,4 +93,67 @@ export interface FundraisingCampaign {
   created_at: string;
   updated_at: string;
   user_id: string;
+}
+
+export interface Donor {
+  id: string;
+  name: string;
+  email: string;
+  last_donation: string;
+  amount: number;
+  engagement: number;
+  last_contact: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  status: 'planning' | 'active' | 'completed' | 'on-hold';
+  start_date: string;
+  end_date: string;
+  budget: number;
+  impact_target: string;
+  impact_metric: string;
+  team_size: number;
+  team_roles: string[];
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+}
+
+export type CampaignStatus = 'planning' | 'active' | 'completed' | 'on-hold';
+
+export interface CampaignItem {
+  id: string;
+  campaign_id: string;
+  title: string;
+  description: string;
+  start_date: string;
+  end_date: string;
+  status: CampaignStatus;
+  priority: 'low' | 'medium' | 'high';
+  assigned_to: string;
+  dependencies: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  description: string;
+  start_date: string;
+  end_date: string;
+  status: CampaignStatus;
+  budget: number;
+  impact_target: string;
+  impact_metric: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  items: CampaignItem[];
 } 

@@ -1,5 +1,4 @@
-import { Donor } from './donorService';
-import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign } from './types';
+import { Donor, Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from './types';
 
 export const aiService = {
   async generateOutreachMessage(donor: Donor): Promise<string> {
@@ -234,6 +233,106 @@ export const aiService = {
     } catch (error) {
       console.error('Error generating fundraising strategy:', error);
       throw new Error('Failed to generate fundraising strategy');
+    }
+  },
+
+  async analyzeDonors(donors: Donor[]): Promise<string> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'analyzeDonors',
+          data: donors,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze donors');
+      }
+
+      const data = await response.json();
+      return data.content;
+    } catch (error) {
+      console.error('Error analyzing donors:', error);
+      throw new Error('Failed to analyze donors');
+    }
+  },
+
+  async analyzeProjects(projects: Project[]): Promise<string> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'analyzeProjects',
+          data: projects,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze projects');
+      }
+
+      const data = await response.json();
+      return data.content;
+    } catch (error) {
+      console.error('Error analyzing projects:', error);
+      throw new Error('Failed to analyze projects');
+    }
+  },
+
+  async analyzeEvents(events: Event[]): Promise<string> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'analyzeEvents',
+          data: events,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze events');
+      }
+
+      const data = await response.json();
+      return data.content;
+    } catch (error) {
+      console.error('Error analyzing events:', error);
+      throw new Error('Failed to analyze events');
+    }
+  },
+
+  async analyzeFundraising(donors: Donor[], projects: Project[], events: Event[]): Promise<string> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'analyzeFundraising',
+          data: { donors, projects, events },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze fundraising');
+      }
+
+      const data = await response.json();
+      return data.content;
+    } catch (error) {
+      console.error('Error analyzing fundraising:', error);
+      throw new Error('Failed to analyze fundraising');
     }
   }
 }; 
