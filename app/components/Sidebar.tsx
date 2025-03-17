@@ -28,7 +28,7 @@ const navigation = [
   {
     name: 'Overview',
     items: [
-      { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+      { name: 'Home', href: '/dashboard', icon: HomeIcon },
       { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
       { name: 'Writing', href: '/dashboard/writing', icon: DocumentTextIcon },
       { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
