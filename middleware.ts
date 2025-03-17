@@ -22,24 +22,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // If user is signed in, check onboarding status
+  // If user is signed in and coming from signup, check onboarding status
   if (session) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('onboarding_completed')
-      .eq('id', session.user.id)
-      .single();
+    const referer = request.headers.get('referer') || '';
+    const isFromSignup = referer.includes('/signup');
 
-    // If onboarding is completed, allow access to all routes
-    if (profile?.onboarding_completed) {
-      return res;
-    }
+    if (isFromSignup) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_completed')
+        .eq('id', session.user.id)
+        .single();
 
-    // If onboarding is not completed, only allow access to onboarding and its API
-    // Also allow access to dashboard if explicitly skipping onboarding
-    if (!profile?.onboarding_completed && 
-        !['/onboarding', '/api/ai/onboarding', '/dashboard'].includes(request.nextUrl.pathname)) {
-      return NextResponse.redirect(new URL('/onboarding', request.url));
+      // If onboarding is not completed and trying to access protected routes
+      // (excluding onboarding and its API), redirect to onboarding
+      if (!profile?.onboarding_completed) {
+        const protectedRoutes = ['/dashboard', '/projects', '/team', '/settings'];
+        if (protectedRoutes.some(route => request.nextUrl.pathname.startsWith(route))) {
+          return NextResponse.redirect(new URL('/onboarding', request.url));
+        }
+      }
     }
   }
 
@@ -53,5 +55,8 @@ export const config = {
     '/signup',
     '/onboarding',
     '/api/ai/onboarding',
+    '/projects/:path*',
+    '/team/:path*',
+    '/settings/:path*',
   ],
 }; 
