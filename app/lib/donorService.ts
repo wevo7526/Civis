@@ -1,4 +1,9 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export interface Donor {
   id: string;
@@ -6,26 +11,25 @@ export interface Donor {
   email: string;
   last_donation: string;
   amount: number;
-  engagement: 'high' | 'medium' | 'low';
+  engagement: number;
   last_contact: string;
+  user_id: string;
   created_at: string;
   updated_at: string;
 }
 
 export const donorService = {
-  async getDonors() {
-    const supabase = createClientComponentClient();
+  async getDonors(): Promise<Donor[]> {
     const { data, error } = await supabase
       .from('donors')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data as Donor[];
+    return data || [];
   },
 
-  async addDonor(donor: Omit<Donor, 'id' | 'created_at' | 'updated_at'>) {
-    const supabase = createClientComponentClient();
+  async addDonor(donor: Omit<Donor, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<Donor> {
     const { data, error } = await supabase
       .from('donors')
       .insert([donor])
@@ -33,24 +37,22 @@ export const donorService = {
       .single();
 
     if (error) throw error;
-    return data as Donor;
+    return data;
   },
 
-  async updateDonor(id: string, updates: Partial<Donor>) {
-    const supabase = createClientComponentClient();
+  async updateDonor(id: string, donor: Partial<Donor>): Promise<Donor> {
     const { data, error } = await supabase
       .from('donors')
-      .update(updates)
+      .update(donor)
       .eq('id', id)
       .select()
       .single();
 
     if (error) throw error;
-    return data as Donor;
+    return data;
   },
 
-  async deleteDonor(id: string) {
-    const supabase = createClientComponentClient();
+  async deleteDonor(id: string): Promise<void> {
     const { error } = await supabase
       .from('donors')
       .delete()
@@ -59,11 +61,27 @@ export const donorService = {
     if (error) throw error;
   },
 
-  async updateEngagement(id: string, engagement: Donor['engagement']) {
-    return this.updateDonor(id, { engagement });
+  async updateEngagement(id: string, engagement: number): Promise<Donor> {
+    const { data, error } = await supabase
+      .from('donors')
+      .update({ engagement })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   },
 
-  async updateLastContact(id: string) {
-    return this.updateDonor(id, { last_contact: new Date().toISOString() });
+  async updateLastContact(id: string, lastContact: string): Promise<Donor> {
+    const { data, error } = await supabase
+      .from('donors')
+      .update({ last_contact: lastContact })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 }; 

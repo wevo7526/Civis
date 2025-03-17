@@ -3,44 +3,66 @@
 import { useState, useEffect } from 'react';
 import { donorService, Donor } from '@/app/lib/donorService';
 import { aiService } from '@/app/lib/aiService';
-import { UserCircleIcon, EnvelopeIcon, ChartBarIcon, DocumentTextIcon, PlusIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import DonorForm from '@/app/components/DonorForm';
+import DonorCard from '@/app/components/DonorCard';
+import AIInsightsPanel from '@/app/components/AIInsightsPanel';
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+type DonorFormData = Omit<Donor, 'id' | 'created_at' | 'updated_at' | 'user_id'>;
 
 export default function DonorManagement() {
   const [donors, setDonors] = useState<Donor[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
-  const [outreachMessage, setOutreachMessage] = useState('');
-  const [engagementAnalysis, setEngagementAnalysis] = useState('');
-  const [donorReport, setDonorReport] = useState('');
-  const [error, setError] = useState('');
+  const [insights, setInsights] = useState<Array<{ title: string; content: string }>>([]);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
+  const [generatingMessage, setGeneratingMessage] = useState(false);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
+    checkUser();
     loadDonors();
   }, []);
 
+  const checkUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/login');
+    }
+  };
+
   const loadDonors = async () => {
     try {
+      setLoading(true);
       const data = await donorService.getDonors();
       setDonors(data);
     } catch (err) {
       setError('Failed to load donors');
-      console.error(err);
+      console.error('Error loading donors:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGenerateOutreach = async (donor: Donor) => {
+  const handleGenerateMessage = async (donor: Donor) => {
     try {
+      setGeneratingMessage(true);
       setSelectedDonor(donor);
       const message = await aiService.generateOutreachMessage(donor);
-      setOutreachMessage(message);
+      setInsights([{
+        title: 'Outreach Message',
+        content: message
+      }]);
     } catch (err) {
-      setError('Failed to generate outreach message');
-      console.error(err);
+      setError('Failed to generate message');
+      console.error('Error generating message:', err);
+    } finally {
+      setGeneratingMessage(false);
     }
   };
 
@@ -48,46 +70,49 @@ export default function DonorManagement() {
     try {
       setSelectedDonor(donor);
       const analysis = await aiService.analyzeDonorEngagement(donor);
-      setEngagementAnalysis(analysis);
+      setInsights([{
+        title: 'Engagement Analysis',
+        content: analysis
+      }]);
     } catch (err) {
       setError('Failed to analyze engagement');
-      console.error(err);
+      console.error('Error analyzing engagement:', err);
     }
   };
 
   const handleGenerateReport = async () => {
     try {
       const report = await aiService.generateDonorReport(donors);
-      setDonorReport(report);
+      setInsights([{
+        title: 'Donor Report',
+        content: report
+      }]);
     } catch (err) {
       setError('Failed to generate report');
-      console.error(err);
+      console.error('Error generating report:', err);
     }
   };
 
-  const handleAddDonor = async (donorData: Omit<Donor, 'id' | 'created_at' | 'updated_at'>) => {
+  const handleAddDonor = async (donor: DonorFormData) => {
     try {
-      await donorService.addDonor(donorData);
-      await loadDonors();
+      const newDonor = await donorService.addDonor(donor);
+      setDonors([newDonor, ...donors]);
       setShowForm(false);
-      setError('');
     } catch (err) {
       setError('Failed to add donor');
-      console.error(err);
+      console.error('Error adding donor:', err);
     }
   };
 
-  const handleUpdateDonor = async (donorData: Omit<Donor, 'id' | 'created_at' | 'updated_at'>) => {
-    if (!editingDonor) return;
-    
+  const handleUpdateDonor = async (id: string, updates: Partial<Donor>) => {
     try {
-      await donorService.updateDonor(editingDonor.id, donorData);
-      await loadDonors();
+      const updatedDonor = await donorService.updateDonor(id, updates);
+      setDonors(donors.map(d => d.id === id ? updatedDonor : d));
+      setShowForm(false);
       setEditingDonor(null);
-      setError('');
     } catch (err) {
       setError('Failed to update donor');
-      console.error(err);
+      console.error('Error updating donor:', err);
     }
   };
 
@@ -96,11 +121,10 @@ export default function DonorManagement() {
     
     try {
       await donorService.deleteDonor(id);
-      await loadDonors();
-      setError('');
+      setDonors(donors.filter(d => d.id !== id));
     } catch (err) {
       setError('Failed to delete donor');
-      console.error(err);
+      console.error('Error deleting donor:', err);
     }
   };
 
@@ -108,6 +132,14 @@ export default function DonorManagement() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 text-red-700 rounded-lg">
+        {error}
       </div>
     );
   }
@@ -137,12 +169,6 @@ export default function DonorManagement() {
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
-
       {showForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">
@@ -150,7 +176,7 @@ export default function DonorManagement() {
           </h2>
           <DonorForm
             donor={editingDonor || undefined}
-            onSubmit={editingDonor ? handleUpdateDonor : handleAddDonor}
+            onSubmit={editingDonor ? (updates) => handleUpdateDonor(editingDonor.id, updates) : handleAddDonor}
             onCancel={() => {
               setShowForm(false);
               setEditingDonor(null);
@@ -167,72 +193,18 @@ export default function DonorManagement() {
               <h2 className="text-xl font-semibold mb-4">Donors</h2>
               <div className="space-y-4">
                 {donors.map((donor) => (
-                  <div
+                  <DonorCard
                     key={donor.id}
-                    className="border rounded-lg p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <UserCircleIcon className="h-10 w-10 text-gray-400 mr-3" />
-                        <div>
-                          <h3 className="font-medium">{donor.name}</h3>
-                          <p className="text-sm text-gray-500">{donor.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => {
-                            setEditingDonor(donor);
-                            setShowForm(true);
-                          }}
-                          className="flex items-center px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                        >
-                          <PencilIcon className="h-4 w-4 mr-1" />
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleGenerateOutreach(donor)}
-                          className="flex items-center px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-                        >
-                          <EnvelopeIcon className="h-4 w-4 mr-1" />
-                          Outreach
-                        </button>
-                        <button
-                          onClick={() => handleAnalyzeEngagement(donor)}
-                          className="flex items-center px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200"
-                        >
-                          <ChartBarIcon className="h-4 w-4 mr-1" />
-                          Analyze
-                        </button>
-                        <button
-                          onClick={() => handleDeleteDonor(donor.id)}
-                          className="flex items-center px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Last Donation:</span>
-                        <span className="ml-1">{new Date(donor.last_donation).toLocaleDateString()}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Amount:</span>
-                        <span className="ml-1">${donor.amount.toLocaleString()}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Engagement:</span>
-                        <span className={`ml-1 capitalize ${
-                          donor.engagement === 'high' ? 'text-green-600' :
-                          donor.engagement === 'medium' ? 'text-yellow-600' :
-                          'text-red-600'
-                        }`}>
-                          {donor.engagement}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                    donor={donor}
+                    onEdit={(donor) => {
+                      setEditingDonor(donor);
+                      setShowForm(true);
+                    }}
+                    onGenerateMessage={handleGenerateMessage}
+                    onAnalyze={handleAnalyzeEngagement}
+                    onDelete={handleDeleteDonor}
+                    generatingMessage={generatingMessage}
+                  />
                 ))}
               </div>
             </div>
@@ -241,39 +213,10 @@ export default function DonorManagement() {
 
         {/* AI Insights Panel */}
         <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow sticky top-8">
-            <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">AI Insights</h2>
-              {selectedDonor && (
-                <div className="space-y-6">
-                  {outreachMessage && (
-                    <div>
-                      <h3 className="font-medium mb-2">Outreach Message</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap">
-                        {outreachMessage}
-                      </div>
-                    </div>
-                  )}
-                  {engagementAnalysis && (
-                    <div>
-                      <h3 className="font-medium mb-2">Engagement Analysis</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap">
-                        {engagementAnalysis}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              {donorReport && (
-                <div>
-                  <h3 className="font-medium mb-2">Donor Report</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg text-sm whitespace-pre-wrap">
-                    {donorReport}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <AIInsightsPanel
+            insights={insights}
+            className="sticky top-8"
+          />
         </div>
       </div>
     </div>

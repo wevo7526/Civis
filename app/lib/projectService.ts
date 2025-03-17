@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { Grant, FundraisingCampaign } from './types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -15,18 +16,18 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  status: 'planning' | 'active' | 'completed' | 'on-hold';
+  status: 'active' | 'completed' | 'on_hold' | 'planned' | 'cancelled';
   start_date: string;
   end_date: string;
   budget: number;
   impact_target: number;
   impact_current: number;
-  impact_metric: string;
-  team_size: number;
-  team_roles: string[];
+  user_id: string;
   created_at: string;
   updated_at: string;
   aiInsights?: AIInsights;
+  grant?: Grant;
+  campaign?: FundraisingCampaign;
 }
 
 export const projectService = {
@@ -51,7 +52,7 @@ export const projectService = {
     return data;
   },
 
-  async createProject(project: Omit<Project, 'id' | 'created_at' | 'updated_at'>): Promise<Project> {
+  async addProject(project: Omit<Project, 'id' | 'created_at' | 'updated_at' | 'user_id'>): Promise<Project> {
     const { data, error } = await supabase
       .from('projects')
       .insert([project])
@@ -62,10 +63,10 @@ export const projectService = {
     return data;
   },
 
-  async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
+  async updateProject(id: string, project: Partial<Project>): Promise<Project> {
     const { data, error } = await supabase
       .from('projects')
-      .update(updates)
+      .update(project)
       .eq('id', id)
       .select()
       .single();
@@ -83,10 +84,10 @@ export const projectService = {
     if (error) throw error;
   },
 
-  async updateProjectImpact(id: string, current: number): Promise<Project> {
+  async updateImpact(id: string, impact: number): Promise<Project> {
     const { data, error } = await supabase
       .from('projects')
-      .update({ impact_current: current })
+      .update({ impact_current: impact })
       .eq('id', id)
       .select()
       .single();

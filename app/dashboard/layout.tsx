@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import Sidebar from '@/components/Sidebar';
+import Sidebar from '@/app/components/Sidebar';
 
 export default function DashboardLayout({
   children,
@@ -24,9 +24,11 @@ export default function DashboardLayout({
   }, [router, supabase.auth]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <div className="pl-64">
+    <div className="flex min-h-screen bg-gray-50">
+      <div className="w-64 flex-shrink-0">
+        <Sidebar />
+      </div>
+      <div className="flex-1">
         <main className="py-6">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {children}

@@ -3,7 +3,7 @@ import { Donor } from '@/app/lib/donorService';
 
 interface DonorFormProps {
   donor?: Donor;
-  onSubmit: (donor: Omit<Donor, 'id' | 'created_at' | 'updated_at'>) => Promise<void>;
+  onSubmit: (donor: Omit<Donor, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -13,7 +13,7 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
     email: donor?.email || '',
     last_donation: donor?.last_donation || new Date().toISOString().split('T')[0],
     amount: donor?.amount || 0,
-    engagement: donor?.engagement || 'medium',
+    engagement: donor?.engagement || 0,
     last_contact: donor?.last_contact || new Date().toISOString().split('T')[0],
   });
 
@@ -89,18 +89,18 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
 
       <div>
         <label htmlFor="engagement" className="block text-sm font-medium text-gray-700">
-          Engagement Level
+          Engagement Level (0-100)
         </label>
-        <select
+        <input
+          type="number"
           id="engagement"
           value={formData.engagement}
-          onChange={(e) => setFormData({ ...formData, engagement: e.target.value as Donor['engagement'] })}
+          onChange={(e) => setFormData({ ...formData, engagement: parseInt(e.target.value) })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-        >
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
+          required
+          min="0"
+          max="100"
+        />
       </div>
 
       <div>
