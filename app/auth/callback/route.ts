@@ -5,12 +5,12 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
-  const next = requestUrl.searchParams.get('next') ?? '/';
 
   if (code) {
     const supabase = createRouteHandlerClient({ cookies });
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(new URL(next, requestUrl.origin));
+  // URL to redirect to after sign in process completes
+  return NextResponse.redirect(new URL('/onboarding', requestUrl.origin));
 } 
