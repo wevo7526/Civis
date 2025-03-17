@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Grant, FundraisingCampaign } from './types';
+import { Project as BaseProject, Grant, FundraisingCampaign } from './types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -12,22 +12,11 @@ export interface AIInsights {
   opportunities: string[];
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  status: 'active' | 'completed' | 'on_hold' | 'planned' | 'cancelled';
-  start_date: string;
-  end_date: string;
-  budget: number;
-  impact_target: number;
+export interface Project extends BaseProject {
   impact_current: number;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
   aiInsights?: AIInsights;
-  grant?: Grant;
-  campaign?: FundraisingCampaign;
+  grant?: Partial<Omit<Grant, 'id' | 'created_at' | 'updated_at' | 'user_id'>>;
+  campaign?: Partial<Omit<FundraisingCampaign, 'id' | 'created_at' | 'updated_at' | 'user_id'>>;
 }
 
 export const projectService = {

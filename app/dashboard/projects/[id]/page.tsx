@@ -11,7 +11,7 @@ import {
   CalendarIcon,
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
-import { Project } from '@/app/lib/types';
+import { Project } from '@/app/lib/projectService';
 import { aiService } from '@/app/lib/aiService';
 
 export default function ProjectDetails() {
@@ -59,15 +59,15 @@ export default function ProjectDetails() {
       const grantProposal = await aiService.generateGrantProposal({
         projectName: projectData.name,
         projectDescription: projectData.description,
-        targetAmount: projectData.target_amount,
+        targetAmount: projectData.budget,
       });
 
       // Generate fundraising strategy
       const fundraisingStrategy = await aiService.generateFundraisingStrategy({
         organizationName: projectData.name,
         organizationType: 'nonprofit',
-        targetAmount: projectData.target_amount,
-        timeframe: projectData.deadline ? new Date(projectData.deadline).toLocaleDateString() : 'ongoing',
+        targetAmount: projectData.budget,
+        timeframe: projectData.end_date ? new Date(projectData.end_date).toLocaleDateString() : 'ongoing',
         currentDonors: 0, // This could be fetched from donors table
       });
 
@@ -186,18 +186,18 @@ export default function ProjectDetails() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center space-x-3 mb-4">
                 <ChartBarIcon className="h-6 w-6 text-blue-600" />
-                <h3 className="text-lg font-medium text-gray-900">Target Amount</h3>
+                <h3 className="text-lg font-medium text-gray-900">Budget</h3>
               </div>
-              <p className="text-3xl font-bold text-gray-900">${project.target_amount.toLocaleString()}</p>
+              <p className="text-3xl font-bold text-gray-900">${project.budget.toLocaleString()}</p>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center space-x-3 mb-4">
                 <CalendarIcon className="h-6 w-6 text-blue-600" />
-                <h3 className="text-lg font-medium text-gray-900">Deadline</h3>
+                <h3 className="text-lg font-medium text-gray-900">Timeline</h3>
               </div>
               <p className="text-3xl font-bold text-gray-900">
-                {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'No deadline'}
+                {new Date(project.start_date).toLocaleDateString()} - {new Date(project.end_date).toLocaleDateString()}
               </p>
             </div>
 

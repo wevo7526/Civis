@@ -6,8 +6,8 @@ import { Grant, FundraisingCampaign } from '@/app/lib/types';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 
 interface ProjectFormProps {
-  project?: ProjectFormData;
-  onSubmit: (data: any) => Promise<void>;
+  project?: Project;
+  onSubmit: (data: Omit<Project, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -17,47 +17,10 @@ interface AISuggestions {
   timeline_suggestion: string;
 }
 
-interface ProjectFormData {
-  name?: string;
-  description?: string;
-  status?: 'active' | 'completed' | 'on_hold' | 'planned' | 'cancelled';
-  start_date?: string;
-  end_date?: string;
-  budget?: number;
-  impact_target?: string;
-  impact_metric?: string;
-  team_size?: number;
-  team_roles?: string;
-  grant?: {
-    title?: string;
-    organization?: string;
-    amount?: number;
-    deadline?: string;
-    status?: 'draft' | 'submitted' | 'awarded' | 'rejected';
-    description?: string;
-    impact_statement?: string;
-  };
-  campaign?: {
-    name?: string;
-    description?: string;
-    goal?: number;
-    current_amount?: number;
-    start_date?: string;
-    end_date?: string;
-    status?: 'active' | 'completed' | 'planned' | 'cancelled';
-    type?: 'annual' | 'capital' | 'emergency' | 'program';
-  };
-  event?: {
-    status?: 'active' | 'completed' | 'planned' | 'cancelled';
-    date?: string;
-    budget?: number;
-  };
-}
-
 interface FormData {
   name: string;
   description: string;
-  status: 'active' | 'completed' | 'on_hold' | 'planned' | 'cancelled';
+  status: Project['status'];
   start_date: string;
   end_date: string;
   budget: string;
@@ -65,38 +28,32 @@ interface FormData {
   impact_metric: string;
   team_size: string;
   team_roles: string;
-  grant_status: 'draft' | 'submitted' | 'awarded' | 'rejected';
+  grant_status: Grant['status'];
   grant_amount: string;
   grant_deadline: string;
-  campaign_type: 'annual' | 'capital' | 'emergency' | 'program';
+  campaign_type: FundraisingCampaign['type'];
   campaign_goal: string;
   campaign_deadline: string;
-  event_status: 'active' | 'completed' | 'planned' | 'cancelled';
-  event_date: string;
-  event_budget: string;
 }
 
 export default function ProjectForm({ project, onSubmit, onCancel }: ProjectFormProps) {
   const [formData, setFormData] = useState<FormData>({
     name: project?.name || '',
     description: project?.description || '',
-    status: project?.status || 'planned',
+    status: project?.status || 'active',
     start_date: project?.start_date || '',
     end_date: project?.end_date || '',
     budget: project?.budget?.toString() || '',
-    impact_target: project?.impact_target?.toString() || '',
+    impact_target: project?.impact_target || '',
     impact_metric: project?.impact_metric || '',
     team_size: project?.team_size?.toString() || '',
-    team_roles: project?.team_roles || '',
+    team_roles: project?.team_roles?.join(', ') || '',
     grant_status: project?.grant?.status || 'draft',
     grant_amount: project?.grant?.amount?.toString() || '',
     grant_deadline: project?.grant?.deadline || '',
     campaign_type: project?.campaign?.type || 'program',
     campaign_goal: project?.campaign?.goal?.toString() || '',
     campaign_deadline: project?.campaign?.end_date || '',
-    event_status: project?.event?.status || 'planned',
-    event_date: project?.event?.date || '',
-    event_budget: project?.event?.budget?.toString() || '',
   });
 
   const [suggestions, setSuggestions] = useState<AISuggestions | null>(null);
@@ -136,28 +93,44 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
     setError('');
 
     try {
+      // Convert project status to campaign status
+      const campaignStatus: FundraisingCampaign['status'] = formData.status === 'planning' ? 'planned' :
+                                                          formData.status === 'on-hold' ? 'cancelled' :
+                                                          formData.status === 'active' ? 'active' :
+                                                          'completed';
+
       const projectData = {
-        ...formData,
+        name: formData.name,
+        description: formData.description,
+        status: formData.status,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        budget: Number(formData.budget),
+        impact_target: formData.impact_target,
+        impact_metric: formData.impact_metric,
+        team_size: Number(formData.team_size),
+        team_roles: formData.team_roles.split(',').map(role => role.trim()),
+        impact_current: 0,
         grant: {
-          title: project?.grant?.title || '',
-          organization: project?.grant?.organization || '',
-          amount: parseFloat(formData.grant_amount),
+          title: formData.name,
+          organization: '',
+          amount: Number(formData.grant_amount),
           deadline: formData.grant_deadline,
           status: formData.grant_status,
-          description: project?.grant?.description || '',
-          impact_statement: project?.grant?.impact_statement || '',
-          budget: parseFloat(formData.budget),
+          description: formData.description,
+          impact_statement: '',
+          budget: Number(formData.budget),
         },
         campaign: {
-          name: project?.campaign?.name || '',
-          description: project?.campaign?.description || '',
-          goal: parseFloat(formData.campaign_goal),
-          current_amount: project?.campaign?.current_amount || 0,
-          start_date: project?.campaign?.start_date || '',
-          end_date: project?.campaign?.end_date || '',
-          status: formData.status,
+          name: formData.name,
+          description: formData.description,
+          goal: Number(formData.campaign_goal),
+          current_amount: 0,
+          start_date: formData.start_date,
+          end_date: formData.campaign_deadline,
+          status: campaignStatus,
           type: formData.campaign_type,
-        },
+        }
       };
 
       await onSubmit(projectData);
@@ -248,10 +221,10 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
               onChange={handleChange}
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             >
-              <option value="planned">Planned</option>
               <option value="active">Active</option>
               <option value="completed">Completed</option>
               <option value="on_hold">On Hold</option>
+              <option value="planned">Planned</option>
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
@@ -459,69 +432,6 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
-        </div>
-
-        <div className="border-t pt-4">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Event Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="event_status" className="block text-sm font-medium text-gray-700">
-                Event Status
-              </label>
-              <select
-                id="event_status"
-                name="event_status"
-                value={formData.event_status}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              >
-                <option value="planned">Planned</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="event_date" className="block text-sm font-medium text-gray-700">
-                Event Date
-              </label>
-              <input
-                type="date"
-                id="event_date"
-                name="event_date"
-                value={formData.event_date}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="event_budget" className="block text-sm font-medium text-gray-700">
-              Event Budget
-            </label>
-            <input
-              type="number"
-              id="event_budget"
-              name="event_budget"
-              value={formData.event_budget}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
-        <div className="border-t pt-4">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Campaign Description</h3>
-          <textarea
-            id="campaign_description"
-            name="campaign_description"
-            value={project?.campaign?.description || ''}
-            onChange={handleChange}
-            rows={3}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-          />
         </div>
       </div>
 
