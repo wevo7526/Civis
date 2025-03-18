@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
-import { Donor } from '@/app/lib/donorService';
-import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from '@/app/lib/types';
+import { Donor } from '../../lib/types';
+import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from '../../lib/types';
 import { cookies } from 'next/headers';
 
 interface AIResponse {

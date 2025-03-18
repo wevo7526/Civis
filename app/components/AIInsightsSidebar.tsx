@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SparklesIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
-import { aiService } from '@/app/lib/aiService';
+import { aiService } from '../lib/aiService';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -45,7 +45,8 @@ export default function AIInsightsSidebar({ donorData, onClose }: AIInsightsSide
         response = "I notice there's no donor data available at the moment. Please add some donor information to get started with the analysis.";
       } else {
         // Generate AI response based on the user's query
-        response = await aiService.analyzeDonorEngagement(donorData);
+        const aiResponse = await aiService.analyzeDonorEngagement(donorData);
+        response = aiResponse.message;
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);

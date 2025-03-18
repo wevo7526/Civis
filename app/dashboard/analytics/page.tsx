@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { donorService, Donor } from '@/app/lib/donorService';
-import { aiService } from '@/app/lib/aiService';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Donor } from '../../lib/types';
+import { createDonorService } from '../../lib/donorService';
+import { aiService } from '../../lib/aiService';
 import { ChartBarIcon, UserGroupIcon, CurrencyDollarIcon, LightBulbIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import AIInsightsSidebar from '@/app/components/AIInsightsSidebar';
+import AIInsightsSidebar from '../../components/AIInsightsSidebar';
 
 interface AnalyticsData {
   totalDonors: number;
@@ -19,17 +21,27 @@ interface AnalyticsData {
 
 export default function Analytics() {
   const [donors, setDonors] = useState<Donor[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [donorService, setDonorService] = useState<ReturnType<typeof createDonorService> | null>(null);
   const [showAIInsights, setShowAIInsights] = useState(false);
 
   useEffect(() => {
-    loadDonors();
+    const supabase = createClientComponentClient();
+    setDonorService(createDonorService(supabase));
   }, []);
 
+  useEffect(() => {
+    if (donorService) {
+      loadDonors();
+    }
+  }, [donorService]);
+
   const loadDonors = async () => {
+    if (!donorService) return;
     try {
+      setLoading(true);
       const data = await donorService.getDonors();
       setDonors(data);
       calculateAnalytics(data);
@@ -42,47 +54,34 @@ export default function Analytics() {
   };
 
   const calculateAnalytics = (donorData: Donor[]) => {
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
-    
     const totalRevenue = donorData.reduce((sum, donor) => sum + donor.amount, 0);
     const averageDonation = totalRevenue / donorData.length;
-    
-    // Calculate retention rate (donors who have given more than once)
-    const returningDonors = donorData.filter(donor => {
-      const lastDonation = new Date(donor.last_donation);
-      return lastDonation > thirtyDaysAgo;
-    });
-    
     const newDonors = donorData.filter(donor => {
-      const lastDonation = new Date(donor.last_donation);
-      return lastDonation <= thirtyDaysAgo;
-    });
-
-    // Calculate high-value donors (top 20% by donation amount)
-    const sortedDonors = [...donorData].sort((a, b) => b.amount - a.amount);
-    const highValueThreshold = sortedDonors[Math.floor(donorData.length * 0.2)]?.amount || 0;
-    const highValueDonors = donorData.filter(donor => donor.amount >= highValueThreshold).length;
-
-    // Calculate engagement score (weighted average of engagement levels)
-    const engagementScores = {
-      high: 3,
-      medium: 2,
-      low: 1
-    };
-    const totalEngagementScore = donorData.reduce((sum, donor) => 
-      sum + engagementScores[donor.engagement], 0);
+      const donorDate = new Date(donor.created_at);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      return donorDate > thirtyDaysAgo;
+    }).length;
+    const returningDonors = donorData.filter(donor => {
+      const lastDonationDate = new Date(donor.last_donation);
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      return lastDonationDate > ninetyDaysAgo;
+    }).length;
+    const highValueDonors = donorData.filter(donor => donor.amount > averageDonation * 2).length;
+    const retentionRate = (returningDonors / donorData.length) * 100;
+    const totalEngagementScore = donorData.reduce((sum, donor) => sum + donor.engagement, 0);
     const engagementScore = totalEngagementScore / donorData.length;
 
-    setAnalyticsData({
+    setAnalytics({
       totalDonors: donorData.length,
       totalRevenue,
       averageDonation,
-      retentionRate: (returningDonors.length / donorData.length) * 100,
-      newDonors: newDonors.length,
-      returningDonors: returningDonors.length,
+      retentionRate,
+      newDonors,
+      returningDonors,
       highValueDonors,
-      engagementScore
+      engagementScore,
     });
   };
 
@@ -125,7 +124,7 @@ export default function Analytics() {
                 <div className="ml-4">
                   <h3 className="text-sm font-medium text-gray-500">Total Donors</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    {analyticsData?.totalDonors || 0}
+                    {analytics?.totalDonors || 0}
                   </p>
                 </div>
               </div>
@@ -139,7 +138,7 @@ export default function Analytics() {
                 <div className="ml-4">
                   <h3 className="text-sm font-medium text-gray-500">Total Revenue</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ${analyticsData?.totalRevenue.toLocaleString() || 0}
+                    ${analytics?.totalRevenue.toLocaleString() || 0}
                   </p>
                 </div>
               </div>
@@ -153,7 +152,7 @@ export default function Analytics() {
                 <div className="ml-4">
                   <h3 className="text-sm font-medium text-gray-500">Retention Rate</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    {analyticsData?.retentionRate.toFixed(1)}%
+                    {analytics?.retentionRate.toFixed(1)}%
                   </p>
                 </div>
               </div>
@@ -167,7 +166,7 @@ export default function Analytics() {
                 <div className="ml-4">
                   <h3 className="text-sm font-medium text-gray-500">Engagement Score</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    {analyticsData?.engagementScore.toFixed(1)}
+                    {analytics?.engagementScore.toFixed(1)}
                   </p>
                 </div>
               </div>
@@ -183,13 +182,13 @@ export default function Analytics() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-500">New Donors</span>
-                    <span className="font-medium">{analyticsData?.newDonors || 0}</span>
+                    <span className="font-medium">{analytics?.newDonors || 0}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full"
                       style={{
-                        width: `${((analyticsData?.newDonors || 0) / (analyticsData?.totalDonors || 1)) * 100}%`
+                        width: `${((analytics?.newDonors || 0) / (analytics?.totalDonors || 1)) * 100}%`
                       }}
                     ></div>
                   </div>
@@ -197,13 +196,13 @@ export default function Analytics() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-500">Returning Donors</span>
-                    <span className="font-medium">{analyticsData?.returningDonors || 0}</span>
+                    <span className="font-medium">{analytics?.returningDonors || 0}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-green-600 h-2 rounded-full"
                       style={{
-                        width: `${((analyticsData?.returningDonors || 0) / (analyticsData?.totalDonors || 1)) * 100}%`
+                        width: `${((analytics?.returningDonors || 0) / (analytics?.totalDonors || 1)) * 100}%`
                       }}
                     ></div>
                   </div>
@@ -211,13 +210,13 @@ export default function Analytics() {
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-500">High-Value Donors</span>
-                    <span className="font-medium">{analyticsData?.highValueDonors || 0}</span>
+                    <span className="font-medium">{analytics?.highValueDonors || 0}</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-purple-600 h-2 rounded-full"
                       style={{
-                        width: `${((analyticsData?.highValueDonors || 0) / (analyticsData?.totalDonors || 1)) * 100}%`
+                        width: `${((analytics?.highValueDonors || 0) / (analytics?.totalDonors || 1)) * 100}%`
                       }}
                     ></div>
                   </div>
@@ -232,19 +231,19 @@ export default function Analytics() {
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Average Donation</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ${analyticsData?.averageDonation.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 0}
+                    ${analytics?.averageDonation.toLocaleString(undefined, { maximumFractionDigits: 2 }) || 0}
                   </p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Revenue per Donor</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ${((analyticsData?.totalRevenue || 0) / (analyticsData?.totalDonors || 1)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    ${((analytics?.totalRevenue || 0) / (analytics?.totalDonors || 1)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">High-Value Donor Revenue</h3>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ${((analyticsData?.totalRevenue || 0) * 0.8).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    ${((analytics?.totalRevenue || 0) * 0.8).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </p>
                 </div>
               </div>
@@ -255,9 +254,9 @@ export default function Analytics() {
           <div className="mt-8 bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Strategic Recommendations</h2>
             <div className="space-y-4">
-              {analyticsData && (
+              {analytics && (
                 <>
-                  {analyticsData.retentionRate < 50 && (
+                  {analytics.retentionRate < 50 && (
                     <div className="p-4 bg-yellow-50 rounded-lg">
                       <h3 className="text-sm font-medium text-yellow-800">Improve Donor Retention</h3>
                       <p className="mt-1 text-sm text-yellow-700">
@@ -265,7 +264,7 @@ export default function Analytics() {
                       </p>
                     </div>
                   )}
-                  {analyticsData.engagementScore < 2 && (
+                  {analytics.engagementScore < 2 && (
                     <div className="p-4 bg-red-50 rounded-lg">
                       <h3 className="text-sm font-medium text-red-800">Low Engagement Alert</h3>
                       <p className="mt-1 text-sm text-red-700">
@@ -273,7 +272,7 @@ export default function Analytics() {
                       </p>
                     </div>
                   )}
-                  {analyticsData.highValueDonors < 5 && (
+                  {analytics.highValueDonors < 5 && (
                     <div className="p-4 bg-blue-50 rounded-lg">
                       <h3 className="text-sm font-medium text-blue-800">High-Value Donor Opportunity</h3>
                       <p className="mt-1 text-sm text-blue-700">

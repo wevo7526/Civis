@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
@@ -26,11 +26,18 @@ export default function Donors() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState(initialFormData);
 
-  const supabase = createClientComponentClient();
-  const donorService = useMemo(() => createDonorService(supabase), [supabase]);
+  // Initialize Supabase client inside useEffect
+  const [donorService, setDonorService] = useState<ReturnType<typeof createDonorService> | null>(null);
 
   useEffect(() => {
-    fetchDonors();
+    const supabase = createClientComponentClient();
+    setDonorService(createDonorService(supabase));
+  }, []);
+
+  useEffect(() => {
+    if (donorService) {
+      fetchDonors();
+    }
   }, [donorService]);
 
   useEffect(() => {
@@ -48,6 +55,7 @@ export default function Donors() {
   }, [donorToEdit]);
 
   const fetchDonors = async () => {
+    if (!donorService) return;
     try {
       setLoading(true);
       const data = await donorService.getDonors();
@@ -62,6 +70,7 @@ export default function Donors() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!donorService) return;
     try {
       setLoading(true);
       if (donorToEdit) {
@@ -80,7 +89,7 @@ export default function Donors() {
   };
 
   const handleDeleteDonor = async () => {
-    if (!donorToDelete) return;
+    if (!donorToDelete || !donorService) return;
     try {
       setLoading(true);
       await donorService.deleteDonor(donorToDelete.id);
