@@ -97,13 +97,13 @@ export interface FundraisingCampaign {
 
 export interface Donor {
   id: string;
+  user_id: string;
   name: string;
   email: string;
-  last_donation: string;
-  amount: number;
-  engagement: number;
-  last_contact: string;
-  user_id: string;
+  phone?: string;
+  donation_date: string;
+  status: 'active' | 'inactive';
+  notes?: string;
   created_at: string;
   updated_at: string;
 }

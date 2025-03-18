@@ -6,14 +6,24 @@ import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
 import { Donor } from '../../lib/types';
 import { createDonorService } from '../../lib/donorService';
+import { createActivityService } from '../../lib/activityService';
 
-const initialFormData = {
+interface DonorFormData {
+  name: string;
+  email: string;
+  phone: string;
+  donation_date: string;
+  status: 'active' | 'inactive';
+  notes: string;
+}
+
+const initialFormData: DonorFormData = {
   name: '',
   email: '',
-  last_donation: new Date().toISOString().split('T')[0],
-  amount: 0,
-  engagement: 0,
-  last_contact: new Date().toISOString().split('T')[0],
+  phone: '',
+  donation_date: new Date().toISOString().split('T')[0],
+  status: 'active',
+  notes: '',
 };
 
 export default function Donors() {
@@ -24,45 +34,43 @@ export default function Donors() {
   const [donorToEdit, setDonorToEdit] = useState<Donor | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState<DonorFormData>(initialFormData);
 
-  // Initialize Supabase client inside useEffect
-  const [donorService, setDonorService] = useState<ReturnType<typeof createDonorService> | null>(null);
+  // Initialize Supabase client
+  const supabase = createClientComponentClient();
+  const donorService = createDonorService(supabase);
+  const activityService = createActivityService(supabase);
 
   useEffect(() => {
-    const supabase = createClientComponentClient();
-    setDonorService(createDonorService(supabase));
+    fetchDonors();
   }, []);
-
-  useEffect(() => {
-    if (donorService) {
-      fetchDonors();
-    }
-  }, [donorService]);
 
   useEffect(() => {
     if (donorToEdit) {
       setFormData({
         name: donorToEdit.name,
         email: donorToEdit.email,
-        last_donation: donorToEdit.last_donation,
-        amount: donorToEdit.amount,
-        engagement: donorToEdit.engagement,
-        last_contact: donorToEdit.last_contact,
+        phone: donorToEdit.phone || '',
+        donation_date: donorToEdit.donation_date,
+        status: donorToEdit.status,
+        notes: donorToEdit.notes || '',
       });
       setIsModalOpen(true);
     }
   }, [donorToEdit]);
 
   const fetchDonors = async () => {
-    if (!donorService) return;
     try {
       setLoading(true);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user) throw new Error('No authenticated user found');
+
       const data = await donorService.getDonors();
       setDonors(data);
     } catch (err) {
-      setError('Failed to fetch donors');
-      console.error(err);
+      console.error('Error fetching donors:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch donors');
     } finally {
       setLoading(false);
     }
@@ -70,35 +78,67 @@ export default function Donors() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!donorService) return;
     try {
       setLoading(true);
+      setError(null);
+      
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user) throw new Error('No authenticated user found');
+
+      const donorData = {
+        ...formData,
+        user_id: user.id,
+      };
+
       if (donorToEdit) {
-        await donorService.updateDonor(donorToEdit.id, formData);
+        await donorService.updateDonor(donorToEdit.id, donorData);
+        try {
+          await activityService.createDonorActivity(user.id, 'updated', formData.name);
+        } catch (activityError) {
+          console.error('Error creating activity:', activityError);
+          // Don't throw here, as the donor was still updated successfully
+        }
       } else {
-        await donorService.addDonor(formData);
+        await donorService.addDonor(donorData);
+        try {
+          await activityService.createDonorActivity(user.id, 'added', formData.name);
+        } catch (activityError) {
+          console.error('Error creating activity:', activityError);
+          // Don't throw here, as the donor was still added successfully
+        }
       }
+      
       await fetchDonors();
       handleCloseModal();
     } catch (err) {
-      setError(donorToEdit ? 'Failed to update donor' : 'Failed to add donor');
-      console.error(err);
+      console.error('Error submitting donor:', err);
+      setError(err instanceof Error ? err.message : (donorToEdit ? 'Failed to update donor' : 'Failed to add donor'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteDonor = async () => {
-    if (!donorToDelete || !donorService) return;
+    if (!donorToDelete) return;
     try {
       setLoading(true);
+      setError(null);
+      
       await donorService.deleteDonor(donorToDelete.id);
+      try {
+        await activityService.createDonorActivity(donorToDelete.user_id, 'deleted', donorToDelete.name);
+      } catch (activityError) {
+        console.error('Error creating activity:', activityError);
+        // Don't throw here, as the donor was still deleted successfully
+      }
+      
       await fetchDonors();
       setIsDeleteModalOpen(false);
       setDonorToDelete(null);
     } catch (err) {
-      setError('Failed to delete donor');
-      console.error(err);
+      console.error('Error deleting donor:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete donor');
     } finally {
       setLoading(false);
     }
@@ -135,10 +175,9 @@ export default function Donors() {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Donation</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Engagement</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Contact</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Donation Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
@@ -152,20 +191,19 @@ export default function Donors() {
                   <div className="text-sm text-gray-900">{donor.email}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">${donor.amount.toLocaleString()}</div>
+                  <div className="text-sm text-gray-900">{donor.phone || '-'}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">
-                    {new Date(donor.last_donation).toLocaleDateString()}
+                    {new Date(donor.donation_date).toLocaleDateString()}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{donor.engagement}%</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {new Date(donor.last_contact).toLocaleDateString()}
-                  </div>
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                    donor.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {donor.status}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
@@ -238,62 +276,58 @@ export default function Donors() {
                   />
                 </div>
 
-                <div className="mt-4">
-                  <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
-                    Donation Amount
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                    Phone
                   </label>
                   <input
-                    type="number"
-                    id="amount"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formData.amount}
-                    onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                    type="tel"
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
 
-                <div className="mt-4">
-                  <label htmlFor="last_donation" className="block text-sm font-medium text-gray-700">
-                    Last Donation Date
+                <div>
+                  <label htmlFor="donation_date" className="block text-sm font-medium text-gray-700">
+                    Donation Date
                   </label>
                   <input
                     type="date"
-                    id="last_donation"
+                    id="donation_date"
                     required
-                    value={formData.last_donation}
-                    onChange={(e) => setFormData(prev => ({ ...prev, last_donation: e.target.value }))}
+                    value={formData.donation_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, donation_date: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
 
-                <div className="mt-4">
-                  <label htmlFor="engagement" className="block text-sm font-medium text-gray-700">
-                    Engagement Level (0-100)
+                <div>
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                    Status
                   </label>
-                  <input
-                    type="number"
-                    id="engagement"
+                  <select
+                    id="status"
                     required
-                    min="0"
-                    max="100"
-                    value={formData.engagement}
-                    onChange={(e) => setFormData(prev => ({ ...prev, engagement: parseInt(e.target.value) }))}
+                    value={formData.status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as 'active' | 'inactive' }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
                 </div>
 
-                <div className="mt-4">
-                  <label htmlFor="last_contact" className="block text-sm font-medium text-gray-700">
-                    Last Contact Date
+                <div className="md:col-span-2">
+                  <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+                    Notes
                   </label>
-                  <input
-                    type="date"
-                    id="last_contact"
-                    required
-                    value={formData.last_contact}
-                    onChange={(e) => setFormData(prev => ({ ...prev, last_contact: e.target.value }))}
+                  <textarea
+                    id="notes"
+                    rows={3}
+                    value={formData.notes}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -302,7 +336,7 @@ export default function Donors() {
               <div className="mt-6 flex justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={handleCloseModal}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                 >
                   Cancel

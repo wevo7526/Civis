@@ -8,6 +8,7 @@ import {
   BellIcon,
   DocumentTextIcon,
   ClockIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 
 interface AutomationFeature {

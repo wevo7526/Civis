@@ -5,6 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Campaign, CampaignItem, CampaignStatus } from '@/lib/types';
 import { PlusIcon, CalendarIcon, ChartBarIcon, CurrencyDollarIcon, UserGroupIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
+import { createCampaignActivity } from '@/lib/activityService';
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -125,6 +126,9 @@ export default function Campaigns() {
         .single();
 
       if (error) throw error;
+
+      // Create activity for the new campaign
+      await createCampaignActivity(user.id, 'created', campaignData.name);
 
       setIsModalOpen(false);
       setFormData({

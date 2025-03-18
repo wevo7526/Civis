@@ -5,6 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Project } from '@/lib/projectService';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
+import { createActivity } from '@/lib/activityService';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -77,11 +78,21 @@ export default function Projects() {
         impact_current: 0,
       };
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('projects')
-        .insert([projectData]);
+        .insert([projectData])
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Create activity for the new project
+      await createActivity({
+        type: 'project_created',
+        title: 'Project created',
+        description: `Project "${projectData.name}" was created`,
+        user_id: user.id,
+      });
 
       setIsModalOpen(false);
       setFormData({

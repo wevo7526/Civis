@@ -275,54 +275,50 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {activities.map((activity) => (
-              <div key={activity.id} className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  {activity.type.startsWith('donor_') && (
-                    <UserCircle className="h-6 w-6 text-blue-500" />
-                  )}
-                  {activity.type.startsWith('event_') && (
-                    <Calendar className="h-6 w-6 text-green-500" />
-                  )}
-                  {activity.type.startsWith('campaign_') && (
-                    <Megaphone className="h-6 w-6 text-purple-500" />
-                  )}
-                  {activity.type.startsWith('workflow_') && (
-                    <Cog className="h-6 w-6 text-orange-500" />
-                  )}
-                  {activity.type.startsWith('document_') && (
-                    <DocumentIcon className="h-6 w-6 text-gray-500" />
-                  )}
-                  {activity.type === 'grant_reminder' && (
-                    <Bell className="h-6 w-6 text-yellow-500" />
-                  )}
-                  {activity.type === 'impact_report' && (
-                    <ChartBar className="h-6 w-6 text-red-500" />
-                  )}
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm font-medium leading-none">{activity.title}</p>
-                  <p className="text-sm text-muted-foreground">{activity.description}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-                  </p>
-                </div>
+      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h2>
+        <div className="space-y-4">
+          {activities.map((activity) => (
+            <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+              <div className="flex-shrink-0">
+                {activity.type.startsWith('donor_') && (
+                  <UserCircle className="h-6 w-6 text-blue-500" />
+                )}
+                {activity.type.startsWith('event_') && (
+                  <Calendar className="h-6 w-6 text-green-500" />
+                )}
+                {activity.type.startsWith('campaign_') && (
+                  <Megaphone className="h-6 w-6 text-purple-500" />
+                )}
+                {activity.type.startsWith('workflow_') && (
+                  <Cog className="h-6 w-6 text-orange-500" />
+                )}
+                {activity.type.startsWith('document_') && (
+                  <DocumentIcon className="h-6 w-6 text-gray-500" />
+                )}
+                {activity.type === 'grant_reminder' && (
+                  <Bell className="h-6 w-6 text-yellow-500" />
+                )}
+                {activity.type === 'impact_report' && (
+                  <ChartBar className="h-6 w-6 text-red-500" />
+                )}
               </div>
-            ))}
-            {activities.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No recent activity
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium text-gray-900">{activity.title}</p>
+                <p className="text-sm text-gray-600">{activity.description}</p>
+                <p className="text-xs text-gray-500">
+                  {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                </p>
+              </div>
+            </div>
+          ))}
+          {activities.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500">No recent activity</p>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

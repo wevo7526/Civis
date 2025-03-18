@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Event } from '@/lib/types';
+import { createEventActivity } from '@/lib/activityService';
 
 interface EventFormData {
   title: string;
@@ -19,8 +20,8 @@ interface EventFormData {
   date: string;
   location: string;
   type: Event['type'];
-  budget: number;
-  target_attendees: number;
+  budget: string;
+  target_attendees: string;
   status: Event['status'];
 }
 
@@ -37,8 +38,8 @@ export default function Events() {
     date: new Date().toISOString().split('T')[0],
     location: '',
     type: 'fundraiser',
-    budget: 0,
-    target_attendees: 0,
+    budget: '',
+    target_attendees: '',
     status: 'planned'
   });
 
@@ -85,39 +86,63 @@ export default function Events() {
     setError(null);
 
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error');
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No user found');
+
+      const eventData = {
+        title: formData.title,
+        description: formData.description,
+        date: formData.date,
+        location: formData.location,
+        type: formData.type,
+        budget: parseFloat(formData.budget) || 0,
+        target_attendees: parseInt(formData.target_attendees) || 0,
+        status: formData.status,
+        user_id: user.id,
+      };
 
       const { data, error } = await supabase
         .from('events')
-        .insert([{
-          ...formData,
-          user_id: user.id
-        }])
+        .insert([eventData])
         .select()
         .single();
 
       if (error) throw error;
-      setEvents(prev => [...prev, data]);
+
+      // Create activity for the new event
+      await createEventActivity(user.id, 'created', eventData.title);
+
       setIsModalOpen(false);
       setFormData({
         title: '',
         description: '',
-        date: new Date().toISOString().split('T')[0],
+        date: '',
         location: '',
         type: 'fundraiser',
-        budget: 0,
-        target_attendees: 0,
-        status: 'planned'
+        budget: '',
+        target_attendees: '',
+        status: 'planned',
       });
+      fetchEvents();
     } catch (err) {
-      console.error('Error creating event:', err);
       setError(err instanceof Error ? err.message : 'Failed to create event');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditEvent = (event: Event) => {
+    setFormData({
+      title: event.title,
+      description: event.description,
+      date: event.date,
+      location: event.location,
+      type: event.type,
+      budget: event.budget.toString(),
+      target_attendees: event.target_attendees.toString(),
+      status: event.status,
+    });
+    setIsModalOpen(true);
   };
 
   const handleDeleteEvent = async () => {
@@ -202,19 +227,7 @@ export default function Events() {
                 <div className="text-sm text-gray-500">{event.location}</div>
                 <div className="flex justify-end space-x-2 mt-4">
                   <button
-                    onClick={() => {
-                      setFormData({
-                        title: event.title,
-                        description: event.description,
-                        date: event.date.split('T')[0],
-                        location: event.location,
-                        type: event.type,
-                        budget: event.budget,
-                        target_attendees: event.target_attendees,
-                        status: event.status
-                      });
-                      setIsModalOpen(true);
-                    }}
+                    onClick={() => handleEditEvent(event)}
                     className="text-gray-400 hover:text-gray-500"
                   >
                     <PencilIcon className="h-5 w-5" />
