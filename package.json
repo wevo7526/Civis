@@ -24,7 +24,6 @@
     "cohere-ai": "^7.16.0",
     "date-fns": "^4.1.0",
     "docx": "^9.3.0",
-    "jspdf": "^3.0.0",
     "langchain": "^0.3.19",
     "lucide-react": "^0.483.0",
     "mammoth": "^1.9.0",

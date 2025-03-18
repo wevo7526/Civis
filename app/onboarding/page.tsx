@@ -17,13 +17,24 @@ interface OnboardingStep {
   completed: boolean;
 }
 
+interface OrganizationProfile {
+  name: string;
+  mission?: string;
+  goals?: string[];
+  teamSize?: string;
+  location?: string;
+  sector?: string;
+  website?: string;
+}
+
 export default function Onboarding() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
-  const [onboardingSteps, setOnboardingSteps] = useState<OnboardingStep[]>([
+  const [profile, setProfile] = useState<OrganizationProfile>({ name: '' });
+  const [onboardingSteps] = useState<OnboardingStep[]>([
     {
       title: 'Welcome & Organization Overview',
       description: 'Tell us about your organization',
@@ -78,16 +89,16 @@ export default function Onboarding() {
           .from('profiles')
           .update({ 
             onboarding_completed: true,
-            onboarding_step: onboardingSteps.length, // Mark all steps as completed
-            full_name: 'My Organization', // Set default organization name
-            bio: 'Welcome to our organization!', // Set default bio
-            goals: ['Get started with our mission'], // Set default goal
-            skills: ['Project Management'], // Set default skill
-            role: 'Admin', // Set default role
-            location: 'Not specified', // Set default location
-            timezone: 'UTC', // Set default timezone
-            availability: 'Flexible', // Set default availability
-            preferred_communication: 'Email', // Set default communication preference
+            onboarding_step: onboardingSteps.length,
+            full_name: profile.name || 'My Organization',
+            bio: profile.mission || 'Welcome to our organization!',
+            goals: profile.goals || ['Get started with our mission'],
+            role: 'Admin',
+            location: profile.location || 'Not specified',
+            timezone: 'UTC',
+            availability: 'Flexible',
+            preferred_communication: 'Email',
+            website_url: profile.website,
           })
           .eq('id', user.id);
 
@@ -96,7 +107,6 @@ export default function Onboarding() {
           throw updateError;
         }
 
-        // Force a refresh of the session to ensure the middleware picks up the changes
         await supabase.auth.refreshSession();
       }
       router.push('/dashboard');
@@ -123,6 +133,11 @@ export default function Onboarding() {
     setError(null);
 
     try {
+      // Update profile based on current step and user input
+      if (currentStep === 0 && !profile.name) {
+        setProfile(prev => ({ ...prev, name: input.trim() }));
+      }
+
       const response = await fetch('/api/ai/onboarding', {
         method: 'POST',
         headers: {
@@ -131,6 +146,7 @@ export default function Onboarding() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           currentStep,
+          profile, // Send current profile state to API
         }),
       });
 
@@ -144,6 +160,11 @@ export default function Onboarding() {
         throw new Error(data.error);
       }
 
+      // Update profile with any extracted information
+      if (data.profileUpdates) {
+        setProfile(prev => ({ ...prev, ...data.profileUpdates }));
+      }
+
       const assistantMessage: Message = {
         role: 'assistant',
         content: data.message,
@@ -153,18 +174,26 @@ export default function Onboarding() {
 
       if (data.stepCompleted) {
         setCurrentStep(prev => prev + 1);
-        // Update step completion status
         const updatedSteps = [...onboardingSteps];
         updatedSteps[currentStep].completed = true;
-        setOnboardingSteps(updatedSteps);
 
-        // If onboarding is complete, mark it as completed in the profile
+        // If onboarding is complete, save all collected information
         if (currentStep === onboardingSteps.length - 1) {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             await supabase
               .from('profiles')
-              .update({ onboarding_completed: true })
+              .update({
+                onboarding_completed: true,
+                full_name: profile.name,
+                bio: profile.mission,
+                goals: profile.goals,
+                location: profile.location,
+                website_url: profile.website,
+                role: 'Admin',
+                sector: profile.sector,
+                team_size: profile.teamSize,
+              })
               .eq('id', user.id);
           }
           router.push('/dashboard');
@@ -180,11 +209,15 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-sm text-gray-500">
+            {profile.name && <span>Setting up: {profile.name}</span>}
+          </div>
           <Button
             onClick={handleSkip}
             variant="outline"
             className="text-gray-600 hover:text-gray-900"
+            disabled={loading}
           >
             Skip Onboarding
           </Button>

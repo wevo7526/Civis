@@ -1,206 +1,128 @@
 import { NextResponse } from 'next/server';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import OpenAI from 'openai';
+import { ChatCompletionMessageParam } from 'openai/resources/chat';
 
-const SYSTEM_PROMPT = `You are an AI onboarding assistant for Civis, a nonprofit management platform. Your role is to help new users set up their organization profile through a conversational interface.
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-Follow these guidelines:
-1. Be friendly and professional
-2. Ask one question at a time
-3. Validate user responses
-4. Guide users through the onboarding process
-5. Mark steps as completed when all required information is gathered
+interface OnboardingMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
-The onboarding process has these steps:
-1. Welcome & Organization Overview
-   - Get organization name (store in full_name)
-   - Understand mission and cause (store in bio)
-   - Get location and timezone
-
-2. Organization Details
-   - Get organization size
-   - Get website and social media links
-
-3. Goals & Objectives
-   - Define key objectives (store in goals array)
-   - Get preferred communication methods
-
-4. Initial Projects
-   - Create first project
-   - Identify required skills (store in skills array)
-
-5. Team Setup
-   - Set up roles and permissions
-   - Set availability and timezone
-
-For each step:
-1. Ask relevant questions
-2. Validate responses
-3. Store information in the appropriate profile fields
-4. Mark step as completed when all required information is gathered
-
-Remember to:
-- Keep responses concise and clear
-- Provide examples when helpful
-- Validate information before proceeding
-- Guide users through each step
-- Store information in the appropriate profile fields
-- Mark steps as completed when all required information is gathered
-
-When a step is completed, respond with "STEP COMPLETED: [Step Name]" at the end of your message.`;
+interface ProfileUpdates {
+  name?: string;
+  mission?: string;
+  sector?: string;
+  goals?: string[];
+  teamSize?: string;
+  location?: string;
+  website?: string;
+  [key: string]: any;
+}
 
 export async function POST(req: Request) {
   try {
-    // Check authentication
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { messages, currentStep, profile } = await req.json();
 
-    if (sessionError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Get the last user message
+    const lastMessage = messages[messages.length - 1] as OnboardingMessage;
+    if (!lastMessage || lastMessage.role !== 'user') {
+      throw new Error('Invalid message format');
     }
 
-    // Get request body
-    const { messages, currentStep } = await req.json();
+    // Define step-specific prompts and information extraction
+    const stepPrompts = [
+      {
+        context: "You are helping set up a nonprofit organization's profile. Extract the organization's name and respond warmly.",
+        extraction: ['name'],
+      },
+      {
+        context: "Ask about the organization's mission, sector, and any specific areas of focus.",
+        extraction: ['mission', 'sector'],
+      },
+      {
+        context: "Discuss the organization's goals and objectives. Extract specific, measurable goals.",
+        extraction: ['goals'],
+      },
+      {
+        context: "Learn about their team size and structure. Extract team size and any key roles mentioned.",
+        extraction: ['teamSize'],
+      },
+      {
+        context: "Gather contact information including location and website. Extract these details.",
+        extraction: ['location', 'website'],
+      },
+    ];
 
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json(
-        { error: 'Messages array is required' },
-        { status: 400 }
-      );
-    }
-
-    // Initialize Anthropic client
-    const model = new ChatAnthropic({
-      modelName: 'claude-3-opus-20240229',
-      temperature: 0.7,
-      maxTokens: 1000,
-      anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
-    // Convert messages to Anthropic format
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role === 'assistant' ? 'assistant' : 'user',
-      content: msg.content,
-    }));
-
-    // Add system message with current step context
-    const systemMessage = {
-      role: 'system',
-      content: `${SYSTEM_PROMPT}\n\nCurrent step: ${currentStep}`,
-    };
+    // Prepare the conversation for OpenAI
+    const conversation: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: `${stepPrompts[currentStep].context} Be conversational and helpful. Extract information naturally from the user's responses.`,
+      },
+      ...messages.map((msg: OnboardingMessage) => ({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content,
+      })),
+    ];
 
     // Get AI response
-    const response = await model.invoke([
-      systemMessage,
-      ...formattedMessages,
-    ]);
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: conversation,
+      temperature: 0.7,
+      max_tokens: 500,
+    });
 
-    // Check if the current step is completed
-    const responseContent = response.content.toString();
-    const stepCompleted = responseContent.toLowerCase().includes('step completed');
-
-    // If step is completed, update the profile
-    if (stepCompleted) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      // Extract information from the conversation
-      const lastUserMessage = messages[messages.length - 1].content;
-      const lastAssistantMessage = responseContent;
-
-      // Update profile based on the current step
-      const updates: any = {
-        onboarding_step: currentStep + 1,
-      };
-
-      switch (currentStep) {
-        case 0: // Welcome & Organization Overview
-          if (lastUserMessage.includes('organization') || lastUserMessage.includes('name')) {
-            updates.full_name = lastUserMessage;
-          }
-          if (lastUserMessage.includes('mission') || lastUserMessage.includes('cause')) {
-            updates.bio = lastUserMessage;
-          }
-          if (lastUserMessage.includes('location') || lastUserMessage.includes('timezone')) {
-            updates.location = lastUserMessage;
-            updates.timezone = lastUserMessage;
-          }
-          break;
-
-        case 1: // Organization Details
-          if (lastUserMessage.includes('website') || lastUserMessage.includes('url')) {
-            updates.website_url = lastUserMessage;
-          }
-          if (lastUserMessage.includes('linkedin')) {
-            updates.linkedin_url = lastUserMessage;
-          }
-          break;
-
-        case 2: // Goals & Objectives
-          if (lastUserMessage.includes('goal') || lastUserMessage.includes('objective')) {
-            updates.goals = [lastUserMessage];
-          }
-          if (lastUserMessage.includes('communicate') || lastUserMessage.includes('contact')) {
-            updates.preferred_communication = lastUserMessage;
-          }
-          break;
-
-        case 3: // Initial Projects
-          if (lastUserMessage.includes('skill') || lastUserMessage.includes('expertise')) {
-            updates.skills = [lastUserMessage];
-          }
-          break;
-
-        case 4: // Team Setup
-          if (lastUserMessage.includes('available') || lastUserMessage.includes('schedule')) {
-            updates.availability = lastUserMessage;
-          }
-          if (lastUserMessage.includes('role') || lastUserMessage.includes('position')) {
-            updates.role = lastUserMessage;
-          }
-          break;
-      }
-
-      // Update the profile
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', session.user.id);
-
-      if (updateError) {
-        console.error('Error updating profile:', updateError);
-        throw updateError;
-      }
-
-      // If this was the last step, mark onboarding as completed
-      if (currentStep === 4) {
-        const { error: completeError } = await supabase
-          .from('profiles')
-          .update({ onboarding_completed: true })
-          .eq('id', session.user.id);
-
-        if (completeError) {
-          console.error('Error completing onboarding:', completeError);
-          throw completeError;
-        }
-      }
+    const aiMessage = completion.choices[0].message.content;
+    if (!aiMessage) {
+      throw new Error('No response from AI');
     }
 
+    // Extract information based on the current step
+    const extractionPrompt: ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: `Extract the following information from the user's message: ${stepPrompts[currentStep].extraction.join(', ')}. Return as JSON.`,
+      },
+      {
+        role: 'user',
+        content: lastMessage.content,
+      },
+    ];
+
+    const extraction = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: extractionPrompt,
+      temperature: 0,
+      max_tokens: 200,
+    });
+
+    let profileUpdates: ProfileUpdates = {};
+    try {
+      const extractedData = JSON.parse(extraction.choices[0].message.content || '{}');
+      profileUpdates = extractedData;
+    } catch (err) {
+      console.error('Error parsing extracted data:', err);
+    }
+
+    // Determine if the step is complete based on required information
+    const stepComplete = stepPrompts[currentStep].extraction.every(
+      field => profileUpdates[field] !== undefined || profile[field] !== undefined
+    );
+
     return NextResponse.json({
-      message: responseContent,
-      stepCompleted,
+      message: aiMessage,
+      profileUpdates,
+      stepCompleted: stepComplete,
     });
   } catch (error) {
-    console.error('Error in onboarding endpoint:', error);
+    console.error('Error in onboarding API:', error);
     return NextResponse.json(
-      { error: 'Failed to process request' },
+      { error: 'Failed to process onboarding step' },
       { status: 500 }
     );
   }
