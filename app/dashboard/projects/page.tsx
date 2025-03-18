@@ -5,7 +5,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Project } from '@/lib/projectService';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { createActivity } from '@/lib/activityService';
+import { createActivityService } from '@/lib/activityService';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -37,6 +37,7 @@ export default function Projects() {
   });
   const [newRole, setNewRole] = useState('');
   const supabase = createClientComponentClient();
+  const { createActivity } = createActivityService(supabase);
 
   useEffect(() => {
     fetchProjects();
