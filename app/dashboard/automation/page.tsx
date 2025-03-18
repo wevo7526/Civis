@@ -1,0 +1,190 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter } from 'next/navigation';
+import {
+  Cog6ToothIcon,
+  EnvelopeIcon,
+  BellIcon,
+  DocumentTextIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ClockIcon,
+} from '@heroicons/react/24/outline';
+
+interface AutomationFeature {
+  id: string;
+  name: string;
+  description: string;
+  icon: any;
+  href: string;
+  status: 'active' | 'inactive' | 'pending';
+  lastRun?: string;
+  nextRun?: string;
+}
+
+export default function AutomationHub() {
+  const [features, setFeatures] = useState<AutomationFeature[]>([
+    {
+      id: 'donor-communications',
+      name: 'Donor Communications',
+      description: 'Automated thank you notes and impact updates',
+      icon: EnvelopeIcon,
+      href: '/dashboard/automation/donor-communications',
+      status: 'inactive',
+    },
+    {
+      id: 'grant-reminders',
+      name: 'Grant Reminders',
+      description: 'Automated grant deadline notifications',
+      icon: BellIcon,
+      href: '/dashboard/automation/grant-reminders',
+      status: 'inactive',
+    },
+    {
+      id: 'impact-reports',
+      name: 'Impact Reports',
+      description: 'Scheduled progress and impact updates',
+      icon: DocumentTextIcon,
+      href: '/dashboard/automation/impact-reports',
+      status: 'inactive',
+    },
+  ]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClientComponentClient();
+
+  useEffect(() => {
+    fetchAutomationStatus();
+  }, []);
+
+  const fetchAutomationStatus = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: workflows, error } = await supabase
+        .from('automation_workflows')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Update feature statuses based on workflows
+      setFeatures(prevFeatures => 
+        prevFeatures.map(feature => {
+          const workflow = workflows.find(w => w.type === feature.id);
+          return {
+            ...feature,
+            status: workflow?.status || 'inactive',
+            lastRun: workflow?.last_run,
+            nextRun: workflow?.next_run,
+          };
+        })
+      );
+    } catch (error) {
+      console.error('Error fetching automation status:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'text-green-600 bg-green-50';
+      case 'pending':
+        return 'text-yellow-600 bg-yellow-50';
+      default:
+        return 'text-gray-600 bg-gray-50';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Automation Hub</h1>
+          <p className="text-gray-500">Manage your automated workflows and communications</p>
+        </div>
+        <button
+          onClick={() => router.push('/dashboard/automation/new')}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+        >
+          Create Workflow
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {features.map((feature) => (
+          <div
+            key={feature.id}
+            className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                  <feature.icon className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">{feature.name}</h3>
+                  <p className="text-sm text-gray-500">{feature.description}</p>
+                </div>
+              </div>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(feature.status)}`}>
+                {feature.status.charAt(0).toUpperCase() + feature.status.slice(1)}
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {feature.lastRun && (
+                <div className="flex items-center text-sm text-gray-500">
+                  <ClockIcon className="h-4 w-4 mr-2" />
+                  <span>Last run: {new Date(feature.lastRun).toLocaleDateString()}</span>
+                </div>
+              )}
+              {feature.nextRun && (
+                <div className="flex items-center text-sm text-gray-500">
+                  <ClockIcon className="h-4 w-4 mr-2" />
+                  <span>Next run: {new Date(feature.nextRun).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex space-x-3">
+              <button
+                onClick={() => router.push(feature.href)}
+                className="flex-1 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                Configure
+              </button>
+              <button
+                onClick={() => {
+                  // Toggle automation status
+                  const newStatus = feature.status === 'active' ? 'inactive' : 'active';
+                  // Update in database and local state
+                }}
+                className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
+                  feature.status === 'active'
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                    : 'bg-green-50 text-green-600 hover:bg-green-100'
+                }`}
+              >
+                {feature.status === 'active' ? 'Disable' : 'Enable'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+} 

@@ -13,7 +13,15 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   ClockIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  EnvelopeIcon,
+  BellIcon,
+  HeartIcon,
+  FolderIcon,
+  Cog6ToothIcon,
+  MegaphoneIcon,
+  UserIcon,
+  BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -21,7 +29,6 @@ interface DashboardMetrics {
   totalDonors: number;
   totalRevenue: number;
   activeProjects: number;
-  pendingGrants: number;
   upcomingEvents: number;
   donorRetentionRate: number;
 }
@@ -121,17 +128,6 @@ export default function Dashboard() {
         throw new Error(`Failed to fetch projects: ${projectsError.message}`);
       }
 
-      // Fetch writing items (grants)
-      const { data: writingItems, error: writingItemsError } = await supabase
-        .from('writing_items')
-        .select('*')
-        .eq('user_id', user.id);
-      
-      if (writingItemsError) {
-        console.error('Writing items fetch error:', writingItemsError);
-        throw new Error(`Failed to fetch writing items: ${writingItemsError.message}`);
-      }
-
       // Fetch events
       const { data: events, error: eventsError } = await supabase
         .from('events')
@@ -146,7 +142,6 @@ export default function Dashboard() {
       // Calculate metrics with null checks
       const totalRevenue = (donors || []).reduce((sum, donor) => sum + (Number(donor.amount) || 0), 0);
       const activeProjects = (projects || []).filter(p => p.status === 'active').length;
-      const pendingGrants = (writingItems || []).filter(w => w.status === 'draft').length;
       const upcomingEvents = (events || []).filter(e => new Date(e.date) > new Date()).length;
 
       // Calculate donor retention with null checks
@@ -160,7 +155,6 @@ export default function Dashboard() {
         totalDonors: (donors || []).length,
         totalRevenue,
         activeProjects,
-        pendingGrants,
         upcomingEvents,
         donorRetentionRate
       });
@@ -253,9 +247,9 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500">Pending Grants</p>
+              <p className="text-sm font-medium text-gray-500">Active Projects</p>
               <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {metrics?.pendingGrants || 0}
+                {metrics?.activeProjects || 0}
               </p>
               <div className="flex items-center mt-2">
                 <span className="text-sm text-gray-500">
@@ -265,7 +259,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center">
-              <DocumentTextIcon className="h-6 w-6 text-blue-600" />
+              <FolderIcon className="h-6 w-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -296,36 +290,80 @@ export default function Dashboard() {
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
           <div className="space-y-4">
-            <button
-              onClick={() => router.push('/dashboard/writing')}
-              className="w-full flex items-center justify-between p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-            >
-              <div className="flex items-center">
-                <DocumentTextIcon className="h-5 w-5 text-purple-600 mr-3" />
-                <span className="text-sm font-medium text-gray-900">Write New Grant</span>
-              </div>
-              <span className="text-sm text-gray-500">→</span>
-            </button>
-            <button
-              onClick={() => router.push('/dashboard/donors')}
-              className="w-full flex items-center justify-between p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-            >
-              <div className="flex items-center">
-                <UserGroupIcon className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-sm font-medium text-gray-900">Manage Donors</span>
-              </div>
-              <span className="text-sm text-gray-500">→</span>
-            </button>
-            <button
-              onClick={() => router.push('/dashboard/projects')}
-              className="w-full flex items-center justify-between p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              <div className="flex items-center">
-                <ChartBarIcon className="h-5 w-5 text-blue-600 mr-3" />
-                <span className="text-sm font-medium text-gray-900">View Projects</span>
-              </div>
-              <span className="text-sm text-gray-500">→</span>
-            </button>
+            {/* Fundraising Actions */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-500">Fundraising</h3>
+              <button
+                onClick={() => router.push('/dashboard/donors')}
+                className="w-full flex items-center justify-between p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <UserGroupIcon className="h-5 w-5 text-green-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Manage Donors</span>
+                    <p className="text-xs text-gray-500">View and manage donor information</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/campaigns')}
+                className="w-full flex items-center justify-between p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <MegaphoneIcon className="h-5 w-5 text-blue-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Campaigns</span>
+                    <p className="text-xs text-gray-500">Launch and track fundraising campaigns</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/events')}
+                className="w-full flex items-center justify-between p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <CalendarIcon className="h-5 w-5 text-purple-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Events</span>
+                    <p className="text-xs text-gray-500">Plan and manage fundraising events</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+            </div>
+
+            {/* Community Actions */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-500">Community</h3>
+              <button
+                onClick={() => router.push('/dashboard/volunteers')}
+                className="w-full flex items-center justify-between p-4 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <UserIcon className="h-5 w-5 text-amber-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Volunteers</span>
+                    <p className="text-xs text-gray-500">Coordinate volunteer activities</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/stakeholders')}
+                className="w-full flex items-center justify-between p-4 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <BuildingOfficeIcon className="h-5 w-5 text-indigo-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Stakeholders</span>
+                    <p className="text-xs text-gray-500">Manage partner relationships</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -357,6 +395,24 @@ export default function Dashboard() {
               </div>
               <p className="text-sm text-blue-700">
                 Your active projects are showing strong progress. Consider sharing these successes in your next donor update.
+              </p>
+            </div>
+            <div className="p-4 bg-yellow-50 rounded-lg">
+              <div className="flex items-center mb-2">
+                <SparklesIcon className="h-5 w-5 text-yellow-600 mr-2" />
+                <h3 className="text-sm font-medium text-yellow-900">Volunteer Management</h3>
+              </div>
+              <p className="text-sm text-yellow-700">
+                Your volunteer engagement is below target. Consider implementing a volunteer recognition program to boost participation.
+              </p>
+            </div>
+            <div className="p-4 bg-indigo-50 rounded-lg">
+              <div className="flex items-center mb-2">
+                <SparklesIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                <h3 className="text-sm font-medium text-indigo-900">Event Planning</h3>
+              </div>
+              <p className="text-sm text-indigo-700">
+                Upcoming events need more promotion. Consider leveraging social media and email campaigns to increase attendance.
               </p>
             </div>
           </div>

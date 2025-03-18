@@ -52,13 +52,13 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200">
+    <div className="w-64 flex-shrink-0 bg-white border-r border-gray-200">
       <div className="flex flex-col h-full">
         <div className="flex items-center h-16 px-4 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-900">Civis</h1>
         </div>
         
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             return (

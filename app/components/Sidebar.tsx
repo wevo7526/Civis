@@ -19,6 +19,10 @@ import {
   DocumentCheckIcon,
   SparklesIcon,
   UserIcon,
+  Cog6ToothIcon,
+  EnvelopeIcon,
+  BellIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState, useEffect } from 'react';
@@ -28,26 +32,19 @@ const navigation = [
   {
     name: 'Overview',
     items: [
-      { name: 'Home', href: '/dashboard', icon: HomeIcon },
+      { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+      { name: 'AI Chat', href: '/dashboard/ai-chat', icon: ChatBubbleLeftRightIcon },
       { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
-      { name: 'Writing', href: '/dashboard/writing', icon: DocumentTextIcon },
       { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
     ],
   },
   {
-    name: 'Fundraising',
+    name: 'Automation',
     items: [
-      { name: 'Donors', href: '/dashboard/donors', icon: UserGroupIcon },
-      { name: 'Grants', href: '/dashboard/grants', icon: DocumentCheckIcon },
-      { name: 'Campaigns', href: '/dashboard/campaigns', icon: MegaphoneIcon },
-      { name: 'Events', href: '/dashboard/events', icon: CalendarIcon },
-    ],
-  },
-  {
-    name: 'Community',
-    items: [
-      { name: 'Volunteers', href: '/dashboard/volunteers', icon: UserIcon },
-      { name: 'Stakeholders', href: '/dashboard/stakeholders', icon: BuildingOfficeIcon },
+      { name: 'Automation Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
+      { name: 'Donor Communications', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
+      { name: 'Grant Reminders', href: '/dashboard/automation/grant-reminders', icon: BellIcon },
+      { name: 'Impact Reports', href: '/dashboard/automation/impact-reports', icon: DocumentTextIcon },
     ],
   },
 ];

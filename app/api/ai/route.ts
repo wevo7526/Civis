@@ -1,139 +1,182 @@
 import { NextResponse } from 'next/server';
-import { ChatAnthropic } from '@langchain/anthropic';
+import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { Donor } from '@/app/lib/donorService';
 import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from '@/app/lib/types';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import OpenAI from 'openai';
 
-const model = new ChatAnthropic({
-  modelName: 'claude-3-opus-20240229',
-  temperature: 0.7,
-  maxTokens: 4000,
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+interface AIResponse {
+  content: Array<{
+    type: 'text';
+    text: string;
+  }>;
+}
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const SYSTEM_PROMPT = `You are an AI assistant specialized in nonprofit management and fundraising. Your role is to help nonprofit organizations with:
+
+1. Donor Relations
+- Analyzing donor engagement and behavior
+- Generating personalized donor reports
+- Creating fundraising strategies
+- Writing thank you notes and updates
+
+2. Project Management
+- Analyzing project progress and impact
+- Generating grant proposals
+- Creating stakeholder updates
+- Assessing program effectiveness
+
+3. Event Planning
+- Optimizing event plans
+- Analyzing event success metrics
+- Suggesting improvements
+- Budget optimization
+
+4. General Support
+- Writing and content creation
+- Data analysis and insights
+- Strategic planning
+- Best practices recommendations
+
+Always provide clear, actionable advice and maintain a professional, supportive tone.`;
 
 export async function POST(request: Request) {
   try {
     const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { action, data } = await request.json();
+    const { action, data, context } = await request.json();
 
-    if (!action || !data) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    if (!action) {
+      return NextResponse.json(
+        { error: 'Action is required' },
+        { status: 400 }
+      );
     }
 
     let prompt = '';
-    let response;
 
     switch (action) {
-      case 'generateGrantProposal':
-        if (!data.projectName || !data.projectDescription || !data.targetAmount) {
-          return NextResponse.json({ error: 'Missing required project data' }, { status: 400 });
-        }
-        prompt = `Generate a detailed grant proposal for the following project:
+      case 'analyze_donors':
+        prompt = `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
 
-Project Information:
-- Name: ${data.projectName}
-- Description: ${data.projectDescription}
-- Target Amount: $${data.targetAmount}
-${data.projectGoals ? `- Goals: ${data.projectGoals}` : ''}
-${data.projectTimeline ? `- Timeline: ${data.projectTimeline}` : ''}
-${data.targetAudience ? `- Target Audience: ${data.targetAudience}` : ''}
-${data.organizationType ? `- Organization Type: ${data.organizationType}` : ''}
-${data.previousGrants ? `- Previous Grants: ${data.previousGrants}` : ''}
-${data.partners ? `- Partners: ${data.partners}` : ''}
-${data.impactMetrics ? `- Impact Metrics: ${data.impactMetrics}` : ''}
+${JSON.stringify(data, null, 2)}
 
-Please include the following sections:
-1. Executive Summary
-   - Project Overview
-   - Mission and Vision
-   - Key Objectives
-   - Expected Impact
-
-2. Project Description
-   - Detailed Project Scope
-   - Methodology
-   - Implementation Plan
-   - Timeline and Milestones
-
-3. Goals and Objectives
-   - Specific, Measurable Goals
-   - Success Criteria
-   - Impact Assessment Plan
-
-4. Budget Breakdown
-   - Detailed Cost Breakdown
-   - Resource Allocation
-   - Sustainability Plan
-   - Matching Funds (if applicable)
-
-5. Organization Capacity
-   - Team Structure
-   - Relevant Experience
-   - Partnerships and Collaborations
-   - Track Record
-
-6. Evaluation and Monitoring
-   - Performance Metrics
-   - Data Collection Methods
-   - Reporting Plan
-   - Quality Assurance
-
-7. Sustainability Plan
-   - Long-term Funding Strategy
-   - Resource Management
-   - Growth and Expansion Plans
-
-Format the response in a clear, professional manner suitable for grant applications. Use appropriate headings and subheadings for easy navigation.`;
-
-        response = await model.invoke(prompt);
-        if (!response || !response.content) {
-          throw new Error('No content was generated');
-        }
-        return NextResponse.json({ proposal: response.content });
+Please provide:
+1. Key engagement metrics
+2. Giving pattern analysis
+3. Specific recommendations for improvement
+4. Suggested next steps`;
         break;
 
-      case 'generateFundraisingStrategy':
-        if (!data.organizationName || !data.targetAmount) {
-          return NextResponse.json({ error: 'Missing required organization data' }, { status: 400 });
-        }
-        prompt = `Generate a comprehensive fundraising strategy for:
-Organization: ${data.organizationName}
-Type: ${data.organizationType || 'Non-Profit'}
-Target Amount: $${data.targetAmount}
-Timeframe: ${data.timeframe || '12 months'}
-Current Donors: ${data.currentDonors || 'None'}
+      case 'analyze_projects':
+        prompt = `Analyze the following project data and provide insights on progress, challenges, and recommendations:
+
+${JSON.stringify(data, null, 2)}
+
+Please provide:
+1. Progress assessment
+2. Risk analysis
+3. Resource utilization
+4. Recommendations for improvement`;
+        break;
+
+      case 'analyze_events':
+        prompt = `Analyze the following event data and provide insights on success metrics, challenges, and recommendations:
+
+${JSON.stringify(data, null, 2)}
+
+Please provide:
+1. Success metrics analysis
+2. Budget efficiency
+3. Attendance insights
+4. Recommendations for future events`;
+        break;
+
+      case 'generate_donor_report':
+        prompt = `Generate a personalized donor report for the following donor:
+
+${JSON.stringify(data, null, 2)}
 
 Please include:
-1. Fundraising Goals and Objectives
-2. Target Donor Segments
-3. Fundraising Methods and Channels
-4. Timeline and Milestones
-5. Budget Allocation
-6. Marketing and Communication Strategy
-7. Donor Engagement Plan
-8. Success Metrics
-9. Risk Management
+1. Giving history summary
+2. Impact of their contributions
+3. Engagement metrics
+4. Personalized recommendations`;
+        break;
 
-Format the response in a clear, actionable manner suitable for implementation.`;
+      case 'generate_grant_proposal':
+        prompt = `Generate a grant proposal for the following project:
 
-        response = await model.invoke(prompt);
-        if (!response || !response.content) {
-          throw new Error('No content was generated');
-        }
-        return NextResponse.json({ strategy: response.content });
+${JSON.stringify(data, null, 2)}
+
+Please include:
+1. Project overview
+2. Goals and objectives
+3. Implementation plan
+4. Budget breakdown
+5. Expected outcomes`;
+        break;
+
+      case 'optimize_event_plan':
+        prompt = `Optimize the following event plan:
+
+${JSON.stringify(data, null, 2)}
+
+Please provide:
+1. Timeline optimization
+2. Budget efficiency suggestions
+3. Marketing recommendations
+4. Risk mitigation strategies`;
+        break;
+
+      case 'assess_program_impact':
+        prompt = `Assess the impact of the following program:
+
+${JSON.stringify(data, null, 2)}
+
+Please provide:
+1. Impact metrics
+2. Success indicators
+3. Areas for improvement
+4. Recommendations for scaling`;
+        break;
+
+      case 'generate_stakeholder_update':
+        prompt = `Generate a stakeholder update for the following project:
+
+${JSON.stringify(data, null, 2)}
+
+Please include:
+1. Progress summary
+2. Key achievements
+3. Challenges and solutions
+4. Next steps`;
+        break;
+
+      case 'generate_fundraising_strategy':
+        prompt = `Generate a fundraising strategy based on the following donor data:
+
+${JSON.stringify(data, null, 2)}
+
+Please provide:
+1. Target audience analysis
+2. Campaign recommendations
+3. Timeline suggestions
+4. Resource allocation advice`;
         break;
 
       case 'generateOutreachMessage':
@@ -149,47 +192,60 @@ The message should be:
 3. Highlight the impact of their contributions
 4. Include a specific ask or call to action
 5. Maintain a professional yet friendly tone`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ message: response.content });
         break;
 
-      case 'analyzeDonorEngagement':
+      case 'analyzeDonorEngagement': {
+        // Validate required data
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid donor data format');
+        }
+
+        // Ensure all required fields are present
+        const requiredFields = ['name', 'engagement_level', 'last_donation', 'total_donations', 'donation_frequency'];
+        const missingFields = requiredFields.filter(field => !(field in data));
+        
+        if (missingFields.length > 0) {
+          throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+        }
+
         prompt = `Analyze the donor engagement data and provide insights:
-Donor: ${data.name}
-Engagement Level: ${data.engagement_level}
-Last Donation: ${data.last_donation}
-Total Donations: ${data.total_donations}
-Donation Frequency: ${data.donation_frequency}
 
-Please provide:
+Donor Information:
+- Name: ${data.name}
+- Engagement Level: ${data.engagement_level}
+- Last Donation: ${data.last_donation}
+- Total Donations: ${data.total_donations}
+- Donation Frequency: ${data.donation_frequency}
+
+Please provide a detailed analysis including:
 1. Engagement Analysis
+   - Current engagement level assessment
+   - Historical engagement trends
+   - Key engagement indicators
+
 2. Strengths and Opportunities
+   - Key strengths in donor relationship
+   - Areas for improvement
+   - Potential engagement opportunities
+
 3. Recommendations for Improvement
+   - Specific actions to enhance engagement
+   - Communication strategy suggestions
+   - Follow-up recommendations
+
 4. Risk Assessment
-5. Action Items`;
+   - Potential engagement risks
+   - Mitigation strategies
+   - Early warning indicators
 
-        response = await model.invoke(prompt);
-        return NextResponse.json({ analysis: response.content });
+5. Action Items
+   - Immediate next steps
+   - Short-term goals
+   - Long-term engagement strategy
+
+Please format the response in a clear, structured manner with bullet points for easy reading.`;
         break;
-
-      case 'generateDonorReport':
-        prompt = `Generate a comprehensive donor report based on the following data:
-Total Donors: ${data.length}
-Donor List: ${JSON.stringify(data)}
-
-Please include:
-1. Executive Summary
-2. Key Metrics and Statistics
-3. Donor Demographics
-4. Giving Patterns
-5. Engagement Analysis
-6. Recommendations
-7. Action Items`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ report: response.content });
-        break;
+      }
 
       case 'matchVolunteers': {
         const { volunteers, opportunities } = data;
@@ -203,9 +259,7 @@ Please include:
           3. Availability considerations
           4. Recommendations for engagement
           5. Training needs`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ matches: response.content });
+        break;
       }
 
       case 'optimizeEventPlan': {
@@ -225,9 +279,7 @@ Please include:
           4. Risk management plan
           5. Success metrics
           6. Contingency plans`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ plan: response.content });
+        break;
       }
 
       case 'assessProgramImpact': {
@@ -245,9 +297,7 @@ Please include:
           3. Data collection strategy
           4. Success criteria
           5. Recommendations for improvement`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ assessment: response.content });
+        break;
       }
 
       case 'analyzeCommunityEngagement': {
@@ -262,9 +312,7 @@ Please include:
           4. Communication strategy
           5. Community needs assessment
           6. Action recommendations`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ analysis: response.content });
+        break;
       }
 
       case 'analyzeProjects': {
@@ -281,9 +329,7 @@ Please include:
           6. Budget Analysis
           7. Impact Metrics
           8. Recommendations for Improvement`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ analysis: response.content });
+        break;
       }
 
       case 'analyzeEvents': {
@@ -299,9 +345,7 @@ Please include:
           5. Success Factors
           6. Areas for Improvement
           7. Future Event Recommendations`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ analysis: response.content });
+        break;
       }
 
       case 'analyzeFundraising': {
@@ -320,9 +364,7 @@ Please include:
           6. Trends and Patterns
           7. Strategic Recommendations
           8. Future Opportunities`;
-
-        response = await model.invoke(prompt);
-        return NextResponse.json({ analysis: response.content });
+        break;
       }
 
       case 'generateDonorMessage': {
@@ -344,22 +386,70 @@ The message should:
 7. Match their engagement level (high/medium/low)
 
 Format the message as a complete email body, including a greeting and sign-off.`;
-
-        response = await model.invoke(prompt);
-        if (!response || !response.content) {
-          throw new Error('No content was generated');
-        }
-        return NextResponse.json({ content: response.content });
+        break;
       }
 
       default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+        return NextResponse.json(
+          { error: 'Invalid action' },
+          { status: 400 }
+        );
     }
+
+    const aiResponse = await anthropic.messages.create({
+      model: 'claude-3-sonnet-20240229',
+      max_tokens: 2000,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      system: SYSTEM_PROMPT,
+      temperature: 0.7,
+    }) as AIResponse;
+
+    if (!aiResponse || !aiResponse.content || !aiResponse.content[0]) {
+      throw new Error('Invalid response from AI service');
+    }
+
+    const responseText = aiResponse.content[0].type === 'text' 
+      ? aiResponse.content[0].text 
+      : 'Failed to generate response';
+
+    // Store the interaction in Supabase
+    try {
+      await supabase.from('ai_interactions').insert({
+        action,
+        prompt,
+        response: responseText,
+        context: context || {},
+        created_at: new Date().toISOString(),
+      });
+    } catch (dbError) {
+      console.error('Error storing AI interaction:', dbError);
+    }
+
+    return NextResponse.json({
+      message: responseText,
+      suggestions: extractSuggestions(responseText),
+    });
   } catch (error) {
-    console.error('AI route error:', error);
+    console.error('AI API Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process request';
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'An error occurred' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
+}
+
+function extractSuggestions(text: string): string[] {
+  // Extract bullet points or numbered lists from the response
+  const suggestions = text.match(/[-•*]\s*(.+?)(?=\n|$)/g) || 
+                     text.match(/\d+\.\s*(.+?)(?=\n|$)/g);
+  
+  if (!suggestions) return [];
+  
+  return suggestions.map(s => s.replace(/[-•*\d.]\s*/, '').trim());
 } 

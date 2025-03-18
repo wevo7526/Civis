@@ -1,4 +1,16 @@
+import { createClient } from '@supabase/supabase-js';
 import { Donor, Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from './types';
+
+interface AIResponse {
+  message: string;
+  suggestions?: string[];
+  data?: any;
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export const aiService = {
   async generateOutreachMessage(donor: Donor): Promise<string> {
@@ -26,16 +38,14 @@ export const aiService = {
     }
   },
 
-  async analyzeDonorEngagement(donor: Donor): Promise<string> {
+  async analyzeDonorEngagement(donors: Donor[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'analyzeDonorEngagement',
-          data: donor,
+          action: 'analyze_donors',
+          data: donors,
         }),
       });
 
@@ -43,24 +53,21 @@ export const aiService = {
         throw new Error('Failed to analyze donor engagement');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error analyzing donor engagement:', error);
-      throw new Error('Failed to analyze donor engagement');
+      throw error;
     }
   },
 
-  async generateDonorReport(donors: Donor[]): Promise<string> {
+  async generateDonorReport(donor: Donor): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'generateDonorReport',
-          data: donors,
+          action: 'generate_donor_report',
+          data: donor,
         }),
       });
 
@@ -68,28 +75,21 @@ export const aiService = {
         throw new Error('Failed to generate donor report');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error generating donor report:', error);
-      throw new Error('Failed to generate donor report');
+      throw error;
     }
   },
 
-  async generateGrantProposal(data: {
-    projectName: string;
-    projectDescription: string;
-    targetAmount: number;
-  }): Promise<string> {
+  async generateGrantProposal(project: Project): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'generateGrantProposal',
-          data,
+          action: 'generate_grant_proposal',
+          data: project,
         }),
       });
 
@@ -97,11 +97,10 @@ export const aiService = {
         throw new Error('Failed to generate grant proposal');
       }
 
-      const result = await response.json();
-      return result.proposal;
+      return await response.json();
     } catch (error) {
       console.error('Error generating grant proposal:', error);
-      throw new Error('Failed to generate grant proposal');
+      throw error;
     }
   },
 
@@ -130,15 +129,13 @@ export const aiService = {
     }
   },
 
-  async optimizeEventPlan(event: Event): Promise<string> {
+  async optimizeEventPlan(event: Event): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'optimizeEventPlan',
+          action: 'optimize_event_plan',
           data: event,
         }),
       });
@@ -147,24 +144,21 @@ export const aiService = {
         throw new Error('Failed to optimize event plan');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error optimizing event plan:', error);
-      throw new Error('Failed to optimize event plan');
+      throw error;
     }
   },
 
-  async assessProgramImpact(program: Program): Promise<string> {
+  async assessProgramImpact(project: Project): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'assessProgramImpact',
-          data: program,
+          action: 'assess_program_impact',
+          data: project,
         }),
       });
 
@@ -172,11 +166,10 @@ export const aiService = {
         throw new Error('Failed to assess program impact');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error assessing program impact:', error);
-      throw new Error('Failed to assess program impact');
+      throw error;
     }
   },
 
@@ -205,22 +198,14 @@ export const aiService = {
     }
   },
 
-  async generateFundraisingStrategy(data: {
-    organizationName: string;
-    organizationType: string;
-    targetAmount: number;
-    timeframe: string;
-    currentDonors: number;
-  }): Promise<string> {
+  async generateFundraisingStrategy(donors: Donor[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'generateFundraisingStrategy',
-          data,
+          action: 'generate_fundraising_strategy',
+          data: donors,
         }),
       });
 
@@ -228,11 +213,10 @@ export const aiService = {
         throw new Error('Failed to generate fundraising strategy');
       }
 
-      const result = await response.json();
-      return result.strategy;
+      return await response.json();
     } catch (error) {
       console.error('Error generating fundraising strategy:', error);
-      throw new Error('Failed to generate fundraising strategy');
+      throw error;
     }
   },
 
@@ -261,15 +245,13 @@ export const aiService = {
     }
   },
 
-  async analyzeProjects(projects: Project[]): Promise<string> {
+  async analyzeProjects(projects: Project[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'analyzeProjects',
+          action: 'analyze_projects',
           data: projects,
         }),
       });
@@ -278,23 +260,20 @@ export const aiService = {
         throw new Error('Failed to analyze projects');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error analyzing projects:', error);
-      throw new Error('Failed to analyze projects');
+      throw error;
     }
   },
 
-  async analyzeEvents(events: Event[]): Promise<string> {
+  async analyzeEvents(events: Event[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'analyzeEvents',
+          action: 'analyze_events',
           data: events,
         }),
       });
@@ -303,11 +282,10 @@ export const aiService = {
         throw new Error('Failed to analyze events');
       }
 
-      const data = await response.json();
-      return data.content;
+      return await response.json();
     } catch (error) {
       console.error('Error analyzing events:', error);
-      throw new Error('Failed to analyze events');
+      throw error;
     }
   },
 
@@ -334,5 +312,27 @@ export const aiService = {
       console.error('Error analyzing fundraising:', error);
       throw new Error('Failed to analyze fundraising');
     }
-  }
+  },
+
+  async generateStakeholderUpdate(project: Project): Promise<AIResponse> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_stakeholder_update',
+          data: project,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate stakeholder update');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error generating stakeholder update:', error);
+      throw error;
+    }
+  },
 }; 

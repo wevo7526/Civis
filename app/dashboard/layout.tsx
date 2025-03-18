@@ -24,16 +24,16 @@ export default function DashboardLayout({
   }, [router, supabase.auth]);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <div className="w-64 flex-shrink-0">
-        <Sidebar />
-      </div>
-      <div className="flex-1">
-        <main className="py-6">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {children}
-          </div>
-        </main>
+    <div className="h-screen flex overflow-hidden bg-gray-50">
+      <Sidebar />
+      <div className="flex-1 overflow-y-auto">
+        <div className="h-full">
+          <main className="py-6">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
