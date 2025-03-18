@@ -364,6 +364,63 @@ export default function Dashboard() {
                 <span className="text-sm text-gray-500">→</span>
               </button>
             </div>
+
+            {/* Automation Actions */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-500">Automation</h3>
+              <button
+                onClick={() => router.push('/dashboard/automation')}
+                className="w-full flex items-center justify-between p-4 bg-rose-50 rounded-lg hover:bg-rose-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <Cog6ToothIcon className="h-5 w-5 text-rose-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Automation Hub</span>
+                    <p className="text-xs text-gray-500">Manage automated workflows</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/automation/donor-communications')}
+                className="w-full flex items-center justify-between p-4 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <EnvelopeIcon className="h-5 w-5 text-emerald-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Donor Communications</span>
+                    <p className="text-xs text-gray-500">Setup automated messages</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/automation/grant-reminders')}
+                className="w-full flex items-center justify-between p-4 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <BellIcon className="h-5 w-5 text-cyan-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Grant Reminders</span>
+                    <p className="text-xs text-gray-500">Manage grant deadlines</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/automation/impact-reports')}
+                className="w-full flex items-center justify-between p-4 bg-pink-50 rounded-lg hover:bg-pink-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <DocumentTextIcon className="h-5 w-5 text-pink-600 mr-3" />
+                  <div className="text-left">
+                    <span className="text-sm font-medium text-gray-900">Impact Reports</span>
+                    <p className="text-xs text-gray-500">Schedule progress updates</p>
+                  </div>
+                </div>
+                <span className="text-sm text-gray-500">→</span>
+              </button>
+            </div>
           </div>
         </div>
 

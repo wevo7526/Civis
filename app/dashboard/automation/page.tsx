@@ -4,12 +4,9 @@ import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
-  Cog6ToothIcon,
   EnvelopeIcon,
   BellIcon,
   DocumentTextIcon,
-  CheckCircleIcon,
-  XCircleIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline';
 
@@ -69,7 +66,10 @@ export default function AutomationHub() {
         .select('*')
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching workflows:', error);
+        return;
+      }
 
       // Update feature statuses based on workflows
       setFeatures(prevFeatures => 
@@ -87,6 +87,38 @@ export default function AutomationHub() {
       console.error('Error fetching automation status:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleWorkflowStatus = async (featureId: string, currentStatus: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      
+      // Update or insert workflow
+      const { error } = await supabase
+        .from('automation_workflows')
+        .upsert({
+          user_id: user.id,
+          type: featureId,
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      setFeatures(prevFeatures =>
+        prevFeatures.map(feature =>
+          feature.id === featureId
+            ? { ...feature, status: newStatus }
+            : feature
+        )
+      );
+    } catch (error) {
+      console.error('Error toggling workflow status:', error);
     }
   };
 
@@ -168,11 +200,7 @@ export default function AutomationHub() {
                 Configure
               </button>
               <button
-                onClick={() => {
-                  // Toggle automation status
-                  const newStatus = feature.status === 'active' ? 'inactive' : 'active';
-                  // Update in database and local state
-                }}
+                onClick={() => toggleWorkflowStatus(feature.id, feature.status)}
                 className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
                   feature.status === 'active'
                     ? 'bg-red-50 text-red-600 hover:bg-red-100'

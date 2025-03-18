@@ -2,19 +2,19 @@
 
 import { useState } from 'react';
 import ChatInterface from '@/app/components/ChatInterface';
+import DocumentAnalysis from '@/app/components/DocumentAnalysis';
 
 export default function AIChatPage() {
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b">
-        <h1 className="text-2xl font-semibold text-gray-900">AI Chat Assistant</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Upload documents and ask questions to get AI-powered insights and analysis.
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Document Analysis</h1>
+        <p className="mt-2 text-gray-600">
+          Upload your documents and get structured insights, key findings, and recommendations.
         </p>
       </div>
-      
-      <div className="flex-1 overflow-hidden">
-        <ChatInterface />
+      <div className="bg-gray-50 rounded-lg p-6">
+        <DocumentAnalysis />
       </div>
     </div>
   );

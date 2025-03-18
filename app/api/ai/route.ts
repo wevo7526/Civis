@@ -397,7 +397,7 @@ Format the message as a complete email body, including a greeting and sign-off.`
     }
 
     const aiResponse = await anthropic.messages.create({
-      model: 'claude-3-sonnet-20240229',
+      model: 'claude-3-opus-20240229',
       max_tokens: 2000,
       messages: [
         {

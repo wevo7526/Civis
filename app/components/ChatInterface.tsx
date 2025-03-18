@@ -91,33 +91,45 @@ export default function ChatInterface() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
       if (!session) {
         throw new Error('Please sign in to use the chat feature');
       }
 
+      console.log('Sending request to AI chat API...');
+      const requestBody = {
+        message: input,
+        documents: documents.map(doc => ({
+          id: doc.id,
+          content: doc.content,
+        })),
+      };
+      console.log('Request body:', JSON.stringify(requestBody, null, 2));
+      
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          message: input,
-          documents: documents.map(doc => ({
-            id: doc.id,
-            content: doc.content,
-          })),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
       const data = await response.json();
+      console.log('Response data:', JSON.stringify(data, null, 2));
 
       if (!response.ok) {
         if (response.status === 401) {
           throw new Error('Please sign in to use the chat feature');
         }
-        throw new Error(data.error || 'Failed to get response');
+        if (response.status === 404) {
+          throw new Error('API endpoint not found. Please check the API route configuration.');
+        }
+        if (response.status === 500) {
+          throw new Error(`Server error: ${data.error || 'Unknown server error'}`);
+        }
+        throw new Error(`API error (${response.status}): ${data.error || 'Failed to get response'}`);
       }
 
       const assistantMessage: Message = {
@@ -128,14 +140,21 @@ export default function ChatInterface() {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: error instanceof Error ? error.message : 'Sorry, I encountered an error processing your request. Please try again.',
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
-      setError(error instanceof Error ? error.message : 'An error occurred');
+      console.error('Chat error details:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `Error: ${errorMessage}\n\nPlease try again or contact support if the issue persists.`,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
