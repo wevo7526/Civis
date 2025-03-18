@@ -13,6 +13,7 @@ interface DonorFormData {
   email: string;
   phone: string;
   donation_date: string;
+  amount: number;
   status: 'active' | 'inactive';
   notes: string;
 }
@@ -22,11 +23,13 @@ const initialFormData: DonorFormData = {
   email: '',
   phone: '',
   donation_date: new Date().toISOString().split('T')[0],
+  amount: 0,
   status: 'active',
   notes: '',
 };
 
 export default function Donors() {
+  const supabase = createClientComponentClient();
   const [donors, setDonors] = useState<Donor[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -36,28 +39,9 @@ export default function Donors() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<DonorFormData>(initialFormData);
 
-  // Initialize Supabase client
-  const supabase = createClientComponentClient();
+  // Initialize services
   const donorService = createDonorService(supabase);
   const activityService = createActivityService(supabase);
-
-  useEffect(() => {
-    fetchDonors();
-  }, []);
-
-  useEffect(() => {
-    if (donorToEdit) {
-      setFormData({
-        name: donorToEdit.name,
-        email: donorToEdit.email,
-        phone: donorToEdit.phone || '',
-        donation_date: donorToEdit.donation_date,
-        status: donorToEdit.status,
-        notes: donorToEdit.notes || '',
-      });
-      setIsModalOpen(true);
-    }
-  }, [donorToEdit]);
 
   const fetchDonors = async () => {
     try {
@@ -76,12 +60,31 @@ export default function Donors() {
     }
   };
 
+  useEffect(() => {
+    fetchDonors();
+  }, []);
+
+  useEffect(() => {
+    if (donorToEdit) {
+      setFormData({
+        name: donorToEdit.name,
+        email: donorToEdit.email,
+        phone: donorToEdit.phone || '',
+        donation_date: donorToEdit.donation_date,
+        amount: donorToEdit.amount,
+        status: donorToEdit.status,
+        notes: donorToEdit.notes || '',
+      });
+      setIsModalOpen(true);
+    }
+  }, [donorToEdit]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setLoading(true);
       setError(null);
-      
+
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) throw authError;
       if (!user) throw new Error('No authenticated user found');
@@ -91,22 +94,32 @@ export default function Donors() {
         user_id: user.id,
       };
 
+      console.log('Submitting donor data:', donorData);
+
+      let donorId: string | undefined;
       if (donorToEdit) {
-        await donorService.updateDonor(donorToEdit.id, donorData);
-        try {
-          await activityService.createDonorActivity(user.id, 'updated', formData.name);
-        } catch (activityError) {
-          console.error('Error creating activity:', activityError);
-          // Don't throw here, as the donor was still updated successfully
+        const updatedDonor = await donorService.updateDonor(donorToEdit.id, donorData);
+        if (!updatedDonor) {
+          throw new Error('Failed to update donor');
         }
+        donorId = updatedDonor.id;
       } else {
-        await donorService.addDonor(donorData);
-        try {
-          await activityService.createDonorActivity(user.id, 'added', formData.name);
-        } catch (activityError) {
-          console.error('Error creating activity:', activityError);
-          // Don't throw here, as the donor was still added successfully
+        const newDonor = await donorService.addDonor(donorData);
+        if (!newDonor) {
+          throw new Error('Failed to add donor');
         }
+        donorId = newDonor.id;
+      }
+
+      // Create activity after successful donor operation
+      const activityResult = await activityService.createDonorActivity(
+        user.id,
+        donorToEdit ? 'updated' : 'added',
+        formData.name
+      );
+
+      if (!activityResult) {
+        console.warn('Failed to create activity, but donor operation was successful');
       }
       
       await fetchDonors();
@@ -125,12 +138,20 @@ export default function Donors() {
       setLoading(true);
       setError(null);
       
-      await donorService.deleteDonor(donorToDelete.id);
-      try {
-        await activityService.createDonorActivity(donorToDelete.user_id, 'deleted', donorToDelete.name);
-      } catch (activityError) {
-        console.error('Error creating activity:', activityError);
-        // Don't throw here, as the donor was still deleted successfully
+      const success = await donorService.deleteDonor(donorToDelete.id);
+      if (!success) {
+        throw new Error('Failed to delete donor');
+      }
+      
+      // Create activity after successful deletion
+      const activityResult = await activityService.createDonorActivity(
+        donorToDelete.user_id,
+        'deleted',
+        donorToDelete.name
+      );
+
+      if (!activityResult) {
+        console.warn('Failed to create activity, but donor deletion was successful');
       }
       
       await fetchDonors();
@@ -176,6 +197,7 @@ export default function Donors() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Donation Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -192,6 +214,9 @@ export default function Donors() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">{donor.phone || '-'}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">${donor.amount.toFixed(2)}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">
@@ -301,6 +326,27 @@ export default function Donors() {
                     onChange={(e) => setFormData(prev => ({ ...prev, donation_date: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
+                </div>
+
+                <div>
+                  <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
+                    Amount
+                  </label>
+                  <div className="mt-1 relative rounded-lg shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500 sm:text-sm">$</span>
+                    </div>
+                    <input
+                      type="number"
+                      id="amount"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formData.amount}
+                      onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
+                      className="pl-7 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
                 </div>
 
                 <div>

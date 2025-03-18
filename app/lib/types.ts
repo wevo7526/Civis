@@ -102,6 +102,7 @@ export interface Donor {
   email: string;
   phone?: string;
   donation_date: string;
+  amount: number;
   status: 'active' | 'inactive';
   notes?: string;
   created_at: string;

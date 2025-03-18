@@ -19,11 +19,14 @@ export const createActivityService = (supabase: SupabaseClient) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating activity:', error);
+        return null;
+      }
       return data;
     } catch (error) {
       console.error('Error creating activity:', error);
-      throw error;
+      return null;
     }
   };
 
@@ -37,7 +40,7 @@ export const createActivityService = (supabase: SupabaseClient) => {
       });
     } catch (error) {
       console.error('Error creating donor activity:', error);
-      throw error;
+      return null;
     }
   };
 
@@ -52,7 +55,7 @@ export const createActivityService = (supabase: SupabaseClient) => {
       });
     } catch (error) {
       console.error('Error creating event activity:', error);
-      throw error;
+      return null;
     }
   };
 
@@ -67,7 +70,7 @@ export const createActivityService = (supabase: SupabaseClient) => {
       });
     } catch (error) {
       console.error('Error creating campaign activity:', error);
-      throw error;
+      return null;
     }
   };
 
@@ -82,7 +85,7 @@ export const createActivityService = (supabase: SupabaseClient) => {
       });
     } catch (error) {
       console.error('Error creating document activity:', error);
-      throw error;
+      return null;
     }
   };
 
