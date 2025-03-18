@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/app/components/ui/button';
-import { Card } from '@/app/components/ui/card';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
 
 interface Message {
   role: 'user' | 'assistant';

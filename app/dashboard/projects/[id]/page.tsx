@@ -11,8 +11,8 @@ import {
   CalendarIcon,
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
-import { Project } from '@/app/lib/projectService';
-import { aiService } from '@/app/lib/aiService';
+import { Project } from '@/lib/projectService';
+import { aiService } from '@/lib/aiService';
 
 export default function ProjectDetails() {
   const params = useParams();

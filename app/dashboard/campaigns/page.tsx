@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Campaign, CampaignItem, CampaignStatus } from '@/app/lib/types';
+import { Campaign, CampaignItem, CampaignStatus } from '@/lib/types';
 import { PlusIcon, CalendarIcon, ChartBarIcon, CurrencyDollarIcon, UserGroupIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
 

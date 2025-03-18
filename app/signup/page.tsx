@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/app/components/ui/button';
+import { Button } from '@/components/ui/button';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, XMarkIcon, PaperClipIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { aiService } from '@/app/lib/aiService';
+import { aiService } from '@/lib/aiService';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -89,11 +89,14 @@ export default function AIAssistant() {
       let response: string;
       
       if (userMessage.content.toLowerCase().includes('donor')) {
-        response = await aiService.analyzeDonorEngagement(context.donorData || []);
+        const result = await aiService.analyzeDonorEngagement(context.donorData || []);
+        response = result.message;
       } else if (userMessage.content.toLowerCase().includes('project')) {
-        response = await aiService.analyzeProjects(context.projectData || []);
+        const result = await aiService.analyzeProjects(context.projectData || []);
+        response = result.message;
       } else if (userMessage.content.toLowerCase().includes('event')) {
-        response = await aiService.analyzeEvents(context.eventData || []);
+        const result = await aiService.analyzeEvents(context.eventData || []);
+        response = result.message;
       } else {
         // Use the general chat assistant
         const chatResponse = await fetch('/api/ai/assistant', {

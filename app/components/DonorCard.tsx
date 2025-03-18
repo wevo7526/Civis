@@ -1,4 +1,4 @@
-import { Donor } from '@/app/lib/donorService';
+import { Donor } from '@/lib/types';
 import { UserCircleIcon, PencilIcon, ChartBarIcon, EnvelopeIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface DonorCardProps {

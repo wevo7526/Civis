@@ -3,9 +3,14 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { SparklesIcon } from '@heroicons/react/24/outline';
-import { Donor, Project, Event } from '@/app/lib/types';
-import { aiService } from '@/app/lib/aiService';
+import { 
+  ChartBarIcon, 
+  UserGroupIcon, 
+  CalendarIcon,
+  SparklesIcon
+} from '@heroicons/react/24/outline';
+import { Donor, Project, Event } from '@/lib/types';
+import { aiService } from '@/lib/aiService';
 
 export default function AIInsights() {
   const [loading, setLoading] = useState(true);

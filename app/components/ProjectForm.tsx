@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Project } from '@/app/lib/projectService';
-import { Grant, FundraisingCampaign } from '@/app/lib/types';
+import { Project } from '@/lib/projectService';
+import { Grant, FundraisingCampaign } from '@/lib/types';
 import { SparklesIcon } from '@heroicons/react/24/outline';
 
 interface ProjectFormProps {

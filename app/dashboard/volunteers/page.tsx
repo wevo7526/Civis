@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import { Volunteer } from '@/app/lib/types';
+import { Volunteer } from '@/lib/types';
 
 export default function Volunteers() {
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import { CommunityStakeholder } from '@/app/lib/types';
+import { CommunityStakeholder } from '@/lib/types';
 
 export default function Community() {
   const [stakeholders, setStakeholders] = useState<CommunityStakeholder[]>([]);

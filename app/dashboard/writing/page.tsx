@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Project } from '@/app/lib/types';
+import { Project } from '@/lib/types';
 import { PlusIcon, DocumentTextIcon, ArrowPathIcon, LightBulbIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import VersionHistory from '@/app/components/VersionHistory';
+import VersionHistory from '@/components/VersionHistory';
 
 interface Document {
   id: string;

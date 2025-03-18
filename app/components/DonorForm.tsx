@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Donor } from '@/app/lib/donorService';
+import { Donor } from '@/lib/types';
 
 interface DonorFormProps {
   donor?: Donor;
