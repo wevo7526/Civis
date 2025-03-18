@@ -98,16 +98,38 @@ export default function AutomationHub() {
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       
       // Update or insert workflow
-      const { error } = await supabase
+      const { data: workflow, error } = await supabase
         .from('automation_workflows')
         .upsert({
           user_id: user.id,
           type: featureId,
           status: newStatus,
+          config: {
+            type: featureId,
+            schedule: 'daily', // Default schedule
+            template: getDefaultTemplate(featureId),
+          },
           updated_at: new Date().toISOString(),
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // If activating, start the workflow
+      if (newStatus === 'active' && workflow) {
+        const response = await fetch('/api/automation/execute', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ workflowId: workflow.id }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start workflow');
+        }
+      }
 
       // Update local state
       setFeatures(prevFeatures =>
@@ -119,6 +141,19 @@ export default function AutomationHub() {
       );
     } catch (error) {
       console.error('Error toggling workflow status:', error);
+    }
+  };
+
+  const getDefaultTemplate = (featureId: string): string => {
+    switch (featureId) {
+      case 'donor-communications':
+        return 'Thank you for your generous donation of ${amount}. Your support helps us make a difference.';
+      case 'grant-reminders':
+        return 'Reminder: The grant application for ${grant_name} is due on ${deadline}.';
+      case 'impact-reports':
+        return 'Impact Report: Here\'s how we\'re using your support to achieve our goals.';
+      default:
+        return '';
     }
   };
 

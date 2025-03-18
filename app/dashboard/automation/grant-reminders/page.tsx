@@ -95,7 +95,7 @@ export default function GrantReminders() {
       if (!user) return;
 
       // Update in database
-      const { error } = await supabase
+      const { data: workflow, error } = await supabase
         .from('automation_workflows')
         .upsert({
           user_id: user.id,
@@ -106,9 +106,27 @@ export default function GrantReminders() {
             schedule: reminder.schedule,
             template: reminder.template,
           },
-        });
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // If activating, start the workflow
+      if (newStatus === 'active' && workflow) {
+        const response = await fetch('/api/automation/execute', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ workflowId: workflow.id }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start workflow');
+        }
+      }
 
       // Update local state
       setReminders(prevReminders =>

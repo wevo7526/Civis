@@ -44,13 +44,13 @@ export interface Event {
   description: string;
   date: string;
   location: string;
-  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
-  status: 'planned' | 'ongoing' | 'completed' | 'cancelled';
+  type: 'fundraiser' | 'volunteer' | 'community' | 'awareness';
   budget: number;
   target_attendees: number;
+  status: 'planned' | 'upcoming' | 'completed' | 'cancelled';
+  user_id: string;
   created_at: string;
   updated_at: string;
-  user_id: string;
 }
 
 export interface Program {

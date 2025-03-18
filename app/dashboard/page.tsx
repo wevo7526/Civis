@@ -21,9 +21,15 @@ import {
   Cog6ToothIcon,
   MegaphoneIcon,
   UserIcon,
-  BuildingOfficeIcon
+  BuildingOfficeIcon,
+  UserPlusIcon,
+  DocumentIcon
 } from '@heroicons/react/24/outline';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Link from 'next/link';
+import { formatDistanceToNow } from 'date-fns';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { UserCircle, Calendar, Megaphone, Cog, Bell, ChartBar } from 'lucide-react';
 
 interface DashboardMetrics {
   totalDonors: number;
@@ -38,12 +44,22 @@ interface RevenueData {
   revenue: number;
 }
 
+interface Activity {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  metadata: any;
+  created_at: string;
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -51,6 +67,7 @@ export default function Dashboard() {
     fetchUser();
     fetchMetrics();
     fetchRevenueData();
+    fetchActivities();
   }, []);
 
   const fetchUser = async () => {
@@ -171,6 +188,51 @@ export default function Dashboard() {
     }
   };
 
+  const fetchActivities = async () => {
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Authentication error');
+      }
+
+      const { data, error } = await supabase
+        .from('activities')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      setActivities(data || []);
+    } catch (err) {
+      console.error('Error fetching activities:', err);
+    }
+  };
+
+  const quickActions = [
+    {
+      name: 'Add Donor',
+      description: 'Add a new donor to your database',
+      href: '/dashboard/donors',
+      icon: UserPlusIcon,
+      color: 'bg-purple-50 text-purple-600',
+    },
+    {
+      name: 'Create Event',
+      description: 'Set up a new fundraising event',
+      href: '/dashboard/events/new',
+      icon: CalendarIcon,
+      color: 'bg-blue-50 text-blue-600',
+    },
+    {
+      name: 'Launch Campaign',
+      description: 'Start a new fundraising campaign',
+      href: '/dashboard/campaigns/new',
+      icon: MegaphoneIcon,
+      color: 'bg-green-50 text-green-600',
+    },
+  ];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -181,22 +243,86 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8 p-6">
-      {/* Welcome Section */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <div className="flex items-center space-x-4">
-          <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center">
-            <span className="text-xl font-semibold text-purple-600">
-              {user?.email?.[0].toUpperCase() || 'U'}
-            </span>
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
-              Welcome back, {user?.email}
-            </h1>
-            <p className="text-gray-500">Here's an overview of your nonprofit's performance</p>
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500">Welcome back, {user?.email}</p>
         </div>
       </div>
+
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {quickActions.map((action) => (
+            <Link
+              key={action.name}
+              href={action.href}
+              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center space-x-3">
+                <div className={`h-10 w-10 rounded-lg ${action.color} flex items-center justify-center`}>
+                  <action.icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">{action.name}</h3>
+                  <p className="text-sm text-gray-500">{action.description}</p>
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {activities.map((activity) => (
+              <div key={activity.id} className="flex items-start space-x-4">
+                <div className="flex-shrink-0">
+                  {activity.type.startsWith('donor_') && (
+                    <UserCircle className="h-6 w-6 text-blue-500" />
+                  )}
+                  {activity.type.startsWith('event_') && (
+                    <Calendar className="h-6 w-6 text-green-500" />
+                  )}
+                  {activity.type.startsWith('campaign_') && (
+                    <Megaphone className="h-6 w-6 text-purple-500" />
+                  )}
+                  {activity.type.startsWith('workflow_') && (
+                    <Cog className="h-6 w-6 text-orange-500" />
+                  )}
+                  {activity.type.startsWith('document_') && (
+                    <DocumentIcon className="h-6 w-6 text-gray-500" />
+                  )}
+                  {activity.type === 'grant_reminder' && (
+                    <Bell className="h-6 w-6 text-yellow-500" />
+                  )}
+                  {activity.type === 'impact_report' && (
+                    <ChartBar className="h-6 w-6 text-red-500" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-sm font-medium leading-none">{activity.title}</p>
+                  <p className="text-sm text-muted-foreground">{activity.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {activities.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No recent activity
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -288,143 +414,6 @@ export default function Dashboard() {
       {/* Quick Actions and AI Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
-          <div className="space-y-4">
-            {/* Fundraising Actions */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-500">Fundraising</h3>
-              <button
-                onClick={() => router.push('/dashboard/donors')}
-                className="w-full flex items-center justify-between p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <UserGroupIcon className="h-5 w-5 text-green-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Manage Donors</span>
-                    <p className="text-xs text-gray-500">View and manage donor information</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/campaigns')}
-                className="w-full flex items-center justify-between p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <MegaphoneIcon className="h-5 w-5 text-blue-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Campaigns</span>
-                    <p className="text-xs text-gray-500">Launch and track fundraising campaigns</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/events')}
-                className="w-full flex items-center justify-between p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <CalendarIcon className="h-5 w-5 text-purple-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Events</span>
-                    <p className="text-xs text-gray-500">Plan and manage fundraising events</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-            </div>
-
-            {/* Community Actions */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-500">Community</h3>
-              <button
-                onClick={() => router.push('/dashboard/volunteers')}
-                className="w-full flex items-center justify-between p-4 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <UserIcon className="h-5 w-5 text-amber-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Volunteers</span>
-                    <p className="text-xs text-gray-500">Coordinate volunteer activities</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/stakeholders')}
-                className="w-full flex items-center justify-between p-4 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <BuildingOfficeIcon className="h-5 w-5 text-indigo-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Stakeholders</span>
-                    <p className="text-xs text-gray-500">Manage partner relationships</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-            </div>
-
-            {/* Automation Actions */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-gray-500">Automation</h3>
-              <button
-                onClick={() => router.push('/dashboard/automation')}
-                className="w-full flex items-center justify-between p-4 bg-rose-50 rounded-lg hover:bg-rose-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <Cog6ToothIcon className="h-5 w-5 text-rose-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Automation Hub</span>
-                    <p className="text-xs text-gray-500">Manage automated workflows</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/automation/donor-communications')}
-                className="w-full flex items-center justify-between p-4 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <EnvelopeIcon className="h-5 w-5 text-emerald-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Donor Communications</span>
-                    <p className="text-xs text-gray-500">Setup automated messages</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/automation/grant-reminders')}
-                className="w-full flex items-center justify-between p-4 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <BellIcon className="h-5 w-5 text-cyan-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Grant Reminders</span>
-                    <p className="text-xs text-gray-500">Manage grant deadlines</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/automation/impact-reports')}
-                className="w-full flex items-center justify-between p-4 bg-pink-50 rounded-lg hover:bg-pink-100 transition-colors"
-              >
-                <div className="flex items-center">
-                  <DocumentTextIcon className="h-5 w-5 text-pink-600 mr-3" />
-                  <div className="text-left">
-                    <span className="text-sm font-medium text-gray-900">Impact Reports</span>
-                    <p className="text-xs text-gray-500">Schedule progress updates</p>
-                  </div>
-                </div>
-                <span className="text-sm text-gray-500">→</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
           <h2 className="text-lg font-medium text-gray-900 mb-4">AI Insights</h2>
           <div className="space-y-4">
             <div className="p-4 bg-purple-50 rounded-lg">
@@ -474,39 +463,38 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Revenue Chart */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Revenue Overview</h2>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={revenueData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis 
-                dataKey="month" 
-                tickFormatter={(value: string) => {
-                  const [year, month] = value.split('-');
-                  return `${month}/${year.slice(2)}`;
-                }}
-              />
-              <YAxis />
-              <Tooltip 
-                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
-                labelFormatter={(label: string) => {
-                  const [year, month] = label.split('-');
-                  return `${month}/${year}`;
-                }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="revenue" 
-                stroke="#8B5CF6" 
-                strokeWidth={2}
-                dot={{ fill: '#8B5CF6', strokeWidth: 2 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Revenue Overview</h2>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="month" 
+                  tickFormatter={(value: string) => {
+                    const [year, month] = value.split('-');
+                    return `${month}/${year.slice(2)}`;
+                  }}
+                />
+                <YAxis />
+                <Tooltip 
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                  labelFormatter={(label: string) => {
+                    const [year, month] = label.split('-');
+                    return `${month}/${year}`;
+                  }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="revenue" 
+                  stroke="#8B5CF6" 
+                  strokeWidth={2}
+                  dot={{ fill: '#8B5CF6', strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>

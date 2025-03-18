@@ -3,16 +3,45 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { CalendarIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Event } from '@/app/lib/types';
+import { 
+  CalendarIcon, 
+  TrashIcon, 
+  PencilIcon,
+  PlusIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Event } from '@/lib/types';
+
+interface EventFormData {
+  title: string;
+  description: string;
+  date: string;
+  location: string;
+  type: Event['type'];
+  budget: number;
+  target_attendees: number;
+  status: Event['status'];
+}
 
 export default function Events() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [formData, setFormData] = useState<EventFormData>({
+    title: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    type: 'fundraiser',
+    budget: 0,
+    target_attendees: 0,
+    status: 'planned'
+  });
+
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -22,9 +51,15 @@ export default function Events() {
 
   const fetchEvents = async () => {
     try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Authentication error');
+      }
+
       const { data, error } = await supabase
         .from('events')
         .select('*')
+        .eq('user_id', user.id)
         .order('date', { ascending: true });
 
       if (error) throw error;
@@ -36,117 +71,213 @@ export default function Events() {
     }
   };
 
-  const handleCreateEvent = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'budget' || name === 'target_attendees' ? Number(value) : value
+    }));
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
+    setLoading(true);
+    setError(null);
+
     try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Authentication error');
+      }
+
       const { data, error } = await supabase
         .from('events')
-        .insert([
-          {
-            title: formData.get('title'),
-            description: formData.get('description'),
-            date: formData.get('date'),
-            location: formData.get('location'),
-            type: formData.get('type'),
-            budget: parseFloat(formData.get('budget') as string),
-            target_attendees: parseInt(formData.get('target_attendees') as string),
-            status: 'planned',
-          },
-        ])
+        .insert([{
+          ...formData,
+          user_id: user.id
+        }])
         .select()
         .single();
 
       if (error) throw error;
-      setEvents([...events, data]);
-      setShowCreateForm(false);
+      setEvents(prev => [...prev, data]);
+      setIsModalOpen(false);
+      setFormData({
+        title: '',
+        description: '',
+        date: new Date().toISOString().split('T')[0],
+        location: '',
+        type: 'fundraiser',
+        budget: 0,
+        target_attendees: 0,
+        status: 'planned'
+      });
     } catch (err) {
+      console.error('Error creating event:', err);
       setError(err instanceof Error ? err.message : 'Failed to create event');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGenerateInsights = async (event: Event) => {
-    try {
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'optimizeEventPlan',
-          data: event,
-        }),
-      });
+  const handleDeleteEvent = async () => {
+    if (!eventToDelete) return;
+    
+    setLoading(true);
+    setError(null);
 
-      if (!response.ok) throw new Error('Failed to generate insights');
-      const data = await response.json();
-      setAiInsights(data.content);
-      setSelectedEvent(event);
+    try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Authentication error');
+      }
+
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventToDelete.id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      setEvents(prev => prev.filter(event => event.id !== eventToDelete.id));
+      setIsDeleteModalOpen(false);
+      setEventToDelete(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate insights');
+      console.error('Error deleting event:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete event');
+    } finally {
+      setLoading(false);
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-3">
-          <CalendarIcon className="h-8 w-8 text-blue-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Events</h1>
-        </div>
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-gray-900">Events</h1>
         <button
-          onClick={() => setShowCreateForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          onClick={() => setIsModalOpen(true)}
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
-          Create Event
+          New Event
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <span className="block sm:inline">{error}</span>
         </div>
       )}
 
-      {showCreateForm && (
-        <div className="mb-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Create New Event</h2>
-          <form onSubmit={handleCreateEvent} className="space-y-4">
-            <div>
-              <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                Event Title
-              </label>
-              <input
-                type="text"
-                id="title"
-                name="title"
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {events.map((event) => (
+          <Card key={event.id}>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>{event.title}</span>
+                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                  event.status === 'upcoming' ? 'bg-green-100 text-green-800' :
+                  event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                  'bg-red-100 text-red-800'
+                }`}>
+                  {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">{event.description}</p>
+                <div className="flex items-center text-sm text-gray-500">
+                  <CalendarIcon className="h-4 w-4 mr-1" />
+                  {new Date(event.date).toLocaleDateString()}
+                </div>
+                <div className="text-sm text-gray-500">{event.location}</div>
+                <div className="flex justify-end space-x-2 mt-4">
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        title: event.title,
+                        description: event.description,
+                        date: event.date.split('T')[0],
+                        location: event.location,
+                        type: event.type,
+                        budget: event.budget,
+                        target_attendees: event.target_attendees,
+                        status: event.status
+                      });
+                      setIsModalOpen(true);
+                    }}
+                    className="text-gray-400 hover:text-gray-500"
+                  >
+                    <PencilIcon className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEventToDelete(event);
+                      setIsDeleteModalOpen(true);
+                    }}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <TrashIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                rows={3}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
+      {/* Create/Edit Event Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-medium text-gray-900">
+                {formData.title ? 'Edit Event' : 'New Event'}
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleCreateEvent} className="space-y-4">
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  id="title"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows={3}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                />
+              </div>
               <div>
                 <label htmlFor="date" className="block text-sm font-medium text-gray-700">
                   Date
@@ -155,11 +286,12 @@ export default function Events() {
                   type="date"
                   id="date"
                   name="date"
+                  value={formData.date}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
-
               <div>
                 <label htmlFor="location" className="block text-sm font-medium text-gray-700">
                   Location
@@ -168,45 +300,43 @@ export default function Events() {
                   type="text"
                   id="location"
                   name="location"
+                  value={formData.location}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-                  Event Type
+                  Type
                 </label>
                 <select
                   id="type"
                   name="type"
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  value={formData.type}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                 >
-                  <option value="">Select a type</option>
                   <option value="fundraiser">Fundraiser</option>
                   <option value="volunteer">Volunteer Event</option>
                   <option value="community">Community Event</option>
                   <option value="awareness">Awareness Campaign</option>
                 </select>
               </div>
-
               <div>
                 <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                  Budget ($)
+                  Budget
                 </label>
                 <input
                   type="number"
                   id="budget"
                   name="budget"
+                  value={formData.budget}
+                  onChange={handleInputChange}
                   min="0"
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                 />
               </div>
-
               <div>
                 <label htmlFor="target_attendees" className="block text-sm font-medium text-gray-700">
                   Target Attendees
@@ -215,98 +345,72 @@ export default function Events() {
                   type="number"
                   id="target_attendees"
                   name="target_attendees"
+                  value={formData.target_attendees}
+                  onChange={handleInputChange}
                   min="0"
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                 />
               </div>
-            </div>
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                  Status
+                </label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                >
+                  <option value="planned">Planned</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                >
+                  {loading ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Delete Event</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Are you sure you want to delete this event? This action cannot be undone.
+            </p>
             <div className="flex justify-end space-x-3">
               <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
               >
                 Cancel
               </button>
               <button
-                type="submit"
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={handleDeleteEvent}
+                disabled={loading}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                Create Event
+                {loading ? 'Deleting...' : 'Delete'}
               </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {events.map((event) => (
-          <div key={event.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900">{event.title}</h3>
-                <p className="text-sm text-gray-500">
-                  {new Date(event.date).toLocaleDateString()} • {event.location}
-                </p>
-              </div>
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                event.status === 'completed' ? 'bg-green-100 text-green-800' :
-                event.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                'bg-blue-100 text-blue-800'
-              }`}>
-                {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-              </span>
-            </div>
-
-            <p className="text-sm text-gray-600 mb-4">{event.description}</p>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <p className="text-xs font-medium text-gray-500">Budget</p>
-                <p className="text-sm text-gray-900">${event.budget}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500">Target Attendees</p>
-                <p className="text-sm text-gray-900">{event.target_attendees}</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => handleGenerateInsights(event)}
-                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Generate AI Insights
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {selectedEvent && aiInsights && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <h2 className="text-xl font-bold text-gray-900">AI Insights for {selectedEvent.title}</h2>
-                <button
-                  onClick={() => {
-                    setSelectedEvent(null);
-                    setAiInsights(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-500"
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap text-sm text-gray-700">{aiInsights}</pre>
-              </div>
             </div>
           </div>
         </div>

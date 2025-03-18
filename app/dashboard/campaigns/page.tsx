@@ -39,7 +39,7 @@ export default function Campaigns() {
     description: string;
     start_date: string;
     end_date: string;
-    status: CampaignItem['status'];
+    status: CampaignStatus;
     priority: CampaignItem['priority'];
     assigned_to: string;
   }>({
@@ -47,7 +47,7 @@ export default function Campaigns() {
     description: '',
     start_date: '',
     end_date: '',
-    status: 'not-started',
+    status: 'planning',
     priority: 'medium',
     assigned_to: '',
   });
@@ -60,8 +60,10 @@ export default function Campaigns() {
 
   const fetchCampaigns = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Authentication error');
+      }
 
       const { data: campaignsData, error: campaignsError } = await supabase
         .from('campaigns')
@@ -69,22 +71,34 @@ export default function Campaigns() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (campaignsError) throw campaignsError;
+      if (campaignsError) {
+        console.error('Error fetching campaigns:', campaignsError);
+        throw campaignsError;
+      }
+
+      if (!campaignsData || campaignsData.length === 0) {
+        setCampaigns([]);
+        return;
+      }
 
       const { data: itemsData, error: itemsError } = await supabase
         .from('campaign_items')
         .select('*')
         .in('campaign_id', campaignsData.map(c => c.id));
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('Error fetching campaign items:', itemsError);
+        throw itemsError;
+      }
 
       const campaignsWithItems = campaignsData.map(campaign => ({
         ...campaign,
-        items: itemsData.filter(item => item.campaign_id === campaign.id)
+        items: itemsData?.filter(item => item.campaign_id === campaign.id) || []
       }));
 
       setCampaigns(campaignsWithItems);
     } catch (err) {
+      console.error('Error in fetchCampaigns:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch campaigns');
     }
   };
@@ -155,7 +169,7 @@ export default function Campaigns() {
         description: '',
         start_date: '',
         end_date: '',
-        status: 'not-started',
+        status: 'planning',
         priority: 'medium',
         assigned_to: '',
       });
@@ -174,17 +188,33 @@ export default function Campaigns() {
     setError(null);
 
     try {
-      const { error } = await supabase
+      // First delete all campaign items
+      const { error: itemsError } = await supabase
+        .from('campaign_items')
+        .delete()
+        .eq('campaign_id', campaignToDelete.id);
+
+      if (itemsError) {
+        console.error('Error deleting campaign items:', itemsError);
+        throw itemsError;
+      }
+
+      // Then delete the campaign
+      const { error: campaignError } = await supabase
         .from('campaigns')
         .delete()
         .eq('id', campaignToDelete.id);
 
-      if (error) throw error;
+      if (campaignError) {
+        console.error('Error deleting campaign:', campaignError);
+        throw campaignError;
+      }
 
       setIsDeleteModalOpen(false);
       setCampaignToDelete(null);
       fetchCampaigns();
     } catch (err) {
+      console.error('Error in handleDeleteCampaign:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete campaign');
     } finally {
       setLoading(false);
@@ -204,13 +234,13 @@ export default function Campaigns() {
     }
   };
 
-  const getItemStatusColor = (status: CampaignItem['status']) => {
+  const getItemStatusColor = (status: CampaignStatus) => {
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'in-progress':
+      case 'active':
         return 'bg-blue-100 text-blue-800';
-      case 'blocked':
+      case 'on-hold':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
@@ -575,13 +605,13 @@ export default function Campaigns() {
                     id="item_status"
                     required
                     value={itemFormData.status}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, status: e.target.value as CampaignItem['status'] }))}
+                    onChange={(e) => setItemFormData(prev => ({ ...prev, status: e.target.value as CampaignStatus }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   >
-                    <option value="not-started">Not Started</option>
-                    <option value="in-progress">In Progress</option>
+                    <option value="planning">Planning</option>
+                    <option value="active">Active</option>
                     <option value="completed">Completed</option>
-                    <option value="blocked">Blocked</option>
+                    <option value="on-hold">On Hold</option>
                   </select>
                 </div>
 

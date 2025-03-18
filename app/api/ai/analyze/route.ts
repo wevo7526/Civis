@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
-import { VectorStore } from '@/app/lib/vectorStore';
+import { VectorStore } from '../../../lib/vectorStore';
 
 interface DocumentChunk {
   id: string;
   content: string;
   metadata: {
-    title: string;
     documentId: string;
+    title: string;
     type: string;
+    page?: number;
+    section?: string;
   };
+  embedding: number[];
   similarity: number;
 }
 

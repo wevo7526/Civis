@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import ChatInterface from '@/app/components/ChatInterface';
-import DocumentAnalysis from '@/app/components/DocumentAnalysis';
+import ChatInterface from '@/components/ChatInterface';
+import DocumentAnalysis from '@/components/DocumentAnalysis';
 
 export default function AIChatPage() {
   return (

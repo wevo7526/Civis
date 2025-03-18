@@ -33,7 +33,7 @@ const navigation = [
     name: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-      { name: 'AI Chat', href: '/dashboard/ai-chat', icon: ChatBubbleLeftRightIcon },
+      { name: 'Knowledge', href: '/dashboard/ai-chat', icon: ChatBubbleLeftRightIcon },
       { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
       { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
     ],

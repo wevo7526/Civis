@@ -62,29 +62,14 @@ export default function ImpactReports() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) {
         console.error('Auth error:', userError);
-        throw new Error(`Authentication error: ${userError.message}`);
+        return;
       }
       if (!user) {
-        throw new Error('No authenticated user found');
+        console.error('No authenticated user found');
+        return;
       }
 
-      // First, try to set up the database if needed
-      try {
-        const setupResponse = await fetch('/api/setup', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!setupResponse.ok) {
-          console.error('Error setting up database:', await setupResponse.text());
-        }
-      } catch (setupError) {
-        console.error('Error during database setup:', setupError);
-      }
-
-      // Now try to fetch the workflows
+      // Fetch workflows directly without setup attempt
       const { data: workflows, error: workflowsError } = await supabase
         .from('automation_workflows')
         .select('*')
@@ -92,14 +77,14 @@ export default function ImpactReports() {
         .eq('type', 'impact-reports');
 
       if (workflowsError) {
-        console.error('Workflows fetch error:', workflowsError);
-        // If the error is due to the table not existing, we'll just use the default state
+        console.error('Error fetching workflows:', workflowsError);
+        // If table doesn't exist, use default state
         if (workflowsError.code === '42P01') {
           console.log('Table does not exist yet, using default state');
           setLoading(false);
           return;
         }
-        throw new Error(`Failed to fetch workflows: ${workflowsError.message}`);
+        return;
       }
 
       // Update report statuses based on workflows
@@ -115,12 +100,7 @@ export default function ImpactReports() {
         })
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error fetching report status:', {
-        message: errorMessage,
-        error: error,
-        stack: error instanceof Error ? error.stack : undefined
-      });
+      console.error('Error in fetchReportStatus:', error);
     } finally {
       setLoading(false);
     }
@@ -136,7 +116,7 @@ export default function ImpactReports() {
       if (!user) return;
 
       // Update in database
-      const { error } = await supabase
+      const { data: workflow, error } = await supabase
         .from('automation_workflows')
         .upsert({
           user_id: user.id,
@@ -148,9 +128,27 @@ export default function ImpactReports() {
             template: report.template,
             metrics: report.metrics,
           },
-        });
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // If activating, start the workflow
+      if (newStatus === 'active' && workflow) {
+        const response = await fetch('/api/automation/execute', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ workflowId: workflow.id }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to start workflow');
+        }
+      }
 
       // Update local state
       setReports(prevReports =>
