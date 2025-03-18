@@ -1,11 +1,6 @@
-import { NextResponse } from 'next/server';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import OpenAI from 'openai';
-import { ChatCompletionMessageParam } from 'openai/resources/chat';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { NextRequest, NextResponse } from 'next/server';
+import { ChatAnthropic } from '@langchain/anthropic';
+import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 
 interface OnboardingMessage {
   role: 'user' | 'assistant';
@@ -23,95 +18,114 @@ interface ProfileUpdates {
   [key: string]: any;
 }
 
-export async function POST(req: Request) {
+// Initialize the model outside the handler
+const model = new ChatAnthropic({
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+  modelName: 'claude-3-opus-20240229',
+  temperature: 0.7,
+  maxTokens: 1000,
+});
+
+// Define step-specific prompts outside the handler
+const stepPrompts = [
+  {
+    context: "You are helping set up a nonprofit organization's profile. Extract the organization's name and respond warmly.",
+    extraction: ['name'],
+  },
+  {
+    context: "Ask about the organization's mission, sector, and any specific areas of focus.",
+    extraction: ['mission', 'sector'],
+  },
+  {
+    context: "Discuss the organization's goals and objectives. Extract specific, measurable goals.",
+    extraction: ['goals'],
+  },
+  {
+    context: "Learn about their team size and structure. Extract team size and any key roles mentioned.",
+    extraction: ['teamSize'],
+  },
+  {
+    context: "Gather contact information including location and website. Extract these details.",
+    extraction: ['location', 'website'],
+  },
+];
+
+export async function POST(req: NextRequest) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { error: 'ANTHROPIC_API_KEY is not configured' },
+      { status: 500 }
+    );
+  }
+
   try {
-    const { messages, currentStep, profile } = await req.json();
+    const body = await req.json();
+    const { messages, currentStep, profile } = body;
+
+    if (!messages || !Array.isArray(messages) || typeof currentStep !== 'number') {
+      return NextResponse.json(
+        { error: 'Invalid request format' },
+        { status: 400 }
+      );
+    }
 
     // Get the last user message
     const lastMessage = messages[messages.length - 1] as OnboardingMessage;
     if (!lastMessage || lastMessage.role !== 'user') {
-      throw new Error('Invalid message format');
+      return NextResponse.json(
+        { error: 'Invalid message format' },
+        { status: 400 }
+      );
     }
 
-    // Define step-specific prompts and information extraction
-    const stepPrompts = [
-      {
-        context: "You are helping set up a nonprofit organization's profile. Extract the organization's name and respond warmly.",
-        extraction: ['name'],
-      },
-      {
-        context: "Ask about the organization's mission, sector, and any specific areas of focus.",
-        extraction: ['mission', 'sector'],
-      },
-      {
-        context: "Discuss the organization's goals and objectives. Extract specific, measurable goals.",
-        extraction: ['goals'],
-      },
-      {
-        context: "Learn about their team size and structure. Extract team size and any key roles mentioned.",
-        extraction: ['teamSize'],
-      },
-      {
-        context: "Gather contact information including location and website. Extract these details.",
-        extraction: ['location', 'website'],
-      },
-    ];
-
-    // Prepare the conversation for OpenAI
-    const conversation: ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: `${stepPrompts[currentStep].context} Be conversational and helpful. Extract information naturally from the user's responses.`,
-      },
-      ...messages.map((msg: OnboardingMessage) => ({
-        role: msg.role === 'assistant' ? 'assistant' : 'user',
-        content: msg.content,
-      })),
+    // Convert messages to Langchain format
+    const conversationMessages = [
+      new SystemMessage({
+        content: `${stepPrompts[currentStep].context} Be conversational and helpful. Extract information naturally from the user's responses.`
+      }),
+      ...messages.map((msg: OnboardingMessage) => 
+        msg.role === 'assistant' 
+          ? new AIMessage({ content: msg.content })
+          : new HumanMessage({ content: msg.content })
+      )
     ];
 
     // Get AI response
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: conversation,
-      temperature: 0.7,
-      max_tokens: 500,
-    });
+    const response = await model.invoke(conversationMessages);
+    const aiMessage = response.content;
 
-    const aiMessage = completion.choices[0].message.content;
     if (!aiMessage) {
       throw new Error('No response from AI');
     }
 
     // Extract information based on the current step
-    const extractionPrompt: ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: `Extract the following information from the user's message: ${stepPrompts[currentStep].extraction.join(', ')}. Return as JSON.`,
-      },
-      {
-        role: 'user',
-        content: lastMessage.content,
-      },
+    const extractionMessages = [
+      new SystemMessage({
+        content: `Extract the following information from the user's message: ${stepPrompts[currentStep].extraction.join(', ')}. Return ONLY a valid JSON object with these fields. Do not include any other text or explanation.`
+      }),
+      new HumanMessage({ content: lastMessage.content })
     ];
 
-    const extraction = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: extractionPrompt,
-      temperature: 0,
-      max_tokens: 200,
-    });
-
+    const extraction = await model.invoke(extractionMessages);
+    
     let profileUpdates: ProfileUpdates = {};
     try {
-      const extractedData = JSON.parse(extraction.choices[0].message.content || '{}');
-      profileUpdates = extractedData;
+      // Find the JSON object in the response
+      const extractionContent = extraction.content.toString();
+      const jsonMatch = extractionContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        profileUpdates = JSON.parse(jsonMatch[0]);
+      } else {
+        console.warn('No JSON found in extraction response:', extractionContent);
+      }
     } catch (err) {
       console.error('Error parsing extracted data:', err);
+      console.log('Raw extraction response:', extraction.content);
     }
 
     // Determine if the step is complete based on required information
     const stepComplete = stepPrompts[currentStep].extraction.every(
-      field => profileUpdates[field] !== undefined || profile[field] !== undefined
+      field => profileUpdates[field] !== undefined || profile?.[field] !== undefined
     );
 
     return NextResponse.json({
