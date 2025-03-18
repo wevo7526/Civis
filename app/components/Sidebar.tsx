@@ -41,10 +41,10 @@ const navigation = [
   {
     name: 'Automation',
     items: [
-      { name: 'Automation Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
-      { name: 'Donor Communications', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
-      { name: 'Grant Reminders', href: '/dashboard/automation/grant-reminders', icon: BellIcon },
-      { name: 'Impact Reports', href: '/dashboard/automation/impact-reports', icon: DocumentTextIcon },
+      { name: 'Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
+      { name: 'Donors', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
+      { name: 'Grants', href: '/dashboard/automation/grant-reminders', icon: BellIcon },
+      { name: 'Impact', href: '/dashboard/automation/impact-reports', icon: DocumentTextIcon },
     ],
   },
 ];
