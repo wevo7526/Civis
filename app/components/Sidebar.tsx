@@ -133,7 +133,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-gray-200 p-4">
+      <div className="mt-auto p-4">
         <div className="flex items-center space-x-3 mb-4">
           <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
             <span className="text-sm font-medium text-blue-700">
@@ -148,6 +148,16 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+        <Link
+          href="/dashboard/profile"
+          className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 mb-2 ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
+          title={isCollapsed ? 'Profile' : undefined}
+        >
+          <UserCircleIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
+          {!isCollapsed && <span className="ml-3">Profile</span>}
+        </Link>
         <button
           onClick={handleSignOut}
           className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 ${

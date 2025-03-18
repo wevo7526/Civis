@@ -4,24 +4,27 @@ export interface Profile {
   id: string;
   created_at: string;
   updated_at: string;
-  full_name: string;
-  bio: string;
-  interests: string[];
-  skills: string[];
-  goals: string[];
+  full_name: string | null;
+  bio: string | null;
+  interests: string[] | null;
+  skills: string[] | null;
+  goals: string[] | null;
   avatar_url: string | null;
   onboarding_completed: boolean;
   onboarding_step: number;
-  role: string;
-  location: string;
+  role: string | null;
+  location: string | null;
   linkedin_url: string | null;
   github_url: string | null;
   website_url: string | null;
-  preferred_communication: string;
-  availability: string;
-  timezone: string;
+  preferred_communication: string | null;
+  availability: string | null;
+  timezone: string | null;
   last_active: string;
+  email: string | null;
 }
+
+export interface ProfileFormData extends Omit<Profile, 'id' | 'created_at' | 'updated_at' | 'last_active'> {}
 
 export const createProfileService = (supabase: SupabaseClient) => {
   const getProfile = async (userId: string): Promise<Profile | null> => {
