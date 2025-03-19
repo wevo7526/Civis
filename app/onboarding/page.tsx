@@ -86,18 +86,14 @@ export default function Onboarding() {
       if (user) {
         // Update profile with onboarding completed
         const { error: updateError } = await supabase
-          .from('profiles')
+          .from('organization_profiles')
           .update({ 
             onboarding_completed: true,
             onboarding_step: onboardingSteps.length,
-            full_name: profile.name || 'My Organization',
-            bio: profile.mission || 'Welcome to our organization!',
-            goals: profile.goals || ['Get started with our mission'],
-            role: 'Admin',
+            organization_name: profile.name || 'My Organization',
+            mission_statement: profile.mission || 'Welcome to our organization!',
+            organization_size: profile.teamSize || 'Not specified',
             location: profile.location || 'Not specified',
-            timezone: 'UTC',
-            availability: 'Flexible',
-            preferred_communication: 'Email',
             website_url: profile.website,
           })
           .eq('id', user.id);
@@ -182,17 +178,15 @@ export default function Onboarding() {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             await supabase
-              .from('profiles')
+              .from('organization_profiles')
               .update({
                 onboarding_completed: true,
-                full_name: profile.name,
-                bio: profile.mission,
-                goals: profile.goals,
+                organization_name: profile.name,
+                mission_statement: profile.mission,
+                organization_size: profile.teamSize,
                 location: profile.location,
                 website_url: profile.website,
-                role: 'Admin',
-                sector: profile.sector,
-                team_size: profile.teamSize,
+                organization_type: profile.sector,
               })
               .eq('id', user.id);
           }

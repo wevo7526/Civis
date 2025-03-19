@@ -10,21 +10,20 @@ interface Reminder {
   description: string;
   due_date: string;
   priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'completed' | 'cancelled';
-  category: 'grant' | 'donor' | 'report' | 'task' | 'general';
-  related_id?: string;
-  related_type?: string;
+  status: 'pending' | 'completed' | 'overdue';
+  category: 'task' | 'workflow' | 'notification';
   notification_sent: boolean;
-  reminder_frequency: 'once' | 'daily' | 'weekly' | 'monthly';
-  reminder_count: number;
-  max_reminders: number;
+  reminder_frequency?: 'once' | 'daily' | 'weekly' | 'monthly';
+  reminder_count?: number;
+  max_reminders?: number;
+  workflow_id?: string;
 }
 
 interface RemindersContextType {
   reminders: Reminder[];
   loading: boolean;
-  error: string | null;
-  createReminder: (reminder: Omit<Reminder, 'id' | 'user_id'>) => Promise<void>;
+  error: Error | null;
+  createReminder: (reminder: Omit<Reminder, 'id'>) => Promise<void>;
   updateReminder: (id: string, updates: Partial<Reminder>) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
   markAsCompleted: (id: string) => Promise<void>;
@@ -37,13 +36,12 @@ const RemindersContext = createContext<RemindersContextType | undefined>(undefin
 export function RemindersProvider({ children }: { children: React.ReactNode }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
 
   const fetchReminders = async () => {
     try {
-      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -55,9 +53,8 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
       setReminders(data || []);
-    } catch (error) {
-      console.error('Error fetching reminders:', error);
-      setError('Failed to fetch reminders');
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch reminders'));
     } finally {
       setLoading(false);
     }
@@ -101,22 +98,25 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const createReminder = async (reminder: Omit<Reminder, 'id' | 'user_id'>) => {
+  const createReminder = async (reminder: Omit<Reminder, 'id'>) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      if (!user) return;
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('reminders')
         .insert({
           ...reminder,
           user_id: user.id,
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
-    } catch (error) {
-      console.error('Error creating reminder:', error);
-      throw error;
+
+      setReminders(prev => [...prev, data]);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to create reminder'));
     }
   };
 
@@ -149,11 +149,28 @@ export function RemindersProvider({ children }: { children: React.ReactNode }) {
   };
 
   const markAsCompleted = async (id: string) => {
-    await updateReminder(id, { status: 'completed' });
+    try {
+      const { error } = await supabase
+        .from('reminders')
+        .update({ status: 'completed' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setReminders(prev =>
+        prev.map(reminder =>
+          reminder.id === id
+            ? { ...reminder, status: 'completed' }
+            : reminder
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to update reminder'));
+    }
   };
 
   const markAsCancelled = async (id: string) => {
-    await updateReminder(id, { status: 'cancelled' });
+    await updateReminder(id, { status: 'overdue' });
   };
 
   const value = {

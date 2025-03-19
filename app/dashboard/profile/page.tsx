@@ -9,7 +9,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, Users2, Globe, Mail, Phone, MapPin, Target, Briefcase, Heart } from 'lucide-react';
+import { 
+  Building2, 
+  Target, 
+  Mail, 
+  Heart, 
+  Globe, 
+  Phone, 
+  MapPin, 
+  Users2, 
+  Calendar,
+  DollarSign,
+  FileText,
+  Shield
+} from 'lucide-react';
 
 interface Profile {
   id: string;
@@ -160,17 +173,19 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Organization Profile</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Manage your organization's information and preferences
-        </p>
+    <div className="p-6 space-y-6">
+      {/* Header Section */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Organization Profile</h1>
+          <p className="text-gray-500">Manage your organization's information and preferences</p>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
+        {/* Organization Details Card */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b-0">
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-gray-500" />
               Organization Details
@@ -185,7 +200,7 @@ export default function ProfilePage() {
                   value={formData.organization_name || ''}
                   onChange={(e) => handleInputChange('organization_name', e.target.value)}
                   placeholder="Organization name"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -194,10 +209,10 @@ export default function ProfilePage() {
                   value={formData.organization_type || ''}
                   onValueChange={(value) => handleInputChange('organization_type', value)}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white border-gray-200">
                     <SelectValue placeholder="Select organization type" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="501c3">501(c)(3)</SelectItem>
                     <SelectItem value="501c4">501(c)(4)</SelectItem>
                     <SelectItem value="foundation">Foundation</SelectItem>
@@ -215,7 +230,7 @@ export default function ProfilePage() {
                 value={formData.mission_statement || ''}
                 onChange={(e) => handleInputChange('mission_statement', e.target.value)}
                 placeholder="Describe your organization's mission"
-                className="bg-white min-h-[100px]"
+                className="bg-white min-h-[100px] border-gray-200 focus:border-gray-300"
               />
             </div>
 
@@ -227,7 +242,7 @@ export default function ProfilePage() {
                   value={formData.tax_id || ''}
                   onChange={(e) => handleInputChange('tax_id', e.target.value)}
                   placeholder="XX-XXXXXXX"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -238,7 +253,7 @@ export default function ProfilePage() {
                   value={formData.founding_year || ''}
                   onChange={(e) => handleInputChange('founding_year', parseInt(e.target.value))}
                   placeholder="YYYY"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -247,10 +262,10 @@ export default function ProfilePage() {
                   value={formData.organization_size || ''}
                   onValueChange={(value) => handleInputChange('organization_size', value)}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white border-gray-200">
                     <SelectValue placeholder="Select size" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="1-10">1-10 employees</SelectItem>
                     <SelectItem value="11-50">11-50 employees</SelectItem>
                     <SelectItem value="51-200">51-200 employees</SelectItem>
@@ -263,8 +278,9 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        {/* Impact & Programs Card */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b-0">
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-gray-500" />
               Impact & Programs
@@ -278,10 +294,10 @@ export default function ProfilePage() {
                   value={formData.primary_cause || ''}
                   onValueChange={(value) => handleInputChange('primary_cause', value)}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white border-gray-200">
                     <SelectValue placeholder="Select primary cause" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="education">Education</SelectItem>
                     <SelectItem value="health">Health</SelectItem>
                     <SelectItem value="environment">Environment</SelectItem>
@@ -298,10 +314,10 @@ export default function ProfilePage() {
                   value={formData.annual_budget || ''}
                   onValueChange={(value) => handleInputChange('annual_budget', value)}
                 >
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white border-gray-200">
                     <SelectValue placeholder="Select budget range" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="0-100k">$0 - $100,000</SelectItem>
                     <SelectItem value="100k-500k">$100,000 - $500,000</SelectItem>
                     <SelectItem value="500k-1m">$500,000 - $1 million</SelectItem>
@@ -319,7 +335,7 @@ export default function ProfilePage() {
                 value={formData.impact_areas?.join(', ') || ''}
                 onChange={(e) => handleArrayInputChange('impact_areas', e.target.value)}
                 placeholder="Education, Healthcare, Environmental Conservation"
-                className="bg-white"
+                className="bg-white border-gray-200 focus:border-gray-300"
               />
               <p className="text-sm text-gray-500">Separate areas with commas</p>
             </div>
@@ -331,7 +347,7 @@ export default function ProfilePage() {
                 value={formData.target_beneficiaries?.join(', ') || ''}
                 onChange={(e) => handleArrayInputChange('target_beneficiaries', e.target.value)}
                 placeholder="Youth, Elderly, Veterans"
-                className="bg-white"
+                className="bg-white border-gray-200 focus:border-gray-300"
               />
               <p className="text-sm text-gray-500">Separate beneficiary groups with commas</p>
             </div>
@@ -343,15 +359,16 @@ export default function ProfilePage() {
                 value={formData.programs?.join('\n') || ''}
                 onChange={(e) => handleArrayInputChange('programs', e.target.value.replace(/\n/g, ','))}
                 placeholder="List your key programs or initiatives"
-                className="bg-white min-h-[100px]"
+                className="bg-white min-h-[100px] border-gray-200 focus:border-gray-300"
               />
               <p className="text-sm text-gray-500">Enter each program on a new line</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        {/* Contact Information Card */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b-0">
             <CardTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-gray-500" />
               Contact Information
@@ -366,7 +383,7 @@ export default function ProfilePage() {
                   value={formData.contact_name || ''}
                   onChange={(e) => handleInputChange('contact_name', e.target.value)}
                   placeholder="Full name"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -376,7 +393,7 @@ export default function ProfilePage() {
                   value={formData.contact_title || ''}
                   onChange={(e) => handleInputChange('contact_title', e.target.value)}
                   placeholder="Job title"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
             </div>
@@ -390,7 +407,7 @@ export default function ProfilePage() {
                   value={formData.email || ''}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   placeholder="contact@organization.org"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -400,7 +417,7 @@ export default function ProfilePage() {
                   value={formData.phone || ''}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   placeholder="(XXX) XXX-XXXX"
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
             </div>
@@ -412,18 +429,18 @@ export default function ProfilePage() {
                 value={formData.address || ''}
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="Street address"
-                className="bg-white"
+                className="bg-white border-gray-200 focus:border-gray-300"
               />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="city">City</Label>
                 <Input
                   id="city"
                   value={formData.city || ''}
                   onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -432,7 +449,7 @@ export default function ProfilePage() {
                   id="state"
                   value={formData.state || ''}
                   onChange={(e) => handleInputChange('state', e.target.value)}
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -441,7 +458,7 @@ export default function ProfilePage() {
                   id="postal_code"
                   value={formData.postal_code || ''}
                   onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
               <div className="space-y-2">
@@ -450,7 +467,7 @@ export default function ProfilePage() {
                   id="country"
                   value={formData.country || ''}
                   onChange={(e) => handleInputChange('country', e.target.value)}
-                  className="bg-white"
+                  className="bg-white border-gray-200 focus:border-gray-300"
                 />
               </div>
             </div>
@@ -463,14 +480,15 @@ export default function ProfilePage() {
                 value={formData.website_url || ''}
                 onChange={(e) => handleInputChange('website_url', e.target.value)}
                 placeholder="https://www.organization.org"
-                className="bg-white"
+                className="bg-white border-gray-200 focus:border-gray-300"
               />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        {/* Engagement & Partnerships Card */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="border-b-0">
             <CardTitle className="flex items-center gap-2">
               <Heart className="h-5 w-5 text-gray-500" />
               Engagement & Partnerships
@@ -484,7 +502,7 @@ export default function ProfilePage() {
                 value={formData.volunteer_needs?.join('\n') || ''}
                 onChange={(e) => handleArrayInputChange('volunteer_needs', e.target.value.replace(/\n/g, ','))}
                 placeholder="List current volunteer needs"
-                className="bg-white min-h-[100px]"
+                className="bg-white min-h-[100px] border-gray-200 focus:border-gray-300"
               />
               <p className="text-sm text-gray-500">Enter each opportunity on a new line</p>
             </div>
@@ -496,50 +514,48 @@ export default function ProfilePage() {
                 value={formData.funding_sources?.join(', ') || ''}
                 onChange={(e) => handleArrayInputChange('funding_sources', e.target.value)}
                 placeholder="Grants, Individual Donors, Corporate Sponsors"
-                className="bg-white"
+                className="bg-white border-gray-200 focus:border-gray-300"
               />
               <p className="text-sm text-gray-500">Separate sources with commas</p>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Open to Partnerships</Label>
-                <div className="flex space-x-4">
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      checked={formData.partnerships_desired === true}
-                      onChange={() => handleInputChange('partnerships_desired', true)}
-                      className="form-radio text-primary"
-                    />
-                    <span>Yes</span>
-                  </label>
-                  <label className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      checked={formData.partnerships_desired === false}
-                      onChange={() => handleInputChange('partnerships_desired', false)}
-                      className="form-radio text-primary"
-                    />
-                    <span>No</span>
-                  </label>
-                </div>
-              </div>
-
-              {formData.partnerships_desired && (
-                <div className="space-y-2">
-                  <Label htmlFor="partnership_interests">Partnership Interests</Label>
-                  <Input
-                    id="partnership_interests"
-                    value={formData.partnership_interests?.join(', ') || ''}
-                    onChange={(e) => handleArrayInputChange('partnership_interests', e.target.value)}
-                    placeholder="Program Collaboration, Resource Sharing, Joint Fundraising"
-                    className="bg-white"
+            <div className="space-y-2">
+              <Label>Open to Partnerships</Label>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    checked={formData.partnerships_desired === true}
+                    onChange={() => handleInputChange('partnerships_desired', true)}
+                    className="form-radio text-primary"
                   />
-                  <p className="text-sm text-gray-500">Separate interests with commas</p>
-                </div>
-              )}
+                  <span>Yes</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    checked={formData.partnerships_desired === false}
+                    onChange={() => handleInputChange('partnerships_desired', false)}
+                    className="form-radio text-primary"
+                  />
+                  <span>No</span>
+                </label>
+              </div>
             </div>
+
+            {formData.partnerships_desired && (
+              <div className="space-y-2">
+                <Label htmlFor="partnership_interests">Partnership Interests</Label>
+                <Input
+                  id="partnership_interests"
+                  value={formData.partnership_interests?.join(', ') || ''}
+                  onChange={(e) => handleArrayInputChange('partnership_interests', e.target.value)}
+                  placeholder="Program Collaboration, Resource Sharing, Joint Fundraising"
+                  className="bg-white border-gray-200 focus:border-gray-300"
+                />
+                <p className="text-sm text-gray-500">Separate interests with commas</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

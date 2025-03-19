@@ -7,6 +7,7 @@ import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
+import { useReminders } from '../Reminders/RemindersProvider';
 
 interface WorkflowConfig {
   name: string;
@@ -15,6 +16,13 @@ interface WorkflowConfig {
   template: string;
   metrics: string[];
   recipients: string[];
+  notifications: {
+    type: 'email' | 'in-app' | 'both';
+    priority: 'low' | 'medium' | 'high';
+    reminder_frequency: 'once' | 'daily' | 'weekly' | 'monthly';
+    reminder_count: number;
+    max_reminders: number;
+  };
 }
 
 interface WorkflowConfigModalProps {
@@ -41,6 +49,18 @@ const SCHEDULE_OPTIONS = [
   { value: 'quarterly', label: 'Quarterly' },
 ];
 
+const NOTIFICATION_TYPES = [
+  { value: 'email', label: 'Email Only' },
+  { value: 'in-app', label: 'In-App Only' },
+  { value: 'both', label: 'Email & In-App' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
 export function WorkflowConfigModal({
   isOpen,
   onClose,
@@ -48,6 +68,7 @@ export function WorkflowConfigModal({
   workflowType,
   initialConfig,
 }: WorkflowConfigModalProps) {
+  const { createReminder } = useReminders();
   const [config, setConfig] = useState<WorkflowConfig>({
     name: initialConfig?.name || '',
     description: initialConfig?.description || '',
@@ -55,6 +76,13 @@ export function WorkflowConfigModal({
     template: initialConfig?.template || '',
     metrics: initialConfig?.metrics || [],
     recipients: initialConfig?.recipients || [],
+    notifications: initialConfig?.notifications || {
+      type: 'both',
+      priority: 'medium',
+      reminder_frequency: 'daily',
+      reminder_count: 0,
+      max_reminders: 3,
+    },
   });
 
   const [loading, setLoading] = useState(false);
@@ -64,6 +92,22 @@ export function WorkflowConfigModal({
     setLoading(true);
 
     try {
+      // Create a reminder for the workflow
+      if (config.notifications.type !== 'email') {
+        await createReminder({
+          title: config.name,
+          description: config.description,
+          due_date: new Date().toISOString(), // Will be updated by the workflow engine
+          priority: config.notifications.priority,
+          status: 'pending',
+          category: 'task',
+          notification_sent: false,
+          reminder_frequency: config.notifications.reminder_frequency,
+          reminder_count: config.notifications.reminder_count,
+          max_reminders: config.notifications.max_reminders,
+        });
+      }
+
       await onSave({
         type: workflowType,
         ...config,
@@ -122,45 +166,115 @@ export function WorkflowConfigModal({
         </div>
 
         <div className="space-y-2">
-          <Label>Metrics to Include</Label>
-          <div className="space-y-2">
-            {METRICS_OPTIONS.map((metric) => (
-              <div key={metric.value} className="flex items-center space-x-2">
-                <Checkbox
-                  id={metric.value}
-                  checked={config.metrics.includes(metric.value)}
-                  onCheckedChange={(checked: boolean) => {
+          <Label>Notifications</Label>
+          <div className="space-y-4">
+            <Select
+              value={config.notifications.type}
+              onValueChange={(value: 'email' | 'in-app' | 'both') => 
+                setConfig({
+                  ...config,
+                  notifications: { ...config.notifications, type: value }
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select notification type" />
+              </SelectTrigger>
+              <SelectContent>
+                {NOTIFICATION_TYPES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={config.notifications.priority}
+              onValueChange={(value: 'low' | 'medium' | 'high') =>
+                setConfig({
+                  ...config,
+                  notifications: { ...config.notifications, priority: value }
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {config.notifications.type !== 'email' && (
+              <div className="space-y-2">
+                <Label>Reminder Settings</Label>
+                <Select
+                  value={config.notifications.reminder_frequency}
+                  onValueChange={(value: 'once' | 'daily' | 'weekly' | 'monthly') =>
                     setConfig({
                       ...config,
-                      metrics: checked
-                        ? [...config.metrics, metric.value]
-                        : config.metrics.filter((m: string) => m !== metric.value),
-                    });
-                  }}
-                />
-                <Label htmlFor={metric.value}>{metric.label}</Label>
+                      notifications: { ...config.notifications, reminder_frequency: value }
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select reminder frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="once">Once</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center space-x-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={config.notifications.max_reminders}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        notifications: {
+                          ...config.notifications,
+                          max_reminders: parseInt(e.target.value)
+                        }
+                      })
+                    }
+                    className="w-24"
+                  />
+                  <span className="text-sm text-gray-500">Maximum reminders</span>
+                </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="template">Message Template</Label>
+          <Label htmlFor="template">Template</Label>
           <Textarea
             id="template"
             value={config.template}
             onChange={(e) => setConfig({ ...config, template: e.target.value })}
             placeholder="Enter message template"
-            className="h-32"
-            required
+            rows={4}
           />
-          <p className="text-sm text-gray-500">
-            Use {'${metric_name}'} to include metrics in your template
-          </p>
         </div>
 
-        <div className="flex justify-end space-x-4">
-          <Button type="button" variant="outline" onClick={onClose}>
+        <div className="flex justify-end space-x-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>

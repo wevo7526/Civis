@@ -33,7 +33,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 interface DashboardMetrics {
   totalDonors: number;
   totalRevenue: number;
-  activeProjects: number;
+  averageDonation: number;
   upcomingEvents: number;
   donorRetentionRate: number;
 }
@@ -83,29 +83,42 @@ export default function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Get the last 6 months
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 6);
+
       const { data: donors, error } = await supabase
         .from('donors')
         .select('created_at, amount')
         .eq('user_id', user.id)
+        .gte('created_at', startDate.toISOString())
+        .lte('created_at', endDate.toISOString())
         .order('created_at', { ascending: true });
 
       if (error) throw error;
 
-      // Group donations by month
-      const monthlyData = donors.reduce((acc: any[], donor) => {
+      // Generate last 6 months array
+      const months = Array.from({ length: 6 }, (_, i) => {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        return {
+          month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+          revenue: 0
+        };
+      }).reverse();
+
+      // Fill in actual revenue data
+      donors?.forEach(donor => {
         const date = new Date(donor.created_at);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        
-        const existingMonth = acc.find(item => item.month === monthKey);
-        if (existingMonth) {
-          existingMonth.revenue += donor.amount;
-        } else {
-          acc.push({ month: monthKey, revenue: donor.amount });
+        const monthData = months.find(m => m.month === monthKey);
+        if (monthData) {
+          monthData.revenue += Number(donor.amount) || 0;
         }
-        return acc;
-      }, []);
+      });
 
-      setRevenueData(monthlyData);
+      setRevenueData(months);
     } catch (error) {
       console.error('Error fetching revenue data:', error);
     }
@@ -122,55 +135,52 @@ export default function Dashboard() {
         throw new Error('No authenticated user found');
       }
 
-      // Fetch donors
+      // Fetch donors with created_at for growth rate calculation
       const { data: donors, error: donorsError } = await supabase
         .from('donors')
         .select('*')
-        .eq('user_id', user.id);
-      
-      if (donorsError) {
-        console.error('Donors fetch error:', donorsError);
-        throw new Error(`Failed to fetch donors: ${donorsError.message}`);
-      }
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
 
-      // Fetch projects
-      const { data: projects, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', user.id);
-      
-      if (projectsError) {
-        console.error('Projects fetch error:', projectsError);
-        throw new Error(`Failed to fetch projects: ${projectsError.message}`);
-      }
+      if (donorsError) throw donorsError;
 
-      // Fetch events
-      const { data: events, error: eventsError } = await supabase
-        .from('events')
-        .select('*')
-        .eq('user_id', user.id);
-      
-      if (eventsError) {
-        console.error('Events fetch error:', eventsError);
-        throw new Error(`Failed to fetch events: ${eventsError.message}`);
-      }
+      const donorsList = donors || [];
+      const events = (await supabase.from('events').select('*').eq('user_id', user.id)).data || [];
 
-      // Calculate metrics with null checks
-      const totalRevenue = (donors || []).reduce((sum, donor) => sum + (Number(donor.amount) || 0), 0);
-      const activeProjects = (projects || []).filter(p => p.status === 'active').length;
-      const upcomingEvents = (events || []).filter(e => new Date(e.date) > new Date()).length;
+      // Calculate metrics with null checks and proper type handling
+      const totalRevenue = donorsList.reduce((sum, donor) => {
+        const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+
+      // Calculate average donation
+      const validDonations = donorsList.filter(donor => {
+        const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+        return !isNaN(amount) && amount > 0;
+      });
+      const averageDonation = validDonations.length > 0
+        ? validDonations.reduce((sum, donor) => {
+            const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+            return sum + amount;
+          }, 0) / validDonations.length
+        : 0;
+
+      const upcomingEvents = events.filter(e => {
+        const eventDate = new Date(e.date);
+        return eventDate > new Date();
+      }).length;
 
       // Calculate donor retention with null checks
-      const returningDonors = (donors || []).filter(donor => {
-        const donations = (donors || []).filter(d => d.email === donor.email);
+      const returningDonors = donorsList.filter(donor => {
+        const donations = donorsList.filter(d => d.email === donor.email);
         return donations.length > 1;
       });
-      const donorRetentionRate = (donors || []).length > 0 ? (returningDonors.length / (donors || []).length) * 100 : 0;
+      const donorRetentionRate = donorsList.length > 0 ? (returningDonors.length / donorsList.length) * 100 : 0;
 
       setMetrics({
-        totalDonors: (donors || []).length,
+        totalDonors: donorsList.length,
         totalRevenue,
-        activeProjects,
+        averageDonation,
         upcomingEvents,
         donorRetentionRate
       });
@@ -256,7 +266,7 @@ export default function Dashboard() {
           <Link
             key={action.name}
             href={action.href}
-            className="group relative bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
+            className="group relative bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow border-0"
           >
             <div className="flex items-center space-x-4">
               <div className={`h-12 w-12 rounded-lg ${action.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
@@ -273,17 +283,20 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* Separator */}
+      <div className="border-t border-gray-200 my-6"></div>
+
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column - Metrics and Chart */}
         <div className="lg:col-span-8 space-y-6">
           {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-0 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="bg-white border-0 shadow-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-4">
-                  <div className="h-12 w-12 rounded-lg bg-purple-50 flex items-center justify-center">
-                    <UserGroupIcon className="h-6 w-6 text-purple-600" />
+                  <div className="h-14 w-14 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                    <UserGroupIcon className="h-7 w-7 text-purple-600" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Total Donors</p>
@@ -293,11 +306,11 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-0 shadow-sm">
+            <Card className="bg-white border-0 shadow-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-4">
-                  <div className="h-12 w-12 rounded-lg bg-green-50 flex items-center justify-center">
-                    <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
+                  <div className="h-14 w-14 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                    <CurrencyDollarIcon className="h-7 w-7 text-green-600" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Total Revenue</p>
@@ -309,25 +322,27 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card className="border-0 shadow-sm">
+            <Card className="bg-white border-0 shadow-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-4">
-                  <div className="h-12 w-12 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <FolderIcon className="h-6 w-6 text-blue-600" />
+                  <div className="h-14 w-14 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <CurrencyDollarIcon className="h-7 w-7 text-blue-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500">Active Projects</p>
-                    <p className="text-2xl font-semibold text-gray-900">{metrics?.activeProjects || 0}</p>
+                    <p className="text-sm font-medium text-gray-500">Average Donation</p>
+                    <p className="text-2xl font-semibold text-gray-900">
+                      ${(metrics?.averageDonation ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-0 shadow-sm">
+            <Card className="bg-white border-0 shadow-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center space-x-4">
-                  <div className="h-12 w-12 rounded-lg bg-yellow-50 flex items-center justify-center">
-                    <CalendarIcon className="h-6 w-6 text-yellow-600" />
+                  <div className="h-14 w-14 rounded-lg bg-yellow-50 flex items-center justify-center flex-shrink-0">
+                    <CalendarIcon className="h-7 w-7 text-yellow-600" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Upcoming Events</p>
@@ -339,7 +354,7 @@ export default function Dashboard() {
           </div>
 
           {/* Revenue Chart */}
-          <Card className="border-0 shadow-sm">
+          <Card className="bg-white border-0 shadow-sm">
             <CardHeader className="border-b-0">
               <CardTitle>Revenue Overview</CardTitle>
             </CardHeader>
@@ -348,8 +363,21 @@ export default function Dashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={revenueData}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-gray-100" />
-                    <XAxis dataKey="month" className="text-sm text-gray-500" />
-                    <YAxis className="text-sm text-gray-500" />
+                    <XAxis 
+                      dataKey="month" 
+                      className="text-sm text-gray-500"
+                      tickFormatter={(value) => {
+                        const [year, month] = value.split('-');
+                        const date = new Date(parseInt(year), parseInt(month) - 1);
+                        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                      }}
+                      interval={0}
+                    />
+                    <YAxis 
+                      className="text-sm text-gray-500"
+                      tickFormatter={(value) => `$${value.toLocaleString()}`}
+                      width={80}
+                    />
                     <Tooltip 
                       contentStyle={{ 
                         backgroundColor: 'white', 
@@ -357,13 +385,20 @@ export default function Dashboard() {
                         borderRadius: '0.5rem',
                         boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)'
                       }}
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      labelFormatter={(label) => {
+                        const [year, month] = label.split('-');
+                        const date = new Date(parseInt(year), parseInt(month) - 1);
+                        return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      }}
                     />
                     <Line
                       type="monotone"
                       dataKey="revenue"
                       stroke="#8B5CF6"
                       strokeWidth={2}
-                      dot={{ fill: '#8B5CF6', strokeWidth: 2 }}
+                      dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -375,7 +410,7 @@ export default function Dashboard() {
         {/* Right Column - Recent Activity and Donor Retention */}
         <div className="lg:col-span-4 space-y-6">
           {/* Recent Activity */}
-          <Card className="border-0 shadow-sm">
+          <Card className="bg-white border-0 shadow-sm">
             <CardHeader className="border-b-0">
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
@@ -405,7 +440,7 @@ export default function Dashboard() {
           </Card>
 
           {/* Donor Retention */}
-          <Card className="border-0 shadow-sm">
+          <Card className="bg-white border-0 shadow-sm">
             <CardHeader className="border-b-0">
               <CardTitle>Donor Retention</CardTitle>
             </CardHeader>

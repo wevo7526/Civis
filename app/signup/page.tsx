@@ -34,9 +34,9 @@ export default function SignUp() {
 
       if (!user) throw new Error('No user returned from signup');
 
-      // Create a profile for the user
+      // Create an organization profile for the user
       const { error: profileError } = await supabase
-        .from('profiles')
+        .from('organization_profiles')
         .insert([
           {
             id: user.id,
