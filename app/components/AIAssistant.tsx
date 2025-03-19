@@ -37,6 +37,7 @@ export default function AIAssistant() {
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Handle client-side initialization
   useEffect(() => {
     setMounted(true);
     // Add initial welcome message
@@ -55,18 +56,22 @@ export default function AIAssistant() {
     ]);
   }, []);
 
+  // Update context when page changes
   useEffect(() => {
-    // Update context when page changes
-    setContext(prev => ({
-      ...prev,
-      currentPage: window.location.pathname,
-      timestamp: new Date().toISOString(),
-    }));
+    if (typeof window !== 'undefined') {
+      setContext(prev => ({
+        ...prev,
+        currentPage: window.location.pathname,
+        timestamp: new Date().toISOString(),
+      }));
+    }
   }, []);
 
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {

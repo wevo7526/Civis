@@ -6,6 +6,8 @@ interface WorkflowConfig {
   schedule: string;
   template: string;
   metrics?: string[];
+  recipients?: string[];
+  variables?: string[];
 }
 
 interface Workflow {
@@ -16,6 +18,11 @@ interface Workflow {
   config: WorkflowConfig;
   last_run?: string;
   next_run?: string;
+  stats?: {
+    totalRuns: number;
+    successRate: number;
+    lastError?: string;
+  };
 }
 
 export class WorkflowEngine {
@@ -23,6 +30,8 @@ export class WorkflowEngine {
   private supabase;
   private anthropic;
   private runningWorkflows: Map<string, NodeJS.Timeout>;
+  private maxRetries: number = 3;
+  private retryDelay: number = 5000; // 5 seconds
 
   private constructor() {
     this.supabase = createClient(
@@ -57,6 +66,7 @@ export class WorkflowEngine {
         await this.executeWorkflow(workflow);
       } catch (error) {
         console.error(`Error executing workflow ${workflow.id}:`, error);
+        await this.handleWorkflowError(workflow, error);
       }
     }, schedule);
 
@@ -69,6 +79,41 @@ export class WorkflowEngine {
       clearInterval(interval);
       this.runningWorkflows.delete(workflowId);
     }
+  }
+
+  public async getWorkflowData(workflow: Workflow): Promise<any> {
+    switch (workflow.type) {
+      case 'donor-communications':
+        return this.getDonorData();
+      case 'grant-reminders':
+        return this.getGrantData();
+      case 'impact-reports':
+        return this.getImpactData();
+      default:
+        return {};
+    }
+  }
+
+  public async generateContent(workflow: Workflow, data: any): Promise<string> {
+    const prompt = this.buildPrompt(workflow, data);
+    
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-opus-20240229',
+      max_tokens: 1000,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      system: 'You are an expert nonprofit communications assistant. Generate clear, professional content based on the provided data and template.',
+    });
+
+    if (!response.content[0] || response.content[0].type !== 'text') {
+      throw new Error('Invalid response from AI service');
+    }
+
+    return response.content[0].text;
   }
 
   private parseSchedule(schedule: string): number | null {
@@ -89,35 +134,193 @@ export class WorkflowEngine {
   }
 
   private async executeWorkflow(workflow: Workflow): Promise<void> {
+    let retries = 0;
+    while (retries < this.maxRetries) {
+      try {
+        // Get relevant data based on workflow type
+        const data = await this.getWorkflowData(workflow);
+        
+        // Generate content using AI
+        const content = await this.generateContent(workflow, data);
+        
+        // Send notifications/updates
+        await this.sendUpdates(workflow, content);
+        
+        // Update workflow status
+        await this.updateWorkflowStatus(workflow, true);
+        
+        // Update stats
+        await this.updateWorkflowStats(workflow, true);
+        
+        return;
+      } catch (error) {
+        retries++;
+        if (retries === this.maxRetries) {
+          await this.handleWorkflowError(workflow, error);
+          throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+      }
+    }
+  }
+
+  private async handleWorkflowError(workflow: Workflow, error: any): Promise<void> {
+    console.error(`Workflow ${workflow.id} failed:`, error);
+    
+    // Update workflow status
+    await this.updateWorkflowStatus(workflow, false);
+    
+    // Update stats with error
+    await this.updateWorkflowStats(workflow, false, error.message);
+    
+    // Notify admin
+    await this.notifyAdmin(workflow, error);
+  }
+
+  private async notifyAdmin(workflow: Workflow, error: any): Promise<void> {
     try {
-      // Get relevant data based on workflow type
-      const data = await this.getWorkflowData(workflow);
-      
-      // Generate content using AI
-      const content = await this.generateContent(workflow, data);
-      
-      // Send notifications/updates
-      await this.sendUpdates(workflow, content);
-      
-      // Update workflow status
-      await this.updateWorkflowStatus(workflow);
+      const { data: user } = await this.supabase
+        .from('users')
+        .select('email')
+        .eq('id', workflow.user_id)
+        .single();
+
+      if (user?.email) {
+        // Store the notification in the database
+        await this.supabase
+          .from('notifications')
+          .insert({
+            user_id: workflow.user_id,
+            type: 'workflow_error',
+            title: `Workflow Error: ${workflow.type}`,
+            content: `
+              <h2>Workflow Error</h2>
+              <p>The workflow "${workflow.type}" has encountered an error:</p>
+              <pre>${error.message}</pre>
+              <p>Please check the workflow configuration and try again.</p>
+            `,
+            read: false,
+          });
+
+        // Update user's email preferences to receive notifications
+        await this.supabase
+          .from('user_preferences')
+          .upsert({
+            user_id: workflow.user_id,
+            email_notifications: true,
+          });
+      }
+    } catch (notifyError) {
+      console.error('Error notifying admin:', notifyError);
+    }
+  }
+
+  private async sendUpdates(workflow: Workflow, content: string): Promise<void> {
+    if (!workflow.config.recipients?.length) {
+      console.warn(`No recipients configured for workflow ${workflow.id}`);
+      return;
+    }
+
+    try {
+      // Store notifications for each recipient
+      const notifications = workflow.config.recipients.map(recipient => ({
+        user_id: recipient,
+        type: workflow.type,
+        title: `Automated Update: ${workflow.type}`,
+        content: content,
+        read: false,
+      }));
+
+      await this.supabase
+        .from('notifications')
+        .insert(notifications);
+
+      // Update email preferences for recipients
+      const preferences = workflow.config.recipients.map(recipient => ({
+        user_id: recipient,
+        email_notifications: true,
+      }));
+
+      await this.supabase
+        .from('user_preferences')
+        .upsert(preferences);
+
+      // Log the notification
+      await this.supabase
+        .from('notification_logs')
+        .insert({
+          workflow_id: workflow.id,
+          type: workflow.type,
+          recipients: workflow.config.recipients,
+          content: content,
+          status: 'sent',
+        });
     } catch (error) {
-      console.error(`Error executing workflow ${workflow.id}:`, error);
+      console.error(`Error sending updates for workflow ${workflow.id}:`, error);
       throw error;
     }
   }
 
-  private async getWorkflowData(workflow: Workflow): Promise<any> {
-    switch (workflow.type) {
-      case 'donor-communications':
-        return this.getDonorData();
-      case 'grant-reminders':
-        return this.getGrantData();
-      case 'impact-reports':
-        return this.getImpactData();
-      default:
-        return {};
+  private async updateWorkflowStatus(workflow: Workflow, success: boolean): Promise<void> {
+    const now = new Date();
+    const nextRun = this.calculateNextRun(workflow.config.schedule, now);
+
+    await this.supabase
+      .from('automation_workflows')
+      .update({
+        last_run: now.toISOString(),
+        next_run: nextRun.toISOString(),
+        status: success ? 'active' : 'error',
+      })
+      .eq('id', workflow.id);
+  }
+
+  private async updateWorkflowStats(workflow: Workflow, success: boolean, error?: string): Promise<void> {
+    const stats = workflow.stats || {
+      totalRuns: 0,
+      successRate: 0,
+    };
+
+    const newStats = {
+      totalRuns: stats.totalRuns + 1,
+      successRate: ((stats.successRate * stats.totalRuns + (success ? 1 : 0)) / (stats.totalRuns + 1)) * 100,
+      lastError: error || stats.lastError,
+    };
+
+    await this.supabase
+      .from('automation_workflows')
+      .update({ stats: newStats })
+      .eq('id', workflow.id);
+  }
+
+  private buildPrompt(workflow: Workflow, data: any): string {
+    let prompt = workflow.config.template;
+    
+    // Replace variables in template
+    Object.entries(data).forEach(([key, value]) => {
+      prompt = prompt.replace(`\${${key}}`, String(value));
+    });
+
+    return prompt;
+  }
+
+  private calculateNextRun(schedule: string, from: Date): Date {
+    const next = new Date(from);
+    switch (schedule) {
+      case 'daily':
+        next.setDate(next.getDate() + 1);
+        break;
+      case 'weekly':
+        next.setDate(next.getDate() + 7);
+        break;
+      case 'monthly':
+        next.setMonth(next.getMonth() + 1);
+        break;
+      case 'quarterly':
+        next.setMonth(next.getMonth() + 3);
+        break;
     }
+    return next;
   }
 
   private async getDonorData(): Promise<any> {
@@ -166,76 +369,5 @@ export class WorkflowEngine {
       total_impact: metrics[0]?.total_impact || 0,
       program_outcomes: metrics[0]?.program_outcomes || [],
     };
-  }
-
-  private async generateContent(workflow: Workflow, data: any): Promise<string> {
-    const prompt = this.buildPrompt(workflow, data);
-    
-    const response = await this.anthropic.messages.create({
-      model: 'claude-3-opus-20240229',
-      max_tokens: 1000,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      system: 'You are an expert nonprofit communications assistant. Generate clear, professional content based on the provided data and template.',
-    });
-
-    if (!response.content[0] || response.content[0].type !== 'text') {
-      throw new Error('Invalid response from AI service');
-    }
-
-    return response.content[0].text;
-  }
-
-  private buildPrompt(workflow: Workflow, data: any): string {
-    let prompt = workflow.config.template;
-    
-    // Replace variables in template
-    Object.entries(data).forEach(([key, value]) => {
-      prompt = prompt.replace(`\${${key}}`, String(value));
-    });
-
-    return prompt;
-  }
-
-  private async sendUpdates(workflow: Workflow, content: string): Promise<void> {
-    // Implement notification sending logic here
-    // This could be email, SMS, or other channels
-    console.log(`Sending update for workflow ${workflow.id}:`, content);
-  }
-
-  private async updateWorkflowStatus(workflow: Workflow): Promise<void> {
-    const now = new Date();
-    const nextRun = this.calculateNextRun(workflow.config.schedule, now);
-
-    await this.supabase
-      .from('automation_workflows')
-      .update({
-        last_run: now.toISOString(),
-        next_run: nextRun.toISOString(),
-      })
-      .eq('id', workflow.id);
-  }
-
-  private calculateNextRun(schedule: string, from: Date): Date {
-    const next = new Date(from);
-    switch (schedule) {
-      case 'daily':
-        next.setDate(next.getDate() + 1);
-        break;
-      case 'weekly':
-        next.setDate(next.getDate() + 7);
-        break;
-      case 'monthly':
-        next.setMonth(next.getMonth() + 1);
-        break;
-      case 'quarterly':
-        next.setMonth(next.getMonth() + 3);
-        break;
-    }
-    return next;
   }
 } 

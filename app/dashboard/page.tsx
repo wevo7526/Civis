@@ -29,7 +29,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { UserCircle, Calendar, Megaphone, Cog, Bell, ChartBar } from 'lucide-react';
 
 interface DashboardMetrics {
   totalDonors: number;
@@ -242,7 +241,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="p-6 space-y-6">
+      {/* Header Section */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
@@ -251,246 +251,183 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div>
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {quickActions.map((action) => (
-            <Link
-              key={action.name}
-              href={action.href}
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center space-x-3">
-                <div className={`h-10 w-10 rounded-lg ${action.color} flex items-center justify-center`}>
-                  <action.icon className="h-5 w-5" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {quickActions.map((action) => (
+          <Link
+            key={action.name}
+            href={action.href}
+            className="group relative bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center space-x-4">
+              <div className={`h-12 w-12 rounded-lg ${action.color} flex items-center justify-center group-hover:scale-105 transition-transform`}>
+                <action.icon className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 group-hover:text-purple-600 transition-colors">
+                  {action.name}
+                </h3>
+                <p className="text-sm text-gray-500">{action.description}</p>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column - Metrics and Chart */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Key Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-4">
+                  <div className="h-12 w-12 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <UserGroupIcon className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Total Donors</p>
+                    <p className="text-2xl font-semibold text-gray-900">{metrics?.totalDonors || 0}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">{action.name}</h3>
-                  <p className="text-sm text-gray-500">{action.description}</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-4">
+                  <div className="h-12 w-12 rounded-lg bg-green-50 flex items-center justify-center">
+                    <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Total Revenue</p>
+                    <p className="text-2xl font-semibold text-gray-900">
+                      ${metrics?.totalRevenue?.toLocaleString() || 0}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-4">
+                  <div className="h-12 w-12 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <FolderIcon className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Active Projects</p>
+                    <p className="text-2xl font-semibold text-gray-900">{metrics?.activeProjects || 0}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-0 shadow-sm">
+              <CardContent className="pt-6">
+                <div className="flex items-center space-x-4">
+                  <div className="h-12 w-12 rounded-lg bg-yellow-50 flex items-center justify-center">
+                    <CalendarIcon className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Upcoming Events</p>
+                    <p className="text-2xl font-semibold text-gray-900">{metrics?.upcomingEvents || 0}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Revenue Chart */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="border-b-0">
+              <CardTitle>Revenue Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={revenueData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-gray-100" />
+                    <XAxis dataKey="month" className="text-sm text-gray-500" />
+                    <YAxis className="text-sm text-gray-500" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: 'none', 
+                        borderRadius: '0.5rem',
+                        boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)'
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#8B5CF6"
+                      strokeWidth={2}
+                      dot={{ fill: '#8B5CF6', strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column - Recent Activity and Donor Retention */}
+        <div className="lg:col-span-4 space-y-6">
+          {/* Recent Activity */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="border-b-0">
+              <CardTitle>Recent Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="flex items-start space-x-3">
+                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                      {activity.type === 'donation' && <HeartIcon className="h-4 w-4 text-purple-700" />}
+                      {activity.type === 'event' && <CalendarIcon className="h-4 w-4 text-purple-700" />}
+                      {activity.type === 'campaign' && <MegaphoneIcon className="h-4 w-4 text-purple-700" />}
+                      {activity.type === 'donor' && <UserIcon className="h-4 w-4 text-purple-700" />}
+                      {activity.type === 'project' && <FolderIcon className="h-4 w-4 text-purple-700" />}
+                      {activity.type === 'report' && <DocumentTextIcon className="h-4 w-4 text-purple-700" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{activity.title}</p>
+                      <p className="text-sm text-gray-500">{activity.description}</p>
+                      <p className="text-xs text-gray-400">
+                        {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Donor Retention */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="border-b-0">
+              <CardTitle>Donor Retention</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="h-8 w-8 rounded-full bg-green-50 flex items-center justify-center">
+                    <CheckCircleIcon className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {(metrics?.donorRetentionRate ?? 0).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-gray-500">Retention Rate</p>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500">
+                  {(metrics?.donorRetentionRate ?? 0) >= 70 ? 'Excellent' : (metrics?.donorRetentionRate ?? 0) >= 50 ? 'Good' : 'Needs Improvement'}
                 </div>
               </div>
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h2>
-        <div className="space-y-4">
-          {activities.map((activity) => (
-            <div key={activity.id} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-              <div className="flex-shrink-0">
-                {activity.type.startsWith('donor_') && (
-                  <UserCircle className="h-6 w-6 text-blue-500" />
-                )}
-                {activity.type.startsWith('event_') && (
-                  <Calendar className="h-6 w-6 text-green-500" />
-                )}
-                {activity.type.startsWith('campaign_') && (
-                  <Megaphone className="h-6 w-6 text-purple-500" />
-                )}
-                {activity.type.startsWith('workflow_') && (
-                  <Cog className="h-6 w-6 text-orange-500" />
-                )}
-                {activity.type.startsWith('document_') && (
-                  <DocumentIcon className="h-6 w-6 text-gray-500" />
-                )}
-                {activity.type === 'grant_reminder' && (
-                  <Bell className="h-6 w-6 text-yellow-500" />
-                )}
-                {activity.type === 'impact_report' && (
-                  <ChartBar className="h-6 w-6 text-red-500" />
-                )}
-              </div>
-              <div className="flex-1 space-y-1">
-                <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                <p className="text-sm text-gray-600">{activity.description}</p>
-                <p className="text-xs text-gray-500">
-                  {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-                </p>
-              </div>
-            </div>
-          ))}
-          {activities.length === 0 && (
-            <div className="text-center py-8">
-              <p className="text-sm text-gray-500">No recent activity</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Donors</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {metrics?.totalDonors || 0}
-              </p>
-              <div className="flex items-center mt-2">
-                <span className={`text-sm ${(metrics?.donorRetentionRate ?? 0) >= 50 ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {(metrics?.donorRetentionRate ?? 0).toFixed(1)}% retention
-                </span>
-                {(metrics?.donorRetentionRate ?? 0) >= 50 ? (
-                  <ArrowTrendingUpIcon className="h-4 w-4 text-green-600 ml-1" />
-                ) : (
-                  <ArrowTrendingDownIcon className="h-4 w-4 text-yellow-600 ml-1" />
-                )}
-              </div>
-            </div>
-            <div className="h-12 w-12 rounded-full bg-purple-50 flex items-center justify-center">
-              <UserGroupIcon className="h-6 w-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                ${metrics?.totalRevenue.toLocaleString() || 0}
-              </p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-gray-500">
-                  {metrics?.activeProjects || 0} active projects
-                </span>
-                <CheckCircleIcon className="h-4 w-4 text-green-600 ml-1" />
-              </div>
-            </div>
-            <div className="h-12 w-12 rounded-full bg-green-50 flex items-center justify-center">
-              <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Active Projects</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {metrics?.activeProjects || 0}
-              </p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-gray-500">
-                  {metrics?.upcomingEvents || 0} upcoming events
-                </span>
-                <CalendarIcon className="h-4 w-4 text-blue-600 ml-1" />
-              </div>
-            </div>
-            <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center">
-              <FolderIcon className="h-6 w-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Engagement Score</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">
-                {metrics?.donorRetentionRate.toFixed(1)}%
-              </p>
-              <div className="flex items-center mt-2">
-                <span className="text-sm text-gray-500">
-                  Last 30 days
-                </span>
-                <ClockIcon className="h-4 w-4 text-purple-600 ml-1" />
-              </div>
-            </div>
-            <div className="h-12 w-12 rounded-full bg-yellow-50 flex items-center justify-center">
-              <ChartBarIcon className="h-6 w-6 text-yellow-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions and AI Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">AI Insights</h2>
-          <div className="space-y-4">
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <div className="flex items-center mb-2">
-                <SparklesIcon className="h-5 w-5 text-purple-600 mr-2" />
-                <h3 className="text-sm font-medium text-purple-900">Grant Writing Tips</h3>
-              </div>
-              <p className="text-sm text-purple-700">
-                Consider highlighting your organization's impact metrics in your next grant proposal to increase funding chances.
-              </p>
-            </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="flex items-center mb-2">
-                <SparklesIcon className="h-5 w-5 text-green-600 mr-2" />
-                <h3 className="text-sm font-medium text-green-900">Donor Engagement</h3>
-              </div>
-              <p className="text-sm text-green-700">
-                Your donor retention rate suggests an opportunity to strengthen donor relationships through personalized communication.
-              </p>
-            </div>
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center mb-2">
-                <SparklesIcon className="h-5 w-5 text-blue-600 mr-2" />
-                <h3 className="text-sm font-medium text-blue-900">Project Impact</h3>
-              </div>
-              <p className="text-sm text-blue-700">
-                Your active projects are showing strong progress. Consider sharing these successes in your next donor update.
-              </p>
-            </div>
-            <div className="p-4 bg-yellow-50 rounded-lg">
-              <div className="flex items-center mb-2">
-                <SparklesIcon className="h-5 w-5 text-yellow-600 mr-2" />
-                <h3 className="text-sm font-medium text-yellow-900">Volunteer Management</h3>
-              </div>
-              <p className="text-sm text-yellow-700">
-                Your volunteer engagement is below target. Consider implementing a volunteer recognition program to boost participation.
-              </p>
-            </div>
-            <div className="p-4 bg-indigo-50 rounded-lg">
-              <div className="flex items-center mb-2">
-                <SparklesIcon className="h-5 w-5 text-indigo-600 mr-2" />
-                <h3 className="text-sm font-medium text-indigo-900">Event Planning</h3>
-              </div>
-              <p className="text-sm text-indigo-700">
-                Upcoming events need more promotion. Consider leveraging social media and email campaigns to increase attendance.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Revenue Overview</h2>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="month" 
-                  tickFormatter={(value: string) => {
-                    const [year, month] = value.split('-');
-                    return `${month}/${year.slice(2)}`;
-                  }}
-                />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
-                  labelFormatter={(label: string) => {
-                    const [year, month] = label.split('-');
-                    return `${month}/${year}`;
-                  }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#8B5CF6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#8B5CF6', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

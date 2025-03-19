@@ -5,8 +5,7 @@ import { WorkflowEngine } from '@/lib/workflowEngine';
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient({ cookies });
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -37,22 +36,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
     }
 
-    // Execute workflow
+    // Generate preview content
     const engine = WorkflowEngine.getInstance();
-    await engine.startWorkflow(workflow);
+    const data = await engine.getWorkflowData(workflow);
+    const content = await engine.generateContent(workflow, data);
 
     return NextResponse.json({ 
-      message: 'Workflow started successfully',
-      workflow: {
-        id: workflow.id,
-        type: workflow.type,
-        status: workflow.status,
-        last_run: workflow.last_run,
-        next_run: workflow.next_run,
-      }
+      preview: content,
+      data: data,
+      template: workflow.config.template
     });
   } catch (error) {
-    console.error('Error executing workflow:', error);
+    console.error('Error generating preview:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 
