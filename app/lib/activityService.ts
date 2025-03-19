@@ -1,14 +1,26 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 
+interface Activity {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  description: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 interface CreateActivityParams {
   type: string;
   title: string;
   description: string;
   user_id: string;
+  metadata?: Record<string, any>;
 }
 
 export const createActivityService = (supabase: SupabaseClient) => {
-  const createActivity = async (params: CreateActivityParams) => {
+  const createActivity = async (params: CreateActivityParams): Promise<Activity | null> => {
     try {
       const { data, error } = await supabase
         .from('activities')
@@ -91,34 +103,49 @@ export const createActivityService = (supabase: SupabaseClient) => {
 
   // Helper function to create workflow-related activities
   const createWorkflowActivity = async (user_id: string, action: 'started' | 'completed' | 'failed', workflowType: string) => {
-    return createActivity({
-      type: `workflow_${action}`,
-      title: `Workflow ${action}`,
-      description: `${workflowType} workflow ${action}`,
-      user_id,
-    });
+    try {
+      return await createActivity({
+        type: `workflow_${action}`,
+        title: `Workflow ${action}`,
+        description: `${workflowType} workflow ${action}`,
+        user_id,
+      });
+    } catch (error) {
+      console.error('Error creating workflow activity:', error);
+      return null;
+    }
   };
 
   // Helper function to create grant-related activities
   const createGrantActivity = async (user_id: string, action: 'reminder' | 'submitted' | 'approved' | 'rejected', grantTitle: string) => {
-    return createActivity({
-      type: action === 'reminder' ? 'grant_reminder' : `grant_${action}`,
-      title: action === 'reminder' ? 'Grant Deadline Reminder' : `Grant ${action}`,
-      description: action === 'reminder' 
-        ? `Reminder: Grant "${grantTitle}" deadline is approaching`
-        : `Grant "${grantTitle}" was ${action}`,
-      user_id,
-    });
+    try {
+      return await createActivity({
+        type: action === 'reminder' ? 'grant_reminder' : `grant_${action}`,
+        title: action === 'reminder' ? 'Grant Deadline Reminder' : `Grant ${action}`,
+        description: action === 'reminder' 
+          ? `Reminder: Grant "${grantTitle}" deadline is approaching`
+          : `Grant "${grantTitle}" was ${action}`,
+        user_id,
+      });
+    } catch (error) {
+      console.error('Error creating grant activity:', error);
+      return null;
+    }
   };
 
   // Helper function to create impact report activities
   const createImpactReportActivity = async (user_id: string, action: 'generated' | 'shared', reportTitle: string) => {
-    return createActivity({
-      type: 'impact_report',
-      title: `Impact Report ${action}`,
-      description: `Impact report "${reportTitle}" was ${action}`,
-      user_id,
-    });
+    try {
+      return await createActivity({
+        type: 'impact_report',
+        title: `Impact Report ${action}`,
+        description: `Impact report "${reportTitle}" was ${action}`,
+        user_id,
+      });
+    } catch (error) {
+      console.error('Error creating impact report activity:', error);
+      return null;
+    }
   };
 
   return {

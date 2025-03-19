@@ -6,6 +6,8 @@ import { Project } from '@/lib/projectService';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
 import { createActivityService } from '@/lib/activityService';
+import { useRouter } from 'next/navigation';
+import { CalendarIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -38,6 +40,7 @@ export default function Projects() {
   const [newRole, setNewRole] = useState('');
   const supabase = createClientComponentClient();
   const { createActivity } = createActivityService(supabase);
+  const router = useRouter();
 
   useEffect(() => {
     fetchProjects();
@@ -45,8 +48,18 @@ export default function Projects() {
 
   const fetchProjects = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      setLoading(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('Auth error:', userError);
+        throw new Error('Authentication error');
+      }
+      
+      if (!user) {
+        console.error('No user found');
+        throw new Error('No authenticated user found');
+      }
 
       const { data, error } = await supabase
         .from('projects')
@@ -54,10 +67,17 @@ export default function Projects() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error);
+        throw error;
+      }
+      
       setProjects(data || []);
     } catch (err) {
+      console.error('Error in fetchProjects:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -154,7 +174,7 @@ export default function Projects() {
         <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
           New Project
@@ -162,7 +182,7 @@ export default function Projects() {
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-md p-4">
           <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
@@ -171,47 +191,32 @@ export default function Projects() {
         {projects.map((project) => (
           <div
             key={project.id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200"
+            onClick={() => router.push(`/dashboard/projects/${project.id}`)}
+            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md transition-shadow duration-200"
           >
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+              <h3 className="text-lg font-medium text-gray-900">{project.name}</h3>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                project.status === 'planning' ? 'bg-yellow-100 text-yellow-800' :
                 project.status === 'active' ? 'bg-green-100 text-green-800' :
                 project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                project.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' :
                 'bg-gray-100 text-gray-800'
               }`}>
-                {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                {project.status}
               </span>
             </div>
-            <p className="text-gray-600 text-sm mb-4">{project.description}</p>
-            <div className="space-y-2 text-sm text-gray-500">
-              <div className="flex justify-between">
-                <span>Budget:</span>
-                <span className="font-medium">${project.budget.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Impact:</span>
-                <span className="font-medium">{project.impact_current}/{project.impact_target} {project.impact_metric}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Team Size:</span>
-                <span className="font-medium">{project.team_size} members</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Timeline:</span>
-                <span className="font-medium">
+            <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <div className="flex items-center">
+                <CalendarIcon className="h-4 w-4 mr-1" />
+                <span>
                   {new Date(project.start_date).toLocaleDateString()} - {new Date(project.end_date).toLocaleDateString()}
                 </span>
               </div>
-            </div>
-            <div className="flex space-x-2 mt-4">
-              <button
-                onClick={() => handleDeleteProject(project.id)}
-                className="text-red-600 hover:text-red-800"
-              >
-                <TrashIcon className="h-5 w-5" />
-              </button>
+              <div className="flex items-center">
+                <ChartBarIcon className="h-4 w-4 mr-1" />
+                <span>${project.budget.toLocaleString()}</span>
+              </div>
             </div>
           </div>
         ))}
@@ -396,7 +401,10 @@ export default function Projects() {
                         {role}
                         <button
                           type="button"
-                          onClick={() => removeRole(index)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRole(index);
+                          }}
                           className="ml-2 text-purple-600 hover:text-purple-800"
                         >
                           ×

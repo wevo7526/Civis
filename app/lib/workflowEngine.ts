@@ -355,20 +355,21 @@ export class WorkflowEngine {
   }
 
   private async getGrantData(): Promise<any> {
-    const { data: grants, error } = await this.supabase
-      .from('grants')
-      .select('*');
+    const { data: grantItems, error } = await this.supabase
+      .from('writing_items')
+      .select('*')
+      .eq('type', 'grant');
 
     if (error) throw error;
 
-    const activeGrants = grants.filter(g => g.status === 'active');
-    const totalAmount = activeGrants.reduce((sum, grant) => sum + (Number(grant.amount) || 0), 0);
+    const activeGrants = grantItems.filter(g => g.status === 'in_review');
+    const totalAmount = activeGrants.length; // Since we don't store amounts in writing_items
     const upcomingDeadlines = activeGrants
-      .filter(g => new Date(g.deadline) > new Date())
+      .filter(g => new Date(g.updated_at) > new Date())
       .map(g => ({
-        name: g.name,
-        deadline: g.deadline,
-        amount: g.amount,
+        name: g.title,
+        deadline: g.updated_at,
+        amount: 'N/A', // Since we don't store amounts in writing_items
       }));
 
     return {

@@ -2,9 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { Donor, Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from './types';
 
 interface AIResponse {
-  message: string;
-  suggestions?: string[];
-  data?: any;
+  success: boolean;
+  content: string | null;
+  error: string | null;
 }
 
 export const createAIService = () => {
@@ -83,14 +83,20 @@ export const createAIService = () => {
       }
     },
 
-    async generateGrantProposal(project: Project): Promise<AIResponse> {
+    async generateGrantProposal(project: Project, prompt?: string): Promise<AIResponse> {
       try {
-        const response = await fetch('/api/ai', {
+        const response = await fetch('/api/projects/grants', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            action: 'generate_grant_proposal',
-            data: project,
+            project_name: project.name,
+            project_description: project.description,
+            project_goals: project.goals,
+            project_budget: project.budget,
+            project_timeline: project.timeline,
+            user_prompt: prompt || 'Generate a comprehensive grant proposal for this project.'
           }),
         });
 
@@ -98,10 +104,19 @@ export const createAIService = () => {
           throw new Error('Failed to generate grant proposal');
         }
 
-        return await response.json();
+        const data = await response.json();
+        return {
+          success: true,
+          content: data.content,
+          error: null
+        };
       } catch (error) {
         console.error('Error generating grant proposal:', error);
-        throw error;
+        return {
+          success: false,
+          content: null,
+          error: 'Failed to generate grant proposal. Please try again.'
+        };
       }
     },
 
@@ -199,14 +214,20 @@ export const createAIService = () => {
       }
     },
 
-    async generateFundraisingStrategy(donors: Donor[]): Promise<AIResponse> {
+    async generateFundraisingStrategy(project: Project, prompt?: string): Promise<AIResponse> {
       try {
-        const response = await fetch('/api/ai', {
+        const response = await fetch('/api/projects/fundraising', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            action: 'generate_fundraising_strategy',
-            data: donors,
+            project_name: project.name,
+            project_description: project.description,
+            project_goals: project.goals,
+            project_budget: project.budget,
+            project_timeline: project.timeline,
+            user_prompt: prompt || 'Generate a comprehensive fundraising strategy for this project.'
           }),
         });
 
@@ -214,10 +235,19 @@ export const createAIService = () => {
           throw new Error('Failed to generate fundraising strategy');
         }
 
-        return await response.json();
+        const data = await response.json();
+        return {
+          success: true,
+          content: data.content,
+          error: null
+        };
       } catch (error) {
         console.error('Error generating fundraising strategy:', error);
-        throw error;
+        return {
+          success: false,
+          content: null,
+          error: 'Failed to generate fundraising strategy. Please try again.'
+        };
       }
     },
 
@@ -246,14 +276,22 @@ export const createAIService = () => {
       }
     },
 
-    async analyzeProjects(projects: Project[]): Promise<AIResponse> {
+    async analyzeProjects(projects: Project[], prompt?: string): Promise<AIResponse> {
       try {
-        const response = await fetch('/api/ai', {
+        const response = await fetch('/api/projects/insights', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            action: 'analyze_projects',
-            data: projects,
+            projects: projects.map(project => ({
+              name: project.name,
+              description: project.description,
+              goals: project.goals,
+              budget: project.budget,
+              timeline: project.timeline,
+            })),
+            user_prompt: prompt || 'Analyze these projects and provide comprehensive insights.'
           }),
         });
 
@@ -261,10 +299,19 @@ export const createAIService = () => {
           throw new Error('Failed to analyze projects');
         }
 
-        return await response.json();
+        const data = await response.json();
+        return {
+          success: true,
+          content: data.content,
+          error: null
+        };
       } catch (error) {
         console.error('Error analyzing projects:', error);
-        throw error;
+        return {
+          success: false,
+          content: null,
+          error: 'Failed to analyze projects. Please try again.'
+        };
       }
     },
 
@@ -337,4 +384,7 @@ export const createAIService = () => {
       }
     },
   };
-}; 
+};
+
+// Create and export a default instance
+export const aiService = createAIService(); 

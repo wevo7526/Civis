@@ -107,23 +107,27 @@ export interface Donor {
   notes?: string;
   created_at: string;
   updated_at: string;
+  last_donation?: string;
+  engagement?: number;
+  last_contact?: string;
 }
 
 export interface Project {
   id: string;
   name: string;
   description: string;
-  status: 'planning' | 'active' | 'completed' | 'on-hold';
+  status: string;
+  budget: number;
   start_date: string;
   end_date: string;
-  budget: number;
   impact_target: string;
   impact_metric: string;
   team_size: number;
   team_roles: string[];
+  goals: string[];
+  timeline: string;
   created_at: string;
   updated_at: string;
-  user_id: string;
 }
 
 export type CampaignStatus = 'planning' | 'active' | 'completed' | 'on-hold';

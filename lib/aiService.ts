@@ -3,6 +3,8 @@ import { Project } from './types';
 export interface AIResponse {
   message: string;
   success: boolean;
+  content: string;
+  data: any;
 }
 
 export const aiService = {
@@ -25,12 +27,16 @@ export const aiService = {
       return {
         message: data.content[0].text,
         success: true,
+        content: data.content[0].text,
+        data: data.data || {},
       };
     } catch (error) {
       console.error('Error analyzing donor engagement:', error);
       return {
         message: 'Failed to analyze donor engagement. Please try again.',
         success: false,
+        content: '',
+        data: {},
       };
     }
   },
@@ -54,12 +60,16 @@ export const aiService = {
       return {
         message: data.content[0].text,
         success: true,
+        content: data.content[0].text,
+        data: data.data || {},
       };
     } catch (error) {
       console.error('Error analyzing projects:', error);
       return {
         message: 'Failed to analyze projects. Please try again.',
         success: false,
+        content: '',
+        data: {},
       };
     }
   },
@@ -83,12 +93,16 @@ export const aiService = {
       return {
         message: data.content[0].text,
         success: true,
+        content: data.content[0].text,
+        data: data.data || {},
       };
     } catch (error) {
       console.error('Error analyzing events:', error);
       return {
         message: 'Failed to analyze events. Please try again.',
         success: false,
+        content: '',
+        data: {},
       };
     }
   },
@@ -111,19 +125,39 @@ export const aiService = {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate grant proposal');
+        const errorData = await response.json();
+        return {
+          success: false,
+          message: errorData.message || 'Failed to generate grant proposal',
+          content: '',
+          data: {},
+        };
       }
 
       const data = await response.json();
+      
+      if (!data.success) {
+        return {
+          success: false,
+          message: data.message || 'Failed to generate grant proposal',
+          content: '',
+          data: {},
+        };
+      }
+
       return {
-        message: data.content[0].text,
         success: true,
+        message: 'Grant proposal generated successfully',
+        content: data.content || '',
+        data: data.data || {},
       };
     } catch (error) {
       console.error('Error generating grant proposal:', error);
       return {
-        message: 'Failed to generate grant proposal. Please try again.',
         success: false,
+        message: 'Failed to generate grant proposal. Please try again.',
+        content: '',
+        data: {},
       };
     }
   }

@@ -47,15 +47,6 @@ export default function AutomationHub() {
       category: 'communications',
     },
     {
-      id: 'grant-reminders',
-      name: 'Grant Reminders',
-      description: 'Automated grant deadline notifications and tracking',
-      icon: BellIcon,
-      href: '/dashboard/automation/grant-reminders',
-      status: 'inactive',
-      category: 'grants',
-    },
-    {
       id: 'impact-reports',
       name: 'Impact Reports',
       description: 'Scheduled progress and impact updates',
@@ -63,15 +54,6 @@ export default function AutomationHub() {
       href: '/dashboard/automation/impact-reports',
       status: 'inactive',
       category: 'reports',
-    },
-    {
-      id: 'grant-writing',
-      name: 'Grant Writing Assistant',
-      description: 'AI-powered grant proposal generation',
-      icon: DocumentDuplicateIcon,
-      href: '/dashboard/automation/grant-writing',
-      status: 'inactive',
-      category: 'grants',
     },
     {
       id: 'performance-analytics',

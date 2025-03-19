@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Donor } from '../../lib/types';
 import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from '../../lib/types';
 import { cookies } from 'next/headers';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
 interface AIResponse {
   content: Array<{
@@ -52,17 +53,37 @@ Always provide clear, actionable advice and maintain a professional, supportive 
 export async function POST(request: Request) {
   try {
     const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { 
+          success: false,
+          message: 'Please sign in to use this feature' 
+        }, 
+        { status: 401 }
+      );
     }
 
     const { action, data, context } = await request.json();
 
     if (!action) {
       return NextResponse.json(
-        { error: 'Action is required' },
+        { 
+          success: false,
+          message: 'Action is required' 
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { 
+          success: false,
+          message: 'Data is required' 
+        },
         { status: 400 }
       );
     }
@@ -118,18 +139,40 @@ Please include:
 4. Personalized recommendations`;
         break;
 
-      case 'generate_grant_proposal':
-        prompt = `Generate a grant proposal for the following project:
+      case 'generate_grant_proposal': {
+        const project = data;
+        
+        if (!project.project_name || !project.project_description) {
+          return NextResponse.json(
+            { 
+              success: false,
+              message: 'Project name and description are required' 
+            },
+            { status: 400 }
+          );
+        }
 
-${JSON.stringify(data, null, 2)}
+        prompt = `Generate a comprehensive grant proposal for the following project:
+Project Name: ${project.project_name}
+Description: ${project.project_description}
+Goals: ${project.project_goals?.join(', ') || 'Not specified'}
+Budget: ${project.project_budget || 'Not specified'}
+Timeline: ${project.project_timeline || 'Not specified'}
 
-Please include:
-1. Project overview
-2. Goals and objectives
-3. Implementation plan
-4. Budget breakdown
-5. Expected outcomes`;
+Please include the following sections:
+1. Executive Summary
+2. Organization Background
+3. Project Description
+4. Goals and Objectives
+5. Implementation Plan
+6. Timeline
+7. Budget Breakdown
+8. Impact and Evaluation
+9. Sustainability Plan
+
+Make the proposal professional, compelling, and well-structured. Include specific metrics, timelines, and budget details where appropriate.`;
         break;
+      }
 
       case 'optimize_event_plan':
         prompt = `Optimize the following event plan:
@@ -179,20 +222,29 @@ Please provide:
 4. Resource allocation advice`;
         break;
 
-      case 'generateOutreachMessage':
-        prompt = `Generate a personalized outreach message for a donor with the following details:
-Name: ${data.name}
-Engagement Level: ${data.engagement_level}
-Last Donation: ${data.last_donation}
-Total Donations: ${data.total_donations}
+      case 'generateOutreachMessage': {
+        const donor = data as Donor;
+        const currentDate = new Date().toISOString();
+        const lastDonationDate = (donor.last_donation || donor.donation_date || currentDate) as string;
+        const lastContactDate = (donor.last_contact || donor.created_at || currentDate) as string;
+        const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
+        
+        prompt = `Generate a personalized email message for a donor with the following details:
+- Name: ${donor.name}
+- Last Donation Amount: $${donor.amount}
+- Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
+- Engagement Score: ${donor.engagement || 0}%
+- Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
 
-The message should be:
-1. Personalized and warm
+The message should:
+1. Be warm and personal
 2. Acknowledge their past support
 3. Highlight the impact of their contributions
 4. Include a specific ask or call to action
 5. Maintain a professional yet friendly tone`;
         break;
+      }
 
       case 'analyzeDonorEngagement': {
         // Validate required data
@@ -369,12 +421,18 @@ Please format the response in a clear, structured manner with bullet points for 
 
       case 'generateDonorMessage': {
         const donor = data as Donor;
+        const currentDate = new Date().toISOString();
+        const lastDonationDate = (donor.last_donation || donor.donation_date || currentDate) as string;
+        const lastContactDate = (donor.last_contact || donor.created_at || currentDate) as string;
+        const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
+        
         prompt = `Generate a personalized email message for a donor with the following details:
 - Name: ${donor.name}
 - Last Donation Amount: $${donor.amount}
-- Last Donation Date: ${new Date(donor.last_donation).toLocaleDateString()}
-- Engagement Score: ${donor.engagement}%
-- Last Contact: ${new Date(donor.last_contact).toLocaleDateString()}
+- Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
+- Engagement Score: ${donor.engagement || 0}%
+- Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
 
 The message should:
 1. Be warm and personal
@@ -396,25 +454,25 @@ Format the message as a complete email body, including a greeting and sign-off.`
         );
     }
 
-    const aiResponse = await anthropic.messages.create({
+    const response = await anthropic.messages.create({
       model: 'claude-3-opus-20240229',
-      max_tokens: 2000,
+      max_tokens: 4000,
+      temperature: 0.7,
+      system: SYSTEM_PROMPT,
       messages: [
         {
           role: 'user',
           content: prompt,
         },
       ],
-      system: SYSTEM_PROMPT,
-      temperature: 0.7,
-    }) as AIResponse;
+    });
 
-    if (!aiResponse || !aiResponse.content || !aiResponse.content[0]) {
+    if (!response || !response.content || !response.content[0]) {
       throw new Error('Invalid response from AI service');
     }
 
-    const responseText = aiResponse.content[0].type === 'text' 
-      ? aiResponse.content[0].text 
+    const responseText = response.content[0].type === 'text' 
+      ? response.content[0].text 
       : 'Failed to generate response';
 
     // Store the interaction in Supabase
@@ -431,14 +489,29 @@ Format the message as a complete email body, including a greeting and sign-off.`
     }
 
     return NextResponse.json({
-      message: responseText,
-      suggestions: extractSuggestions(responseText),
+      success: true,
+      content: responseText,
+      data: {
+        sections: {
+          executive_summary: responseText.split('\n\n')[0] || '',
+          organization_background: responseText.split('\n\n')[1] || '',
+          project_description: responseText.split('\n\n')[2] || '',
+          goals_and_objectives: responseText.split('\n\n')[3] || '',
+          implementation_plan: responseText.split('\n\n')[4] || '',
+          timeline: responseText.split('\n\n')[5] || '',
+          budget_breakdown: responseText.split('\n\n')[6] || '',
+          impact_and_evaluation: responseText.split('\n\n')[7] || '',
+          sustainability_plan: responseText.split('\n\n')[8] || '',
+        },
+      },
     });
   } catch (error) {
-    console.error('AI API Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to process request';
+    console.error('Error in AI route:', error);
     return NextResponse.json(
-      { error: errorMessage },
+      { 
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate content. Please try again.',
+      },
       { status: 500 }
     );
   }
