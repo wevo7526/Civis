@@ -136,43 +136,36 @@ export default function ProjectDetails() {
       setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : editorType === 'fundraising' ? 'fundraisingStrategy' : 'insights']: true }));
       setProgressMessage('Starting generation...');
 
-      let generatedContent = '';
-      if (editorType === 'grant') {
-        const grantProposal = await aiService.generateGrantProposal(project, prompt);
-        if (grantProposal.success && grantProposal.content) {
-          generatedContent = grantProposal.content;
-          setProgressMessage('Grant proposal generated successfully!');
-        } else {
-          throw new Error(grantProposal.error || 'Failed to generate grant proposal');
-        }
-      } else if (editorType === 'fundraising') {
-        const fundraisingStrategy = await aiService.generateFundraisingStrategy(project, prompt);
-        if (fundraisingStrategy.success && fundraisingStrategy.content) {
-          generatedContent = fundraisingStrategy.content;
-          setProgressMessage('Fundraising strategy generated successfully!');
-        } else {
-          throw new Error(fundraisingStrategy.error || 'Failed to generate fundraising strategy');
-        }
-      } else {
-        const insights = await aiService.analyzeProjects([project], prompt);
-        if (insights.success && insights.content) {
-          generatedContent = insights.content;
-          setProgressMessage('Project insights generated successfully!');
-        } else {
-          throw new Error(insights.error || 'Failed to generate insights');
-        }
+      let response;
+      switch (editorType) {
+        case 'grant':
+          response = await aiService.generateGrantProposal(project);
+          break;
+        case 'fundraising':
+          response = await aiService.generateFundraisingStrategy(project);
+          break;
+        case 'insights':
+          response = await aiService.analyzeProjects([project]);
+          break;
+        default:
+          throw new Error('Invalid editor type');
+      }
+      
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to generate content');
       }
 
       // Update the content in the DocumentEditor
       setEditorItem({
         id: crypto.randomUUID(),
         title: `${project.name} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
-        content: generatedContent,
+        content: response.content,
         type: editorType
       });
 
       // Set isEditing to true to show the editor
       setIsEditing(true);
+      setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : editorType === 'fundraising' ? 'Fundraising strategy' : 'Project insights'} generated successfully!`);
     } catch (err) {
       console.error(`Error generating ${editorType}:`, err);
       setError(`Failed to generate ${editorType}`);

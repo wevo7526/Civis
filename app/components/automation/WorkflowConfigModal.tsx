@@ -1,213 +1,287 @@
-'use client';
-
 import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { workflowTemplates, getTemplateById } from '@/lib/workflowTemplates';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Checkbox } from '../ui/checkbox';
+import { toast } from 'sonner';
+import { useReminders } from '../Reminders/RemindersProvider';
+
+interface WorkflowConfig {
+  name: string;
+  description: string;
+  schedule: string;
+  template: string;
+  metrics: string[];
+  recipients: string[];
+  notifications: {
+    type: 'email' | 'in-app' | 'both';
+    priority: 'low' | 'medium' | 'high';
+    reminder_frequency: 'once' | 'daily' | 'weekly' | 'monthly';
+    reminder_count: number;
+    max_reminders: number;
+  };
+}
 
 interface WorkflowConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSave: (config: WorkflowConfig & { type: string }) => Promise<void>;
   workflowType: string;
-  onSave: (config: any) => void;
+  initialConfig?: Partial<WorkflowConfig>;
 }
+
+const METRICS_OPTIONS = [
+  { value: 'total_donors', label: 'Total Donors' },
+  { value: 'total_revenue', label: 'Total Revenue' },
+  { value: 'donor_retention', label: 'Donor Retention Rate' },
+  { value: 'avg_donation', label: 'Average Donation' },
+  { value: 'campaign_performance', label: 'Campaign Performance' },
+];
+
+const SCHEDULE_OPTIONS = [
+  { value: 'immediate', label: 'Run Immediately' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+];
+
+const NOTIFICATION_TYPES = [
+  { value: 'email', label: 'Email Only' },
+  { value: 'in-app', label: 'In-App Only' },
+  { value: 'both', label: 'Email & In-App' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
 
 export function WorkflowConfigModal({
   isOpen,
   onClose,
-  workflowType,
   onSave,
+  workflowType,
+  initialConfig,
 }: WorkflowConfigModalProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [schedule, setSchedule] = useState('daily');
-  const [template, setTemplate] = useState('');
-  const [isEnabled, setIsEnabled] = useState(true);
-  const [notifications, setNotifications] = useState({
-    email: true,
-    slack: false,
-    inApp: true,
+  const { createReminder } = useReminders();
+  const [config, setConfig] = useState<WorkflowConfig>({
+    name: initialConfig?.name || '',
+    description: initialConfig?.description || '',
+    schedule: initialConfig?.schedule || 'daily',
+    template: initialConfig?.template || '',
+    metrics: initialConfig?.metrics || [],
+    recipients: initialConfig?.recipients || [],
+    notifications: initialConfig?.notifications || {
+      type: 'both',
+      priority: 'medium',
+      reminder_frequency: 'daily',
+      reminder_count: 0,
+      max_reminders: 3,
+    },
   });
 
-  const handleSave = () => {
-    onSave({
-      name,
-      description,
-      type: workflowType,
-      schedule,
-      template,
-      isEnabled,
-      notifications,
-    });
-    onClose();
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // Create a reminder for the workflow
+      if (config.notifications.type !== 'email') {
+        await createReminder({
+          title: config.name,
+          description: config.description,
+          due_date: new Date().toISOString(), // Will be updated by the workflow engine
+          priority: config.notifications.priority,
+          status: 'pending',
+          category: 'task',
+          notification_sent: false,
+          reminder_frequency: config.notifications.reminder_frequency,
+          reminder_count: config.notifications.reminder_count,
+          max_reminders: config.notifications.max_reminders,
+        });
+      }
+
+      await onSave({
+        type: workflowType,
+        ...config,
+      });
+      onClose();
+      toast.success('Workflow saved successfully');
+    } catch (error) {
+      console.error('Error saving workflow:', error);
+      toast.error('Failed to save workflow');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const selectedTemplate = getTemplateById(template);
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Configure Workflow</DialogTitle>
-          <DialogDescription>
-            Set up your automated workflow settings and preferences
-          </DialogDescription>
-        </DialogHeader>
+    <Modal isOpen={isOpen} onClose={onClose} title="Configure Workflow">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="name">Workflow Name</Label>
+          <Input
+            id="name"
+            value={config.name}
+            onChange={(e) => setConfig({ ...config, name: e.target.value })}
+            placeholder="Enter workflow name"
+            required
+          />
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
-          {/* Basic Settings */}
+        <div className="space-y-2">
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            value={config.description}
+            onChange={(e) => setConfig({ ...config, description: e.target.value })}
+            placeholder="Enter workflow description"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="schedule">Schedule</Label>
+          <Select
+            value={config.schedule}
+            onValueChange={(value: string) => setConfig({ ...config, schedule: value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select schedule" />
+            </SelectTrigger>
+            <SelectContent>
+              {SCHEDULE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Notifications</Label>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Workflow Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter workflow name"
-              />
-            </div>
+            <Select
+              value={config.notifications.type}
+              onValueChange={(value: 'email' | 'in-app' | 'both') => 
+                setConfig({
+                  ...config,
+                  notifications: { ...config.notifications, type: value }
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select notification type" />
+              </SelectTrigger>
+              <SelectContent>
+                {NOTIFICATION_TYPES.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter workflow description"
-              />
-            </div>
+            <Select
+              value={config.notifications.priority}
+              onValueChange={(value: 'low' | 'medium' | 'high') =>
+                setConfig({
+                  ...config,
+                  notifications: { ...config.notifications, priority: value }
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Schedule</Label>
-              <Select value={schedule} onValueChange={setSchedule}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select schedule" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {config.notifications.type !== 'email' && (
+              <div className="space-y-2">
+                <Label>Reminder Settings</Label>
+                <Select
+                  value={config.notifications.reminder_frequency}
+                  onValueChange={(value: 'once' | 'daily' | 'weekly' | 'monthly') =>
+                    setConfig({
+                      ...config,
+                      notifications: { ...config.notifications, reminder_frequency: value }
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select reminder frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="once">Once</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="enabled"
-                checked={isEnabled}
-                onCheckedChange={setIsEnabled}
-              />
-              <Label htmlFor="enabled">Enable Workflow</Label>
-            </div>
-          </div>
-
-          {/* Template Selection */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Template</Label>
-              <Select value={template} onValueChange={setTemplate}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a template" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workflowTemplates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedTemplate && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium">
-                    Template Preview
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedTemplate.description}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedTemplate.variables.map((variable) => (
-                      <Badge key={variable.name} variant="outline">
-                        {variable.name}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={config.notifications.max_reminders}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        notifications: {
+                          ...config.notifications,
+                          max_reminders: parseInt(e.target.value)
+                        }
+                      })
+                    }
+                    className="w-24"
+                  />
+                  <span className="text-sm text-gray-500">Maximum reminders</span>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Notification Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Notification Settings
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="email">Email Notifications</Label>
-                <Switch
-                  id="email"
-                  checked={notifications.email}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, email: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="slack">Slack Notifications</Label>
-                <Switch
-                  id="slack"
-                  checked={notifications.slack}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, slack: checked })
-                  }
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="inApp">In-App Notifications</Label>
-                <Switch
-                  id="inApp"
-                  checked={notifications.inApp}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, inApp: checked })
-                  }
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-2">
+          <Label htmlFor="template">Template</Label>
+          <Textarea
+            id="template"
+            value={config.template}
+            onChange={(e) => setConfig({ ...config, template: e.target.value })}
+            placeholder="Enter message template"
+            rows={4}
+          />
+        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <div className="flex justify-end space-x-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancel
           </Button>
-          <Button onClick={handleSave}>Save Workflow</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button type="submit" disabled={loading}>
+            {loading ? 'Saving...' : 'Save Workflow'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 } 

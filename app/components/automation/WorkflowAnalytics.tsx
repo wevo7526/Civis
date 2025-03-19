@@ -65,7 +65,9 @@ export function WorkflowAnalytics() {
       const totalWorkflows = workflows.length;
       const activeWorkflows = workflows.filter(w => w.status === 'active').length;
       const totalExecutions = workflows.reduce((sum, w) => sum + (w.stats?.totalRuns || 0), 0);
-      const successRate = workflows.reduce((sum, w) => sum + (w.stats?.successRate || 0), 0) / totalWorkflows;
+      const successRate = totalWorkflows > 0 
+        ? workflows.reduce((sum, w) => sum + (w.stats?.successRate || 0), 0) / totalWorkflows 
+        : 0;
       const errorRate = 100 - successRate;
 
       // Get recent executions

@@ -270,13 +270,13 @@ export default function DonorCommunications() {
               placeholder="Search communications..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white"
+              className="pl-10 bg-white shadow-sm border-0"
             />
           </div>
         </div>
         <div className="w-full md:w-48">
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-full bg-white">
+            <SelectTrigger className="w-full bg-white shadow-sm border-0">
               <SelectValue placeholder="All Types" />
             </SelectTrigger>
             <SelectContent>
@@ -290,7 +290,7 @@ export default function DonorCommunications() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="bg-white shadow-sm">
+        <Card className="bg-white shadow-sm border-0">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Communications</CardTitle>
             <DocumentDuplicateIcon className="h-4 w-4 text-muted-foreground" />
@@ -303,7 +303,7 @@ export default function DonorCommunications() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white shadow-sm">
+        <Card className="bg-white shadow-sm border-0">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
             <CheckCircleIcon className="h-4 w-4 text-green-500" />
@@ -316,7 +316,7 @@ export default function DonorCommunications() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white shadow-sm">
+        <Card className="bg-white shadow-sm border-0">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recipients</CardTitle>
             <UserGroupIcon className="h-4 w-4 text-muted-foreground" />
@@ -333,20 +333,20 @@ export default function DonorCommunications() {
       </div>
 
       {/* Communication Templates */}
-      <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
+      <div className="bg-white shadow-sm rounded-lg p-6 mb-8 border-0">
         <h2 className="text-lg font-semibold mb-4">Communication Templates</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {workflowTemplates
             .filter(template => template.category === 'communications')
             .map((template) => (
-              <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+              <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors border-0">
                 <h3 className="font-medium mb-2">{template.name}</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   {template.description}
                 </p>
                 <div className="flex items-center justify-between">
-                  <Badge variant="outline">{template.category}</Badge>
-                  <Button variant="outline" size="sm">
+                  <Badge variant="outline" className="border-0 bg-gray-100">{template.category}</Badge>
+                  <Button variant="outline" size="sm" className="border-0">
                     Use Template
                   </Button>
                 </div>
@@ -356,13 +356,13 @@ export default function DonorCommunications() {
       </div>
 
       {/* Active Communications */}
-      <div className="bg-white shadow-sm rounded-lg p-6">
+      <div className="bg-white shadow-sm rounded-lg p-6 border-0">
         <h2 className="text-lg font-semibold mb-4">Active Communications</h2>
         <div className="space-y-4">
           {filteredCommunications.map((comm) => (
             <div
               key={comm.id}
-              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border-0"
             >
               <div className="flex items-center space-x-4">
                 <div className="p-3 rounded-full bg-primary/10">
@@ -386,16 +386,16 @@ export default function DonorCommunications() {
                     {comm.status === 'active' ? 'Active' : 'Inactive'}
                   </Label>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => handlePreview(comm)}>
+                <Button variant="ghost" size="sm" onClick={() => handlePreview(comm)} className="border-0">
                   <EyeIcon className="h-4 w-4" />
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => {
                   setSelectedComm(comm);
                   setIsEditModalOpen(true);
-                }}>
+                }} className="border-0">
                   <PencilIcon className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(comm.id)}>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(comm.id)} className="border-0">
                   <TrashIcon className="h-4 w-4" />
                 </Button>
               </div>
@@ -412,7 +412,7 @@ export default function DonorCommunications() {
       >
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="mx-auto w-full max-w-lg bg-white rounded-xl shadow-lg p-6">
+          <Dialog.Panel className="mx-auto w-full max-w-lg bg-white rounded-xl shadow-lg p-6 border-0">
             <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
               Create New Communication
             </Dialog.Title>
@@ -423,6 +423,7 @@ export default function DonorCommunications() {
                   value={newComm.name}
                   onChange={(e) => setNewComm(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="Enter communication name"
+                  className="shadow-sm border-0"
                 />
               </div>
               <div>
@@ -431,7 +432,7 @@ export default function DonorCommunications() {
                   value={newComm.type}
                   onValueChange={(value) => setNewComm(prev => ({ ...prev, type: value as any }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="shadow-sm border-0">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -446,7 +447,7 @@ export default function DonorCommunications() {
                   value={newComm.schedule}
                   onValueChange={(value) => setNewComm(prev => ({ ...prev, schedule: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="shadow-sm border-0">
                     <SelectValue placeholder="Select schedule" />
                   </SelectTrigger>
                   <SelectContent>
@@ -464,6 +465,7 @@ export default function DonorCommunications() {
                   onChange={(e) => setNewComm(prev => ({ ...prev, template: e.target.value }))}
                   rows={3}
                   placeholder="Use {variable} syntax for dynamic content"
+                  className="shadow-sm border-0"
                 />
               </div>
             </div>
@@ -471,6 +473,7 @@ export default function DonorCommunications() {
               <Button
                 variant="outline"
                 onClick={() => setIsCreateModalOpen(false)}
+                className="border-0"
               >
                 Cancel
               </Button>
@@ -490,7 +493,7 @@ export default function DonorCommunications() {
       >
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="mx-auto w-full max-w-lg bg-white rounded-xl shadow-lg p-6">
+          <Dialog.Panel className="mx-auto w-full max-w-lg bg-white rounded-xl shadow-lg p-6 border-0">
             <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
               Edit Communication
             </Dialog.Title>
@@ -501,6 +504,7 @@ export default function DonorCommunications() {
                   <Input
                     value={selectedComm.name}
                     onChange={(e) => setSelectedComm(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="shadow-sm border-0"
                   />
                 </div>
                 <div>
@@ -509,7 +513,7 @@ export default function DonorCommunications() {
                     value={selectedComm.schedule}
                     onValueChange={(value) => setSelectedComm(prev => prev ? { ...prev, schedule: value } : null)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="shadow-sm border-0">
                       <SelectValue placeholder="Select schedule" />
                     </SelectTrigger>
                     <SelectContent>
@@ -526,6 +530,7 @@ export default function DonorCommunications() {
                     value={selectedComm.template}
                     onChange={(e) => setSelectedComm(prev => prev ? { ...prev, template: e.target.value } : null)}
                     rows={3}
+                    className="shadow-sm border-0"
                   />
                 </div>
               </div>
@@ -534,6 +539,7 @@ export default function DonorCommunications() {
               <Button
                 variant="outline"
                 onClick={() => setIsEditModalOpen(false)}
+                className="border-0"
               >
                 Cancel
               </Button>

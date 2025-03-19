@@ -9,7 +9,7 @@ export interface WorkflowTemplate {
   id: string;
   name: string;
   description: string;
-  category: 'communications' | 'grants';
+  category: 'communications' | 'reports' | 'grants' | 'analytics';
   variables: TemplateVariable[];
 }
 
@@ -41,6 +41,32 @@ export const workflowTemplates: WorkflowTemplate[] = [
     ],
   },
   {
+    id: 'monthly-impact-report',
+    name: 'Monthly Impact Report',
+    description: 'Generate monthly impact reports for stakeholders',
+    category: 'reports',
+    variables: [
+      {
+        name: 'month',
+        type: 'date',
+        description: 'Report month',
+        required: true
+      },
+      {
+        name: 'total_impact',
+        type: 'number',
+        description: 'Total impact metric',
+        required: true
+      },
+      {
+        name: 'impact_statement',
+        type: 'string',
+        description: 'Detailed impact statement',
+        required: true
+      }
+    ],
+  },
+  {
     id: 'grant-deadline-reminder',
     name: 'Grant Deadline Reminder',
     description: 'Send reminders for upcoming grant deadlines',
@@ -65,7 +91,39 @@ export const workflowTemplates: WorkflowTemplate[] = [
         required: false
       }
     ],
-  }
+  },
+  {
+    id: 'campaign-performance',
+    name: 'Campaign Performance Report',
+    description: 'Generate performance reports for fundraising campaigns',
+    category: 'analytics',
+    variables: [
+      {
+        name: 'campaign_name',
+        type: 'string',
+        description: 'Name of the campaign',
+        required: true
+      },
+      {
+        name: 'total_raised',
+        type: 'number',
+        description: 'Total amount raised',
+        required: true
+      },
+      {
+        name: 'donor_count',
+        type: 'number',
+        description: 'Number of donors',
+        required: true
+      },
+      {
+        name: 'goal',
+        type: 'number',
+        description: 'Campaign goal',
+        required: true
+      }
+    ],
+  },
 ];
 
 export function getTemplateById(id: string): WorkflowTemplate | undefined {

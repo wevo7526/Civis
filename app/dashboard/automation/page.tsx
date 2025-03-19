@@ -18,6 +18,9 @@ import {
   PlusIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
+  EyeIcon,
+  PencilIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { WorkflowConfigModal } from '@/components/automation/WorkflowConfigModal';
 import { WorkflowAnalytics } from '@/components/automation/WorkflowAnalytics';
@@ -300,13 +303,13 @@ export default function AutomationHub() {
               placeholder="Search workflows..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white"
+              className="pl-10 bg-white shadow-sm border-0"
             />
           </div>
         </div>
         <div className="w-full md:w-48">
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-full bg-white">
+            <SelectTrigger className="w-full bg-white shadow-sm border-0">
               <SelectValue placeholder="All Categories" />
             </SelectTrigger>
             <SelectContent>
@@ -319,21 +322,21 @@ export default function AutomationHub() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <Card className="bg-white shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card className="bg-white shadow-sm border-0">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Workflows</CardTitle>
+            <CardTitle className="text-sm font-medium">Active Workflows</CardTitle>
             <DocumentDuplicateIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{features.length}</div>
+            <div className="text-2xl font-bold">{filteredFeatures.length}</div>
             <p className="text-xs text-muted-foreground">
-              {features.filter(f => f.status === 'active').length} active
+              {filteredFeatures.filter(f => f.status === 'active').length} active
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-white shadow-sm">
+        <Card className="bg-white shadow-sm border-0">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
             <CheckCircleIcon className="h-4 w-4 text-green-500" />
@@ -341,7 +344,7 @@ export default function AutomationHub() {
           <CardContent>
             <div className="text-2xl font-bold">
               {Math.round(
-                features.reduce((sum, f) => sum + (f.stats?.successRate || 0), 0) / features.length
+                filteredFeatures.reduce((sum, f) => sum + (f.stats?.successRate || 0), 0) / filteredFeatures.length
               )}%
             </div>
             <p className="text-xs text-muted-foreground">
@@ -349,21 +352,34 @@ export default function AutomationHub() {
             </p>
           </CardContent>
         </Card>
+
+        <Card className="bg-white shadow-sm border-0">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Templates</CardTitle>
+            <DocumentTextIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{workflowTemplates.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Available workflow templates
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Workflow Templates */}
-      <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
+      <div className="bg-white shadow-sm rounded-lg p-6 mb-8 border-0">
         <h2 className="text-lg font-semibold mb-4">Workflow Templates</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {workflowTemplates.map((template) => (
-            <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+            <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors border-0">
               <h3 className="font-medium mb-2">{template.name}</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {template.description}
               </p>
               <div className="flex items-center justify-between">
-                <Badge variant="outline">{template.category}</Badge>
-                <Button variant="outline" size="sm">
+                <Badge variant="outline" className="border-0 bg-gray-100">{template.category}</Badge>
+                <Button variant="outline" size="sm" className="border-0">
                   Use Template
                 </Button>
               </div>
@@ -373,13 +389,13 @@ export default function AutomationHub() {
       </div>
 
       {/* Active Workflows */}
-      <div className="bg-white shadow-sm rounded-lg p-6">
+      <div className="bg-white shadow-sm rounded-lg p-6 border-0">
         <h2 className="text-lg font-semibold mb-4">Active Workflows</h2>
         <div className="space-y-4">
           {filteredFeatures.map((feature) => (
             <div
               key={feature.id}
-              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border-0"
             >
               <div className="flex items-center space-x-4">
                 <div className="p-3 rounded-full bg-primary/10">
@@ -403,7 +419,7 @@ export default function AutomationHub() {
                     {feature.status === 'active' ? 'Active' : 'Inactive'}
                   </Label>
                 </div>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="border-0">
                   <Cog6ToothIcon className="h-4 w-4" />
                 </Button>
               </div>
