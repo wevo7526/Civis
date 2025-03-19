@@ -105,29 +105,58 @@ export const aiService = {
 
   async generateGrantProposal(project: Project): Promise<AIResponse> {
     try {
-      const response = await fetch('/api/ai/generate-grant', {
+      const response = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project }),
+        body: JSON.stringify({
+          action: 'generate_grant_proposal',
+          data: {
+            project_name: project.name,
+            project_description: project.description,
+            project_goals: project.goals || [],
+            project_budget: project.budget || 0,
+            project_timeline: project.timeline || '',
+            impact_target: project.impact_target || '',
+            impact_metric: project.impact_metric || '',
+            team_size: project.team_size || 0,
+            team_roles: project.team_roles || [],
+          },
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate grant proposal');
+        const errorData = await response.json();
+        return {
+          success: false,
+          message: errorData.message || 'Failed to generate grant proposal',
+          content: '',
+          data: {},
+        };
       }
 
       const data = await response.json();
+      
+      if (!data.success) {
+        return {
+          success: false,
+          message: data.message || 'Failed to generate grant proposal',
+          content: '',
+          data: {},
+        };
+      }
+
       return {
-        message: data.message || 'No proposal available',
         success: true,
-        content: data.content || '',
+        message: 'Grant proposal generated successfully',
+        content: data.content[0]?.text || '',
         data: data.data || {},
       };
     } catch (error) {
       console.error('Error generating grant proposal:', error);
       return {
-        message: 'Failed to generate grant proposal. Please try again.',
         success: false,
-        content: 'I apologize, but I encountered an error while generating the grant proposal.',
+        message: 'Failed to generate grant proposal. Please try again.',
+        content: '',
         data: {},
       };
     }

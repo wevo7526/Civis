@@ -152,7 +152,9 @@ export default function ProjectDetails() {
       }
       
       if (!response.success) {
-        throw new Error(response.message || 'Failed to generate content');
+        setError(response.message || 'Failed to generate content');
+        setProgressMessage(null);
+        return;
       }
 
       // Update the content in the DocumentEditor
@@ -186,9 +188,9 @@ export default function ProjectDetails() {
       if (editorItem?.id) {
         // Update existing item
         const { data, error } = await supabase
-          .from('writing_items')
+          .from(editorType === 'insights' ? 'project_content' : 'writing_items')
           .update({
-            title,
+            title: title || 'Untitled Document',
             content,
             updated_at: new Date().toISOString(),
           })
@@ -196,7 +198,10 @@ export default function ProjectDetails() {
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error updating document:', error);
+          throw error;
+        }
         savedItem = data;
         setSuccessMessage('Document updated successfully!');
       } else {
@@ -208,15 +213,20 @@ export default function ProjectDetails() {
               {
                 project_id: project.id,
                 type: 'insights',
+                title: title || 'Project Insights',
                 content,
                 prompt: '',
                 created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               },
             ])
             .select()
             .single();
 
-          if (error) throw error;
+          if (error) {
+            console.error('Error creating insights:', error);
+            throw error;
+          }
           savedItem = data;
           setSuccessMessage('Insights saved successfully!');
         } else {
@@ -225,18 +235,23 @@ export default function ProjectDetails() {
             .insert([
               {
                 id: crypto.randomUUID(),
-                title,
+                title: title || 'Untitled Document',
                 content,
                 type: editorType,
                 project_id: project.id,
                 status: 'draft',
                 user_id: user.id,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
               },
             ])
             .select()
             .single();
 
-          if (error) throw error;
+          if (error) {
+            console.error('Error creating writing item:', error);
+            throw error;
+          }
           savedItem = data;
           setSuccessMessage('Document saved successfully!');
         }
@@ -259,8 +274,8 @@ export default function ProjectDetails() {
       setEditorItem(null);
       setIsEditing(false);
     } catch (err) {
-      console.error('Error saving document:', err);
-      setError('Failed to save document');
+      console.error('Error saving document:', err instanceof Error ? err.message : 'Unknown error occurred');
+      setError(err instanceof Error ? err.message : 'Failed to save document');
     }
   };
 

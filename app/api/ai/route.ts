@@ -142,22 +142,17 @@ Please include:
       case 'generate_grant_proposal': {
         const project = data;
         
-        if (!project.project_name || !project.project_description) {
-          return NextResponse.json(
-            { 
-              success: false,
-              message: 'Project name and description are required' 
-            },
-            { status: 400 }
-          );
-        }
-
         prompt = `Generate a comprehensive grant proposal for the following project:
-Project Name: ${project.project_name}
-Description: ${project.project_description}
+
+Project Name: ${project.project_name || 'Not specified'}
+Description: ${project.project_description || 'Not specified'}
 Goals: ${project.project_goals?.join(', ') || 'Not specified'}
-Budget: ${project.project_budget || 'Not specified'}
+Budget: $${project.project_budget || 'Not specified'}
 Timeline: ${project.project_timeline || 'Not specified'}
+Impact Target: ${project.impact_target || 'Not specified'}
+Impact Metric: ${project.impact_metric || 'Not specified'}
+Team Size: ${project.team_size || 'Not specified'}
+Team Roles: ${project.team_roles?.join(', ') || 'Not specified'}
 
 Please include the following sections:
 1. Executive Summary
@@ -171,7 +166,49 @@ Please include the following sections:
 9. Sustainability Plan
 
 Make the proposal professional, compelling, and well-structured. Include specific metrics, timelines, and budget details where appropriate.`;
-        break;
+
+        // Get response from Claude
+        const aiResponse = await anthropic.messages.create({
+          model: 'claude-3-opus-20240229',
+          max_tokens: 4000,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          system: SYSTEM_PROMPT,
+          temperature: 0.7,
+        });
+
+        if (!aiResponse || !aiResponse.content || !aiResponse.content[0]) {
+          throw new Error('Invalid response from AI service');
+        }
+
+        const responseText = aiResponse.content[0].type === 'text' 
+          ? aiResponse.content[0].text 
+          : 'Failed to generate response';
+
+        return NextResponse.json({
+          success: true,
+          content: [{
+            type: 'text',
+            text: responseText
+          }],
+          data: {
+            sections: {
+              executive_summary: responseText.split('\n\n')[0] || '',
+              organization_background: responseText.split('\n\n')[1] || '',
+              project_description: responseText.split('\n\n')[2] || '',
+              goals_and_objectives: responseText.split('\n\n')[3] || '',
+              implementation_plan: responseText.split('\n\n')[4] || '',
+              timeline: responseText.split('\n\n')[5] || '',
+              budget_breakdown: responseText.split('\n\n')[6] || '',
+              impact_and_evaluation: responseText.split('\n\n')[7] || '',
+              sustainability_plan: responseText.split('\n\n')[8] || '',
+            },
+          },
+        });
       }
 
       case 'optimize_event_plan':

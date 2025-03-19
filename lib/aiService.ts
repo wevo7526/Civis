@@ -48,7 +48,7 @@ export const aiService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'analyze_projects',
-          data: { projectData },
+          data: projectData,
         }),
       });
 
@@ -117,9 +117,13 @@ export const aiService = {
           data: {
             project_name: project.name,
             project_description: project.description,
-            project_goals: project.goals,
-            project_budget: project.budget,
-            project_timeline: project.timeline,
+            project_goals: project.goals || [],
+            project_budget: project.budget || 0,
+            project_timeline: project.timeline || '',
+            organization_info: project.organization_info || '',
+            budget_breakdown: project.budget_breakdown || '',
+            evaluation_metrics: project.evaluation_metrics || '',
+            sustainability_plan: project.sustainability_plan || '',
           },
         }),
       });
@@ -148,7 +152,7 @@ export const aiService = {
       return {
         success: true,
         message: 'Grant proposal generated successfully',
-        content: data.content || '',
+        content: data.content[0]?.text || '',
         data: data.data || {},
       };
     } catch (error) {
