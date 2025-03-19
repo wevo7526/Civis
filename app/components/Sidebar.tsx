@@ -23,6 +23,7 @@ import {
   EnvelopeIcon,
   BellIcon,
   ChatBubbleLeftRightIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState, useEffect } from 'react';
@@ -133,30 +134,30 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto p-4">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-medium text-blue-700">
-              {user?.email?.[0].toUpperCase() || 'U'}
-            </span>
-          </div>
-          {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {user?.email}
-              </p>
-            </div>
-          )}
-        </div>
+      <div className="mt-auto p-4 space-y-2">
         <Link
           href="/dashboard/profile"
-          className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 mb-2 ${
-            isCollapsed ? 'justify-center' : ''
-          }`}
+          className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 ${
+            pathname === '/dashboard/profile' ? 'bg-blue-50 text-blue-700' : ''
+          } ${isCollapsed ? 'justify-center' : ''}`}
           title={isCollapsed ? 'Profile' : undefined}
         >
-          <UserCircleIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
+          <UserCircleIcon className={`h-5 w-5 flex-shrink-0 ${
+            pathname === '/dashboard/profile' ? 'text-blue-700' : 'text-gray-400'
+          }`} />
           {!isCollapsed && <span className="ml-3">Profile</span>}
+        </Link>
+        <Link
+          href="/dashboard/account"
+          className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 ${
+            pathname === '/dashboard/account' ? 'bg-blue-50 text-blue-700' : ''
+          } ${isCollapsed ? 'justify-center' : ''}`}
+          title={isCollapsed ? 'Account' : undefined}
+        >
+          <CreditCardIcon className={`h-5 w-5 flex-shrink-0 ${
+            pathname === '/dashboard/account' ? 'text-blue-700' : 'text-gray-400'
+          }`} />
+          {!isCollapsed && <span className="ml-3">Account</span>}
         </Link>
         <button
           onClick={handleSignOut}
