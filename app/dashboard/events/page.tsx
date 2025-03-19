@@ -3,46 +3,53 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { 
-  CalendarIcon, 
-  TrashIcon, 
-  PencilIcon,
+import {
+  CalendarIcon,
   PlusIcon,
-  XMarkIcon
+  PencilIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Event } from '@/lib/types';
-import { createEventActivity } from '@/lib/activityService';
+import { Dialog } from '@headlessui/react';
 
-interface EventFormData {
-  title: string;
+interface Event {
+  id: string;
+  name: string;
   description: string;
   date: string;
   location: string;
-  type: Event['type'];
-  budget: string;
-  target_attendees: string;
-  status: Event['status'];
+  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
+  status: 'active' | 'completed' | 'planned' | 'cancelled';
+  created_at: string;
+  updated_at: string;
 }
+
+interface EventFormData {
+  name: string;
+  description: string;
+  date: string;
+  location: string;
+  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
+  status: 'active' | 'completed' | 'planned' | 'cancelled';
+}
+
+const initialFormData: EventFormData = {
+  name: '',
+  description: '',
+  date: new Date().toISOString().split('T')[0],
+  location: '',
+  type: 'fundraiser',
+  status: 'planned',
+};
 
 export default function Events() {
   const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
-  const [formData, setFormData] = useState<EventFormData>({
-    title: '',
-    description: '',
-    date: new Date().toISOString().split('T')[0],
-    location: '',
-    type: 'fundraiser',
-    budget: '',
-    target_attendees: '',
-    status: 'planned'
-  });
-
+  const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
+  const [formData, setFormData] = useState<EventFormData>(initialFormData);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -50,12 +57,25 @@ export default function Events() {
     fetchEvents();
   }, []);
 
+  useEffect(() => {
+    if (eventToEdit) {
+      setFormData({
+        name: eventToEdit.name,
+        description: eventToEdit.description,
+        date: eventToEdit.date,
+        location: eventToEdit.location,
+        type: eventToEdit.type,
+        status: eventToEdit.status,
+      });
+      setIsModalOpen(true);
+    }
+  }, [eventToEdit]);
+
   const fetchEvents = async () => {
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error');
-      }
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
         .from('events')
@@ -65,369 +85,337 @@ export default function Events() {
 
       if (error) throw error;
       setEvents(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch events');
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch events');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'budget' || name === 'target_attendees' ? Number(value) : value
-    }));
-  };
-
-  const handleCreateEvent = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
-
     try {
+      setLoading(true);
+      setError(null);
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('No user found');
+      if (!user) return;
 
-      const eventData = {
-        title: formData.title,
-        description: formData.description,
-        date: formData.date,
-        location: formData.location,
-        type: formData.type,
-        budget: parseFloat(formData.budget) || 0,
-        target_attendees: parseInt(formData.target_attendees) || 0,
-        status: formData.status,
-        user_id: user.id,
-      };
+      if (eventToEdit) {
+        const { error } = await supabase
+          .from('events')
+          .update(formData)
+          .eq('id', eventToEdit.id);
 
-      const { data, error } = await supabase
-        .from('events')
-        .insert([eventData])
-        .select()
-        .single();
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('events')
+          .insert({
+            ...formData,
+            user_id: user.id,
+          });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
 
-      // Create activity for the new event
-      await createEventActivity(user.id, 'created', eventData.title);
-
-      setIsModalOpen(false);
-      setFormData({
-        title: '',
-        description: '',
-        date: '',
-        location: '',
-        type: 'fundraiser',
-        budget: '',
-        target_attendees: '',
-        status: 'planned',
-      });
-      fetchEvents();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create event');
+      await fetchEvents();
+      handleCloseModal();
+    } catch (error) {
+      console.error('Error submitting event:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save event');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleEditEvent = (event: Event) => {
-    setFormData({
-      title: event.title,
-      description: event.description,
-      date: event.date,
-      location: event.location,
-      type: event.type,
-      budget: event.budget.toString(),
-      target_attendees: event.target_attendees.toString(),
-      status: event.status,
-    });
-    setIsModalOpen(true);
   };
 
   const handleDeleteEvent = async () => {
     if (!eventToDelete) return;
-    
-    setLoading(true);
-    setError(null);
-
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        throw new Error('Authentication error');
-      }
+      setLoading(true);
+      setError(null);
 
       const { error } = await supabase
         .from('events')
         .delete()
-        .eq('id', eventToDelete.id)
-        .eq('user_id', user.id);
+        .eq('id', eventToDelete.id);
 
       if (error) throw error;
-      setEvents(prev => prev.filter(event => event.id !== eventToDelete.id));
+
+      await fetchEvents();
       setIsDeleteModalOpen(false);
       setEventToDelete(null);
-    } catch (err) {
-      console.error('Error deleting event:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete event');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete event');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-      </div>
-    );
-  }
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEventToEdit(null);
+    setFormData(initialFormData);
+  };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Events</h1>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">Events</h1>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
-          New Event
+          Add Event
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <span className="block sm:inline">{error}</span>
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {events.map((event) => (
-          <Card key={event.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>{event.title}</span>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  event.status === 'upcoming' ? 'bg-green-100 text-green-800' :
-                  event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                  'bg-red-100 text-red-800'
-                }`}>
-                  {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">{event.description}</p>
-                <div className="flex items-center text-sm text-gray-500">
-                  <CalendarIcon className="h-4 w-4 mr-1" />
-                  {new Date(event.date).toLocaleDateString()}
-                </div>
-                <div className="text-sm text-gray-500">{event.location}</div>
-                <div className="flex justify-end space-x-2 mt-4">
-                  <button
-                    onClick={() => handleEditEvent(event)}
-                    className="text-gray-400 hover:text-gray-500"
-                  >
-                    <PencilIcon className="h-5 w-5" />
-                  </button>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {events.map((event) => (
+              <tr key={event.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">{event.name}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">
+                    {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">
+                    {new Date(event.date).toLocaleDateString()}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{event.location}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                    event.status === 'active' ? 'bg-green-100 text-green-800' :
+                    event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                    event.status === 'planned' ? 'bg-blue-100 text-blue-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
                     onClick={() => {
                       setEventToDelete(event);
                       setIsDeleteModalOpen(true);
                     }}
-                    className="text-gray-400 hover:text-red-500"
+                    className="text-red-600 hover:text-red-900 mr-4"
                   >
                     <TrashIcon className="h-5 w-5" />
                   </button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                  <button
+                    onClick={() => {
+                      setEventToEdit(event);
+                    }}
+                    className="text-purple-600 hover:text-purple-900"
+                  >
+                    <PencilIcon className="h-5 w-5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Create/Edit Event Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-medium text-gray-900">
-                {formData.title ? 'Edit Event' : 'New Event'}
-              </h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
+      {/* Add/Edit Event Modal */}
+      <Dialog
+        open={isModalOpen}
+        onClose={handleCloseModal}
+        className="relative z-50"
+      >
+        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="mx-auto max-w-2xl w-full bg-white rounded-xl shadow-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <Dialog.Title className="text-lg font-medium text-gray-900">
+                {eventToEdit ? 'Edit Event' : 'Add New Event'}
+              </Dialog.Title>
             </div>
-            <form onSubmit={handleCreateEvent} className="space-y-4">
-              <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                  Title
-                </label>
-                <input
-                  type="text"
-                  id="title"
-                  name="title"
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  required
-                />
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="type" className="block text-sm font-medium text-gray-700">
+                    Type
+                  </label>
+                  <select
+                    id="type"
+                    required
+                    value={formData.type}
+                    onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as Event['type'] }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  >
+                    <option value="fundraiser">Fundraiser</option>
+                    <option value="volunteer">Volunteer Event</option>
+                    <option value="community">Community Event</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="date" className="block text-sm font-medium text-gray-700">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    id="date"
+                    required
+                    value={formData.date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="location" className="block text-sm font-medium text-gray-700">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    id="location"
+                    required
+                    value={formData.location}
+                    onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                    Status
+                  </label>
+                  <select
+                    id="status"
+                    required
+                    value={formData.status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as Event['status'] }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  >
+                    <option value="planned">Planned</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                    Description
+                  </label>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    value={formData.description}
+                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
               </div>
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                  Description
-                </label>
-                <textarea
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={3}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="date" className="block text-sm font-medium text-gray-700">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  id="date"
-                  name="date"
-                  value={formData.date}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700">
-                  Location
-                </label>
-                <input
-                  type="text"
-                  id="location"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="type" className="block text-sm font-medium text-gray-700">
-                  Type
-                </label>
-                <select
-                  id="type"
-                  name="type"
-                  value={formData.type}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                >
-                  <option value="fundraiser">Fundraiser</option>
-                  <option value="volunteer">Volunteer Event</option>
-                  <option value="community">Community Event</option>
-                  <option value="awareness">Awareness Campaign</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                  Budget
-                </label>
-                <input
-                  type="number"
-                  id="budget"
-                  name="budget"
-                  value={formData.budget}
-                  onChange={handleInputChange}
-                  min="0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="target_attendees" className="block text-sm font-medium text-gray-700">
-                  Target Attendees
-                </label>
-                <input
-                  type="number"
-                  id="target_attendees"
-                  name="target_attendees"
-                  value={formData.target_attendees}
-                  onChange={handleInputChange}
-                  min="0"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                  Status
-                </label>
-                <select
-                  id="status"
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                >
-                  <option value="planned">Planned</option>
-                  <option value="upcoming">Upcoming</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-              <div className="flex justify-end space-x-3">
+
+              <div className="mt-6 flex justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                  onClick={handleCloseModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : 'Save'}
+                  {loading ? (eventToEdit ? 'Updating...' : 'Adding...') : (eventToEdit ? 'Update Event' : 'Add Event')}
                 </button>
               </div>
             </form>
-          </div>
+          </Dialog.Panel>
         </div>
-      )}
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Delete Event</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Are you sure you want to delete this event? This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-3">
+      <Dialog
+        open={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        className="relative z-50"
+      >
+        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="mx-auto max-w-sm w-full bg-white rounded-xl shadow-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <Dialog.Title className="text-lg font-medium text-gray-900">
+                Delete Event
+              </Dialog.Title>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-gray-500">
+                Are you sure you want to delete {eventToDelete?.name}? This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 rounded-b-xl flex justify-end space-x-3">
               <button
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteEvent}
                 disabled={loading}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
                 {loading ? 'Deleting...' : 'Delete'}
               </button>
             </div>
-          </div>
+          </Dialog.Panel>
         </div>
-      )}
+      </Dialog>
     </div>
   );
 } 

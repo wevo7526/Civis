@@ -219,14 +219,14 @@ export default function Dashboard() {
     {
       name: 'Create Event',
       description: 'Set up a new fundraising event',
-      href: '/dashboard/events/new',
+      href: '/dashboard/events',
       icon: CalendarIcon,
       color: 'bg-blue-50 text-blue-600',
     },
     {
       name: 'Launch Campaign',
       description: 'Start a new fundraising campaign',
-      href: '/dashboard/campaigns/new',
+      href: '/dashboard/campaigns',
       icon: MegaphoneIcon,
       color: 'bg-green-50 text-green-600',
     },

@@ -43,7 +43,7 @@ const navigation = [
     name: 'Automation',
     items: [
       { name: 'Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
-      { name: 'Donors', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
+      { name: 'Outreach', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
       { name: 'Grants', href: '/dashboard/grants', icon: BellIcon },
       { name: 'Impact', href: '/dashboard/automation/impact-reports', icon: DocumentTextIcon },
     ],

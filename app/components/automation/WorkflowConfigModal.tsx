@@ -3,204 +3,83 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Select } from '../ui/select';
 import { Textarea } from '../ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Checkbox } from '../ui/checkbox';
+import { toast } from 'sonner';
 
 interface WorkflowConfig {
   name: string;
-  type: string;
-  schedule: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'custom';
+  description: string;
+  schedule: string;
   template: string;
-  recipients?: string[];
-  metrics?: string[];
-  customSchedule?: {
-    frequency: number;
-    unit: 'days' | 'weeks' | 'months';
-  };
+  metrics: string[];
+  recipients: string[];
 }
 
 interface WorkflowConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSave: (config: WorkflowConfig & { type: string }) => Promise<void>;
   workflowType: string;
-  onSave: (config: WorkflowConfig) => Promise<void>;
+  initialConfig?: Partial<WorkflowConfig>;
 }
 
-export function WorkflowConfigModal({ isOpen, onClose, workflowType, onSave }: WorkflowConfigModalProps) {
+const METRICS_OPTIONS = [
+  { value: 'total_donors', label: 'Total Donors' },
+  { value: 'total_revenue', label: 'Total Revenue' },
+  { value: 'donor_retention', label: 'Donor Retention Rate' },
+  { value: 'avg_donation', label: 'Average Donation' },
+  { value: 'campaign_performance', label: 'Campaign Performance' },
+];
+
+const SCHEDULE_OPTIONS = [
+  { value: 'immediate', label: 'Run Immediately' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+];
+
+export function WorkflowConfigModal({
+  isOpen,
+  onClose,
+  onSave,
+  workflowType,
+  initialConfig,
+}: WorkflowConfigModalProps) {
   const [config, setConfig] = useState<WorkflowConfig>({
-    name: '',
-    type: workflowType,
-    schedule: 'daily',
-    template: '',
+    name: initialConfig?.name || '',
+    description: initialConfig?.description || '',
+    schedule: initialConfig?.schedule || 'daily',
+    template: initialConfig?.template || '',
+    metrics: initialConfig?.metrics || [],
+    recipients: initialConfig?.recipients || [],
   });
+
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
     try {
-      await onSave(config);
+      await onSave({
+        type: workflowType,
+        ...config,
+      });
       onClose();
+      toast.success('Workflow saved successfully');
     } catch (error) {
       console.error('Error saving workflow:', error);
+      toast.error('Failed to save workflow');
     } finally {
       setLoading(false);
     }
   };
 
-  const renderConfigFields = () => {
-    switch (workflowType) {
-      case 'donor-communications':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="template">Thank You Template</Label>
-              <Textarea
-                id="template"
-                value={config.template}
-                onChange={(e) => setConfig({ ...config, template: e.target.value })}
-                placeholder="Thank you for your generous donation of ${amount}. Your support helps us make a difference."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Schedule</Label>
-              <Select
-                value={config.schedule}
-                onValueChange={(value) => setConfig({ ...config, schedule: value as WorkflowConfig['schedule'] })}
-              >
-                <option value="immediate">Immediate</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </Select>
-            </div>
-          </>
-        );
-
-      case 'grant-reminders':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="template">Reminder Template</Label>
-              <Textarea
-                id="template"
-                value={config.template}
-                onChange={(e) => setConfig({ ...config, template: e.target.value })}
-                placeholder="Reminder: The grant application for ${grant_name} is due on ${deadline}."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Reminder Frequency</Label>
-              <Select
-                value={config.schedule}
-                onValueChange={(value) => setConfig({ ...config, schedule: value as WorkflowConfig['schedule'] })}
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </Select>
-            </div>
-          </>
-        );
-
-      case 'impact-reports':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="template">Report Template</Label>
-              <Textarea
-                id="template"
-                value={config.template}
-                onChange={(e) => setConfig({ ...config, template: e.target.value })}
-                placeholder="Impact Report: Here's how we're using your support to achieve our goals."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Report Frequency</Label>
-              <Select
-                value={config.schedule}
-                onValueChange={(value) => setConfig({ ...config, schedule: value as WorkflowConfig['schedule'] })}
-              >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Metrics to Include</Label>
-              <div className="space-y-2">
-                {['completion_rate', 'milestones_achieved', 'lives_impacted', 'funds_allocated'].map((metric) => (
-                  <label key={metric} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={config.metrics?.includes(metric)}
-                      onChange={(e) => {
-                        const metrics = config.metrics || [];
-                        setConfig({
-                          ...config,
-                          metrics: e.target.checked
-                            ? [...metrics, metric]
-                            : metrics.filter((m) => m !== metric),
-                        });
-                      }}
-                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">{metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        );
-
-      case 'performance-analytics':
-        return (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="schedule">Update Frequency</Label>
-              <Select
-                value={config.schedule}
-                onValueChange={(value) => setConfig({ ...config, schedule: value as WorkflowConfig['schedule'] })}
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Metrics to Track</Label>
-              <div className="space-y-2">
-                {['donor_retention', 'grant_success_rate', 'program_efficiency', 'cost_per_impact'].map((metric) => (
-                  <label key={metric} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={config.metrics?.includes(metric)}
-                      onChange={(e) => {
-                        const metrics = config.metrics || [];
-                        setConfig({
-                          ...config,
-                          metrics: e.target.checked
-                            ? [...metrics, metric]
-                            : metrics.filter((m) => m !== metric),
-                        });
-                      }}
-                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-700">{metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </>
-        );
-
-      default:
-        return null;
-    }
-  };
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Configure ${workflowType.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title="Configure Workflow">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="name">Workflow Name</Label>
@@ -208,25 +87,83 @@ export function WorkflowConfigModal({ isOpen, onClose, workflowType, onSave }: W
             id="name"
             value={config.name}
             onChange={(e) => setConfig({ ...config, name: e.target.value })}
-            placeholder="Enter a name for this workflow"
+            placeholder="Enter workflow name"
+            required
           />
         </div>
 
-        {renderConfigFields()}
+        <div className="space-y-2">
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            value={config.description}
+            onChange={(e) => setConfig({ ...config, description: e.target.value })}
+            placeholder="Enter workflow description"
+          />
+        </div>
 
-        <div className="mt-6 flex justify-end space-x-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={loading}
+        <div className="space-y-2">
+          <Label htmlFor="schedule">Schedule</Label>
+          <Select
+            value={config.schedule}
+            onValueChange={(value: string) => setConfig({ ...config, schedule: value })}
           >
+            <SelectTrigger>
+              <SelectValue placeholder="Select schedule" />
+            </SelectTrigger>
+            <SelectContent>
+              {SCHEDULE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Metrics to Include</Label>
+          <div className="space-y-2">
+            {METRICS_OPTIONS.map((metric) => (
+              <div key={metric.value} className="flex items-center space-x-2">
+                <Checkbox
+                  id={metric.value}
+                  checked={config.metrics.includes(metric.value)}
+                  onCheckedChange={(checked: boolean) => {
+                    setConfig({
+                      ...config,
+                      metrics: checked
+                        ? [...config.metrics, metric.value]
+                        : config.metrics.filter((m: string) => m !== metric.value),
+                    });
+                  }}
+                />
+                <Label htmlFor={metric.value}>{metric.label}</Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="template">Message Template</Label>
+          <Textarea
+            id="template"
+            value={config.template}
+            onChange={(e) => setConfig({ ...config, template: e.target.value })}
+            placeholder="Enter message template"
+            className="h-32"
+            required
+          />
+          <p className="text-sm text-gray-500">
+            Use {'${metric_name}'} to include metrics in your template
+          </p>
+        </div>
+
+        <div className="flex justify-end space-x-4">
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={loading}
-          >
+          <Button type="submit" disabled={loading}>
             {loading ? 'Saving...' : 'Save Workflow'}
           </Button>
         </div>

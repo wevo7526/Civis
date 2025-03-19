@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, XMarkIcon, PaperClipIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { aiService } from '@/lib/aiService';
+import { aiService } from '../../lib/aiService';
 
 interface Message {
   role: 'user' | 'assistant';

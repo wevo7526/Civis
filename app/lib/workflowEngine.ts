@@ -89,6 +89,8 @@ export class WorkflowEngine {
         return this.getGrantData();
       case 'impact-reports':
         return this.getImpactData();
+      case 'campaign-performance':
+        return this.getCampaignData();
       default:
         return {};
     }
@@ -324,50 +326,104 @@ export class WorkflowEngine {
   }
 
   private async getDonorData(): Promise<any> {
-    const { data: donations, error } = await this.supabase
-      .from('donations')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const { data: donors, error } = await this.supabase
+      .from('donors')
+      .select('*');
 
     if (error) throw error;
 
+    const totalDonors = donors.length;
+    const totalRevenue = donors.reduce((sum, donor) => sum + (Number(donor.amount) || 0), 0);
+    const avgDonation = totalDonors > 0 ? totalRevenue / totalDonors : 0;
+
+    // Calculate donor retention
+    const uniqueDonors = new Set(donors.map(d => d.email));
+    const returningDonors = donors.filter(d => {
+      const donations = donors.filter(d2 => d2.email === d.email);
+      return donations.length > 1;
+    });
+    const donorRetention = uniqueDonors.size > 0 
+      ? (returningDonors.length / uniqueDonors.size) * 100 
+      : 0;
+
     return {
-      recent_donations: donations,
-      total_amount: donations.reduce((sum, d) => sum + d.amount, 0),
-      donor_count: donations.length,
+      total_donors: totalDonors,
+      total_revenue: totalRevenue,
+      avg_donation: avgDonation,
+      donor_retention: donorRetention,
     };
   }
 
   private async getGrantData(): Promise<any> {
     const { data: grants, error } = await this.supabase
       .from('grants')
-      .select('*')
-      .order('deadline', { ascending: true })
-      .limit(5);
+      .select('*');
 
     if (error) throw error;
 
+    const activeGrants = grants.filter(g => g.status === 'active');
+    const totalAmount = activeGrants.reduce((sum, grant) => sum + (Number(grant.amount) || 0), 0);
+    const upcomingDeadlines = activeGrants
+      .filter(g => new Date(g.deadline) > new Date())
+      .map(g => ({
+        name: g.name,
+        deadline: g.deadline,
+        amount: g.amount,
+      }));
+
     return {
-      upcoming_deadlines: grants,
-      total_grants: grants.length,
-      next_deadline: grants[0]?.deadline,
+      active_grants: activeGrants.length,
+      total_amount: totalAmount,
+      upcoming_deadlines: upcomingDeadlines,
     };
   }
 
   private async getImpactData(): Promise<any> {
-    const { data: metrics, error } = await this.supabase
-      .from('impact_metrics')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(1);
+    const { data: projects, error } = await this.supabase
+      .from('projects')
+      .select('*');
 
     if (error) throw error;
 
+    const activeProjects = projects.filter(p => p.status === 'active');
+    const totalImpact = activeProjects.reduce((sum, project) => sum + (Number(project.impact_count) || 0), 0);
+    const completionRate = activeProjects.reduce((sum, project) => sum + (Number(project.completion_rate) || 0), 0) / activeProjects.length;
+
     return {
-      current_metrics: metrics[0],
-      total_impact: metrics[0]?.total_impact || 0,
-      program_outcomes: metrics[0]?.program_outcomes || [],
+      active_projects: activeProjects.length,
+      total_impact: totalImpact,
+      completion_rate: completionRate,
+      projects: activeProjects.map(p => ({
+        name: p.name,
+        impact: p.impact_count,
+        completion: p.completion_rate,
+      })),
+    };
+  }
+
+  private async getCampaignData(): Promise<any> {
+    const { data: campaigns, error } = await this.supabase
+      .from('campaigns')
+      .select('*');
+
+    if (error) throw error;
+
+    const activeCampaigns = campaigns.filter(c => c.status === 'active');
+    const totalRaised = activeCampaigns.reduce((sum, campaign) => sum + (Number(campaign.amount_raised) || 0), 0);
+    const totalGoal = activeCampaigns.reduce((sum, campaign) => sum + (Number(campaign.goal) || 0), 0);
+    const performance = totalGoal > 0 ? (totalRaised / totalGoal) * 100 : 0;
+
+    return {
+      active_campaigns: activeCampaigns.length,
+      total_raised: totalRaised,
+      total_goal: totalGoal,
+      performance: performance,
+      campaigns: activeCampaigns.map(c => ({
+        name: c.name,
+        raised: c.amount_raised,
+        goal: c.goal,
+        progress: (Number(c.amount_raised) / Number(c.goal)) * 100,
+      })),
     };
   }
 } 
