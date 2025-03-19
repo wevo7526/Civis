@@ -15,8 +15,20 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
+  PlusIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 import { WorkflowConfigModal } from '@/components/automation/WorkflowConfigModal';
+import { WorkflowAnalytics } from '@/components/automation/WorkflowAnalytics';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { workflowTemplates, getTemplateById } from '@/lib/workflowTemplates';
 
 interface AutomationFeature {
   id: string;
@@ -40,29 +52,20 @@ export default function AutomationHub() {
     {
       id: 'donor-communications',
       name: 'Donor Communications',
-      description: 'Automated thank you notes and impact updates',
+      description: 'Automated thank you notes and updates',
       icon: EnvelopeIcon,
       href: '/dashboard/automation/donor-communications',
       status: 'inactive',
       category: 'communications',
     },
     {
-      id: 'impact-reports',
-      name: 'Impact Reports',
-      description: 'Scheduled progress and impact updates',
-      icon: DocumentTextIcon,
-      href: '/dashboard/automation/impact-reports',
+      id: 'grant-reminders',
+      name: 'Grant Reminders',
+      description: 'Scheduled grant deadline reminders',
+      icon: BellIcon,
+      href: '/dashboard/automation/grant-reminders',
       status: 'inactive',
-      category: 'reports',
-    },
-    {
-      id: 'performance-analytics',
-      name: 'Performance Analytics',
-      description: 'Automated tracking of key metrics and KPIs',
-      icon: ChartBarIcon,
-      href: '/dashboard/automation/analytics',
-      status: 'inactive',
-      category: 'analytics',
+      category: 'grants',
     },
   ]);
 
@@ -175,8 +178,6 @@ export default function AutomationHub() {
         return 'Thank you for your generous donation of ${amount}. Your support helps us make a difference.';
       case 'grant-reminders':
         return 'Reminder: The grant application for ${grant_name} is due on ${deadline}.';
-      case 'impact-reports':
-        return 'Impact Report: Here\'s how we\'re using your support to achieve our goals.';
       default:
         return '';
     }
@@ -269,115 +270,142 @@ export default function AutomationHub() {
   }
 
   return (
-    <div className="space-y-8 p-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Automation Hub</h1>
-          <p className="text-gray-500">Manage your automated workflows and communications</p>
+          <h1 className="text-3xl font-bold text-gray-900">Automation Hub</h1>
+          <p className="mt-2 text-gray-600">
+            Manage your automated workflows and communications
+          </p>
         </div>
-        <button
-          onClick={() => setSelectedWorkflow('new')}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-        >
-          Create Workflow
-        </button>
+        <div className="flex items-center space-x-4">
+          <Button>
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New Workflow
+          </Button>
+          <Button variant="outline">
+            <Cog6ToothIcon className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-col space-y-4">
-        <div className="flex items-center space-x-4">
-          <div className="flex-1">
-            <input
+      {/* Search and Filter */}
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
+        <div className="flex-1">
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
               type="text"
               placeholder="Search workflows..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="pl-10 bg-white"
             />
           </div>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          >
-            <option value="all">All Categories</option>
-            <option value="communications">Communications</option>
-            <option value="reports">Reports</option>
-            <option value="grants">Grants</option>
-            <option value="analytics">Analytics</option>
-          </select>
         </div>
+        <div className="w-full md:w-48">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-full bg-white">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="communications">Communications</SelectItem>
+              <SelectItem value="grants">Grants</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Workflows</CardTitle>
+            <DocumentDuplicateIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{features.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {features.filter(f => f.status === 'active').length} active
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+            <CheckCircleIcon className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {Math.round(
+                features.reduce((sum, f) => sum + (f.stats?.successRate || 0), 0) / features.length
+              )}%
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Average success rate across all workflows
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Workflow Templates */}
+      <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
+        <h2 className="text-lg font-semibold mb-4">Workflow Templates</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {workflowTemplates.map((template) => (
+            <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+              <h3 className="font-medium mb-2">{template.name}</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {template.description}
+              </p>
+              <div className="flex items-center justify-between">
+                <Badge variant="outline">{template.category}</Badge>
+                <Button variant="outline" size="sm">
+                  Use Template
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Active Workflows */}
+      <div className="bg-white shadow-sm rounded-lg p-6">
+        <h2 className="text-lg font-semibold mb-4">Active Workflows</h2>
+        <div className="space-y-4">
           {filteredFeatures.map((feature) => (
             <div
               key={feature.id}
-              className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md transition-shadow"
+              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                    <feature.icon className="h-5 w-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">{feature.name}</h3>
-                    <p className="text-sm text-gray-500">{feature.description}</p>
-                  </div>
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-full bg-primary/10">
+                  <feature.icon className="h-5 w-5 text-primary" />
                 </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(feature.status)}`}>
-                  {feature.status.charAt(0).toUpperCase() + feature.status.slice(1)}
-                </span>
+                <div>
+                  <h3 className="font-medium">{feature.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {feature.description}
+                  </p>
+                </div>
               </div>
-
-              <div className="mt-4 space-y-2">
-                {feature.lastRun && (
-                  <div className="flex items-center text-sm text-gray-500">
-                    <ClockIcon className="h-4 w-4 mr-2" />
-                    <span>Last run: {new Date(feature.lastRun).toLocaleDateString()}</span>
-                  </div>
-                )}
-                {feature.nextRun && (
-                  <div className="flex items-center text-sm text-gray-500">
-                    <ClockIcon className="h-4 w-4 mr-2" />
-                    <span>Next run: {new Date(feature.nextRun).toLocaleDateString()}</span>
-                  </div>
-                )}
-                {feature.stats && (
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <ArrowPathIcon className="h-4 w-4 mr-1" />
-                      <span>{feature.stats.totalRuns} runs</span>
-                    </div>
-                    <div className="flex items-center">
-                      <CheckCircleIcon className="h-4 w-4 mr-1 text-green-500" />
-                      <span>{feature.stats.successRate}% success</span>
-                    </div>
-                  </div>
-                )}
-                {feature.status === 'error' && feature.stats?.lastError && (
-                  <div className="flex items-center text-sm text-red-500">
-                    <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
-                    <span>{feature.stats.lastError}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 flex space-x-3">
-                <button
-                  onClick={() => setSelectedWorkflow(feature.id)}
-                  className="flex-1 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
-                >
-                  Configure
-                </button>
-                <button
-                  onClick={() => toggleWorkflowStatus(feature.id, feature.status)}
-                  className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-                    feature.status === 'active'
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-green-50 text-green-600 hover:bg-green-100'
-                  }`}
-                >
-                  {feature.status === 'active' ? 'Disable' : 'Enable'}
-                </button>
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id={`workflow-${feature.id}`}
+                    checked={feature.status === 'active'}
+                    onCheckedChange={(checked) => toggleWorkflowStatus(feature.id, checked ? 'active' : 'inactive')}
+                  />
+                  <Label htmlFor={`workflow-${feature.id}`}>
+                    {feature.status === 'active' ? 'Active' : 'Inactive'}
+                  </Label>
+                </div>
+                <Button variant="ghost" size="sm">
+                  <Cog6ToothIcon className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           ))}

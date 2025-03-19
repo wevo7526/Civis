@@ -44,7 +44,6 @@ const navigation = [
     items: [
       { name: 'Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
       { name: 'Outreach', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
-      { name: 'Impact', href: '/dashboard/automation/impact-reports', icon: DocumentTextIcon },
     ],
   },
 ];

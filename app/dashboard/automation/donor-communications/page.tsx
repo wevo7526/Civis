@@ -12,6 +12,12 @@ import {
   PencilIcon,
   TrashIcon,
   EyeIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  DocumentDuplicateIcon,
+  ChartBarIcon,
+  UserGroupIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,11 +25,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog } from '@headlessui/react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { workflowTemplates } from '@/lib/workflowTemplates';
 
 interface DonorCommunication {
   id: string;
   name: string;
-  type: 'thank_you' | 'impact_update' | 'custom';
+  type: 'thank_you' | 'custom';
   status: 'active' | 'inactive';
   schedule: string;
   template: string;
@@ -41,6 +51,8 @@ export default function DonorCommunications() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedComm, setSelectedComm] = useState<DonorCommunication | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [newComm, setNewComm] = useState<Partial<DonorCommunication>>({
     name: '',
     type: 'thank_you',
@@ -69,7 +81,6 @@ export default function DonorCommunications() {
 
       if (error) throw error;
 
-      // Ensure recipients is always an array
       const processedWorkflows = workflows?.map(workflow => ({
         ...workflow,
         recipients: workflow.config?.recipients || [],
@@ -210,6 +221,19 @@ export default function DonorCommunications() {
     }
   };
 
+  const filteredCommunications = communications.filter(comm => {
+    if (!comm) return false;
+    
+    const searchLower = searchQuery.toLowerCase();
+    const nameMatch = comm.name?.toLowerCase().includes(searchLower) || false;
+    const templateMatch = comm.template?.toLowerCase().includes(searchLower) || false;
+    const matchesSearch = nameMatch || templateMatch;
+    
+    const matchesCategory = selectedCategory === 'all' || comm.type === selectedCategory;
+    
+    return matchesSearch && matchesCategory;
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -219,152 +243,165 @@ export default function DonorCommunications() {
   }
 
   return (
-    <div className="space-y-8 p-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto px-4 py-8">
+      {/* Header Section */}
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Donor Communications</h1>
-          <p className="text-gray-500">Configure automated thank you notes and impact updates</p>
+          <h1 className="text-3xl font-bold text-gray-900">Donor Communications</h1>
+          <p className="mt-2 text-gray-600">
+            Manage automated thank you notes and donor outreach
+          </p>
         </div>
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center space-x-2"
-        >
-          <PlusIcon className="h-5 w-5" />
-          <span>Create New</span>
-        </Button>
+        <div className="flex items-center space-x-4">
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <PlusIcon className="h-4 w-4 mr-2" />
+            New Communication
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {communications.map((comm) => (
-          <div
-            key={comm.id}
-            className="bg-white rounded-xl shadow-sm p-6 border border-gray-100"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                  <EnvelopeIcon className="h-5 w-5 text-purple-600" />
+      {/* Search and Filter */}
+      <div className="flex flex-col md:flex-row gap-4 mb-8">
+        <div className="flex-1">
+          <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search communications..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white"
+            />
+          </div>
+        </div>
+        <div className="w-full md:w-48">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-full bg-white">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="thank_you">Thank You Notes</SelectItem>
+              <SelectItem value="custom">Custom Messages</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Communications</CardTitle>
+            <DocumentDuplicateIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{communications.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {communications.filter(c => c.status === 'active').length} active
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
+            <CheckCircleIcon className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">98%</div>
+            <p className="text-xs text-muted-foreground">
+              Average delivery success rate
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Recipients</CardTitle>
+            <UserGroupIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {communications.reduce((sum, c) => sum + (c.recipients?.length || 0), 0)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total recipients across all communications
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Communication Templates */}
+      <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
+        <h2 className="text-lg font-semibold mb-4">Communication Templates</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {workflowTemplates
+            .filter(template => template.category === 'communications')
+            .map((template) => (
+              <div key={template.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                <h3 className="font-medium mb-2">{template.name}</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {template.description}
+                </p>
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline">{template.category}</Badge>
+                  <Button variant="outline" size="sm">
+                    Use Template
+                  </Button>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* Active Communications */}
+      <div className="bg-white shadow-sm rounded-lg p-6">
+        <h2 className="text-lg font-semibold mb-4">Active Communications</h2>
+        <div className="space-y-4">
+          {filteredCommunications.map((comm) => (
+            <div
+              key={comm.id}
+              className="flex items-center justify-between p-6 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <div className="flex items-center space-x-4">
+                <div className="p-3 rounded-full bg-primary/10">
+                  <EnvelopeIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">{comm.name}</h3>
-                  <p className="text-sm text-gray-500">
-                    {comm.type === 'thank_you'
-                      ? 'Thank You Note'
-                      : comm.type === 'impact_update'
-                      ? 'Impact Update'
-                      : 'Custom Communication'}
+                  <h3 className="font-medium">{comm.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {comm.type === 'thank_you' ? 'Thank You Note' : 'Custom Communication'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handlePreview(comm)}
-                  className="p-2 text-gray-400 hover:text-gray-500"
-                >
-                  <EyeIcon className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedComm(comm);
-                    setIsEditModalOpen(true);
-                  }}
-                  className="p-2 text-gray-400 hover:text-gray-500"
-                >
-                  <PencilIcon className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => handleDelete(comm.id)}
-                  className="p-2 text-red-400 hover:text-red-500"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => handleToggleStatus(comm.id)}
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    comm.status === 'active'
-                      ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {comm.status === 'active' ? 'Active' : 'Inactive'}
-                </button>
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id={`comm-${comm.id}`}
+                    checked={comm.status === 'active'}
+                    onCheckedChange={(checked) => handleToggleStatus(comm.id)}
+                  />
+                  <Label htmlFor={`comm-${comm.id}`}>
+                    {comm.status === 'active' ? 'Active' : 'Inactive'}
+                  </Label>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => handlePreview(comm)}>
+                  <EyeIcon className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setSelectedComm(comm);
+                  setIsEditModalOpen(true);
+                }}>
+                  <PencilIcon className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(comm.id)}>
+                  <TrashIcon className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-
-            <div className="mt-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Schedule</Label>
-                  <Select
-                    value={comm.schedule}
-                    onValueChange={(value) => {
-                      setSelectedComm(prev => prev ? { ...prev, schedule: value } : null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select schedule" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="immediate">Send immediately</SelectItem>
-                      <SelectItem value="daily">Daily digest</SelectItem>
-                      <SelectItem value="weekly">Weekly digest</SelectItem>
-                      <SelectItem value="monthly">Monthly digest</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Recipients</Label>
-                  <Select
-                    value={(comm.recipients || []).join(',')}
-                    onValueChange={(value) => {
-                      setSelectedComm(prev => prev ? { ...prev, recipients: value.split(',') } : null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select recipients" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all_donors">All Donors</SelectItem>
-                      <SelectItem value="recent_donors">Recent Donors</SelectItem>
-                      <SelectItem value="major_donors">Major Donors</SelectItem>
-                      <SelectItem value="monthly_donors">Monthly Donors</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div>
-                <Label>Message Template</Label>
-                <Textarea
-                  value={comm.template}
-                  onChange={(e) => {
-                    setSelectedComm(prev => prev ? { ...prev, template: e.target.value } : null);
-                  }}
-                  rows={3}
-                  placeholder="Use {variable} syntax for dynamic content"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  Available variables: {comm.variables.join(', ')}
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-4 text-sm text-gray-500">
-                {comm.lastSent && (
-                  <div className="flex items-center">
-                    <ClockIcon className="h-4 w-4 mr-1" />
-                    <span>Last sent: {new Date(comm.lastSent).toLocaleDateString()}</span>
-                  </div>
-                )}
-                {comm.nextSend && (
-                  <div className="flex items-center">
-                    <ClockIcon className="h-4 w-4 mr-1" />
-                    <span>Next send: {new Date(comm.nextSend).toLocaleDateString()}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Create Modal */}
@@ -399,7 +436,6 @@ export default function DonorCommunications() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="thank_you">Thank You Note</SelectItem>
-                    <SelectItem value="impact_update">Impact Update</SelectItem>
                     <SelectItem value="custom">Custom Communication</SelectItem>
                   </SelectContent>
                 </Select>

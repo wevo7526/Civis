@@ -5,8 +5,10 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Donor } from '../../lib/types';
 import { createDonorService } from '../../lib/donorService';
 import { aiService } from '../../lib/aiService';
-import { ChartBarIcon, UserGroupIcon, CurrencyDollarIcon, LightBulbIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { ChartBarIcon, UserGroupIcon, CurrencyDollarIcon, LightBulbIcon, SparklesIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import AIInsightsSidebar from '../../components/AIInsightsSidebar';
+import { WorkflowAnalytics } from '@/components/automation/WorkflowAnalytics';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AnalyticsData {
   totalDonors: number;
@@ -174,7 +176,7 @@ export default function Analytics() {
           </div>
 
           {/* Detailed Analytics */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Donor Segments */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Donor Segments</h2>
@@ -250,8 +252,17 @@ export default function Analytics() {
             </div>
           </div>
 
+          {/* Workflow Analytics */}
+          <div className="mb-8">
+            <div className="flex items-center space-x-2 mb-4">
+              <Cog6ToothIcon className="h-6 w-6 text-gray-500" />
+              <h2 className="text-xl font-semibold text-gray-900">Workflow Analytics</h2>
+            </div>
+            <WorkflowAnalytics />
+          </div>
+
           {/* Recommendations */}
-          <div className="mt-8 bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Strategic Recommendations</h2>
             <div className="space-y-4">
               {analytics && (
