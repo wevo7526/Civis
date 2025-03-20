@@ -44,6 +44,7 @@ const navigation = [
     name: 'Community',
     items: [
       { name: 'Activities', href: '/dashboard/volunteer', icon: CalendarIcon },
+      { name: 'Volunteers', href: '/dashboard/volunteers', icon: UserGroupIcon },
     ],
   },
   {

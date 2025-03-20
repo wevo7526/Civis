@@ -41,20 +41,16 @@ export interface Volunteer {
   first_name: string;
   last_name: string;
   email: string;
-  phone?: string;
-  status: 'active' | 'inactive';
+  phone: string;
+  status: 'active' | 'inactive' | 'pending';
   skills: string[];
   interests: string[];
-  total_hours: number;
   availability: {
-    weekdays: string[];
+    weekdays: boolean;
     weekends: boolean;
-    hours: {
-      morning: boolean;
-      afternoon: boolean;
-      evening: boolean;
-    };
+    hours: string;
   };
+  total_hours: number;
   created_at: string;
   updated_at: string;
 }
