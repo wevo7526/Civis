@@ -24,6 +24,7 @@ import {
   BellIcon,
   ChatBubbleLeftRightIcon,
   CreditCardIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState, useEffect } from 'react';
@@ -37,6 +38,12 @@ const navigation = [
       { name: 'Knowledge', href: '/dashboard/ai-chat', icon: ChatBubbleLeftRightIcon },
       { name: 'Projects', href: '/dashboard/projects', icon: FolderIcon },
       { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
+    ],
+  },
+  {
+    name: 'Community',
+    items: [
+      { name: 'Activities', href: '/dashboard/volunteer', icon: CalendarIcon },
     ],
   },
   {

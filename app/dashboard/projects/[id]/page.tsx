@@ -11,10 +11,10 @@ import {
   CalendarIcon,
   ArrowLeftIcon
 } from '@heroicons/react/24/outline';
-import { Project } from '@/lib/projectService';
+import type { Project } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
-import SavedItemCard from '@/components/SavedItemCard';
-import DocumentEditor from '@/components/DocumentEditor';
+import SavedItemCard from '../../../components/SavedItemCard';
+import DocumentEditor from '../../../components/DocumentEditor';
 
 interface SavedItems {
   grants: any[];
@@ -420,7 +420,7 @@ export default function ProjectDetails() {
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Team Roles</h3>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {project.team_roles.map((role, index) => (
+                    {project.team_roles.map((role: string, index: number) => (
                       <span
                         key={index}
                         className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
@@ -576,7 +576,7 @@ export default function ProjectDetails() {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {project.team_roles.map((role, index) => (
+              {project.team_roles.map((role: string, index: number) => (
                 <div
                   key={index}
                   className="bg-gray-50 rounded-lg p-4 border border-gray-200"

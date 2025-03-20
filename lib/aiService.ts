@@ -1,11 +1,4 @@
-import { Project } from './types';
-
-export interface AIResponse {
-  message: string;
-  success: boolean;
-  content: string;
-  data: any;
-}
+import { Project, AIResponse } from './types';
 
 export const aiService = {
   async analyzeDonorEngagement(donorData: any[]): Promise<AIResponse> {
@@ -164,5 +157,13 @@ export const aiService = {
         data: {},
       };
     }
+  },
+
+  async generateFundraisingStrategy(project: Project): Promise<AIResponse> {
+    // Implementation
+    return {
+      success: true,
+      content: "Generated fundraising strategy..."
+    };
   }
 }; 
