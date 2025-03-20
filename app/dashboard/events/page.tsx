@@ -21,6 +21,9 @@ interface Event {
   status: 'active' | 'completed' | 'planned' | 'cancelled';
   created_at: string;
   updated_at: string;
+  max_volunteers?: number;
+  volunteer_ids?: string[];
+  volunteer_hours?: { [key: string]: number };
 }
 
 interface EventFormData {
@@ -30,6 +33,7 @@ interface EventFormData {
   location: string;
   type: 'fundraiser' | 'volunteer' | 'community' | 'other';
   status: 'active' | 'completed' | 'planned' | 'cancelled';
+  max_volunteers?: number;
 }
 
 const initialFormData: EventFormData = {
@@ -37,8 +41,9 @@ const initialFormData: EventFormData = {
   description: '',
   date: new Date().toISOString().split('T')[0],
   location: '',
-  type: 'fundraiser',
+  type: 'volunteer',
   status: 'planned',
+  max_volunteers: 10
 };
 
 export default function Events() {
@@ -66,6 +71,7 @@ export default function Events() {
         location: eventToEdit.location,
         type: eventToEdit.type,
         status: eventToEdit.status,
+        max_volunteers: eventToEdit.max_volunteers,
       });
       setIsModalOpen(true);
     }
@@ -160,6 +166,56 @@ export default function Events() {
     setFormData(initialFormData);
   };
 
+  const handleVolunteerSignup = async (eventId: string, volunteerId: string) => {
+    try {
+      const event = events.find(e => e.id === eventId);
+      if (!event) return;
+
+      const volunteer_ids = [...(event.volunteer_ids || [])];
+      if (volunteer_ids.includes(volunteerId)) return;
+
+      if (event.max_volunteers && volunteer_ids.length >= event.max_volunteers) {
+        throw new Error('Event has reached maximum volunteer capacity');
+      }
+
+      volunteer_ids.push(volunteerId);
+
+      const { error } = await supabase
+        .from('events')
+        .update({ volunteer_ids })
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      // Refresh events list
+      fetchEvents();
+    } catch (err) {
+      console.error('Error signing up volunteer:', err);
+    }
+  };
+
+  const handleVolunteerHours = async (eventId: string, volunteerId: string, hours: number) => {
+    try {
+      const event = events.find(e => e.id === eventId);
+      if (!event) return;
+
+      const volunteer_hours = { ...(event.volunteer_hours || {}) };
+      volunteer_hours[volunteerId] = hours;
+
+      const { error } = await supabase
+        .from('events')
+        .update({ volunteer_hours })
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      // Refresh events list
+      fetchEvents();
+    } catch (err) {
+      console.error('Error updating volunteer hours:', err);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
@@ -188,45 +244,50 @@ export default function Events() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volunteers</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {events.map((event) => (
-              <tr key={event.id}>
+              <tr key={event.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm font-medium text-gray-900">{event.name}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
-                  </div>
+                  <div className="text-sm text-gray-500">{event.type}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
+                  <div className="text-sm text-gray-500">
                     {new Date(event.date).toLocaleDateString()}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">{event.location}</div>
+                  <div className="text-sm text-gray-500">{event.location}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                     event.status === 'active' ? 'bg-green-100 text-green-800' :
-                    event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                    event.status === 'planned' ? 'bg-blue-100 text-blue-800' :
-                    'bg-red-100 text-red-800'
+                    event.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                    event.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                    'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                    {event.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">
+                    {event.volunteer_ids?.length || 0}
+                    {event.max_volunteers && ` / ${event.max_volunteers}`}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                   <button
                     onClick={() => {
                       setEventToDelete(event);
                       setIsDeleteModalOpen(true);
                     }}
-                    className="text-red-600 hover:text-red-900 mr-4"
+                    className="text-red-600 hover:text-red-900"
                   >
                     <TrashIcon className="h-5 w-5" />
                   </button>
@@ -340,6 +401,22 @@ export default function Events() {
                     <option value="cancelled">Cancelled</option>
                   </select>
                 </div>
+
+                {formData.type === 'volunteer' && (
+                  <div>
+                    <label htmlFor="max_volunteers" className="block text-sm font-medium text-gray-700">
+                      Maximum Volunteers
+                    </label>
+                    <input
+                      type="number"
+                      id="max_volunteers"
+                      min="1"
+                      value={formData.max_volunteers}
+                      onChange={(e) => setFormData(prev => ({ ...prev, max_volunteers: parseInt(e.target.value) }))}
+                      className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                )}
 
                 <div className="md:col-span-2">
                   <label htmlFor="description" className="block text-sm font-medium text-gray-700">

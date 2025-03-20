@@ -43,7 +43,7 @@ const navigation = [
   {
     name: 'Community',
     items: [
-      { name: 'Activities', href: '/dashboard/volunteer', icon: CalendarIcon },
+      { name: 'Events', href: '/dashboard/events', icon: CalendarIcon },
       { name: 'Volunteers', href: '/dashboard/volunteers', icon: UserGroupIcon },
     ],
   },
@@ -51,7 +51,7 @@ const navigation = [
     name: 'Automation',
     items: [
       { name: 'Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
-      { name: 'Outreach', href: '/dashboard/automation/donor-communications', icon: EnvelopeIcon },
+      { name: 'Outreach', href: '/dashboard/outreach', icon: EnvelopeIcon },
     ],
   },
 ];
@@ -102,10 +102,10 @@ export default function Sidebar() {
           </svg>
         </button>
       </div>
-      
-      <nav className="flex-1 px-2 py-4 space-y-6 overflow-y-auto">
+
+      <nav className="flex-1 overflow-y-auto py-4">
         {navigation.map((section) => (
-          <div key={section.name}>
+          <div key={section.name} className="mb-6">
             {!isCollapsed && (
               <h2 className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 {section.name}
@@ -140,7 +140,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto p-4 space-y-2">
+      <div className="border-t border-gray-200 p-4">
         <Link
           href="/dashboard/profile"
           className={`flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors duration-200 ${
@@ -178,4 +178,4 @@ export default function Sidebar() {
       </div>
     </div>
   );
-} 
+}

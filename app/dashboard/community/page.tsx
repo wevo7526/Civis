@@ -103,6 +103,13 @@ export default function CommunityPage() {
             Manage Volunteers
           </Button>
           <Button
+            onClick={() => router.push('/dashboard/events')}
+            variant="outline"
+          >
+            <CalendarIcon className="h-5 w-5 mr-2" />
+            Manage Events
+          </Button>
+          <Button
             onClick={() => router.push('/dashboard/community/activities/new')}
           >
             <CalendarIcon className="h-5 w-5 mr-2" />

@@ -7,7 +7,6 @@ import { createDonorService } from '../../lib/donorService';
 import { aiService } from '../../lib/aiService';
 import { ChartBarIcon, UserGroupIcon, CurrencyDollarIcon, LightBulbIcon, SparklesIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 import AIInsightsSidebar from '../../components/AIInsightsSidebar';
-import { WorkflowAnalytics } from '@/components/automation/WorkflowAnalytics';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AnalyticsData {
@@ -59,12 +58,14 @@ export default function Analytics() {
     const totalRevenue = donorData.reduce((sum, donor) => sum + donor.amount, 0);
     const averageDonation = totalRevenue / donorData.length;
     const newDonors = donorData.filter(donor => {
+      if (!donor.created_at) return false;
       const donorDate = new Date(donor.created_at);
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       return donorDate > thirtyDaysAgo;
     }).length;
     const returningDonors = donorData.filter(donor => {
+      if (!donor.last_donation) return false;
       const lastDonationDate = new Date(donor.last_donation);
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
@@ -72,7 +73,7 @@ export default function Analytics() {
     }).length;
     const highValueDonors = donorData.filter(donor => donor.amount > averageDonation * 2).length;
     const retentionRate = (returningDonors / donorData.length) * 100;
-    const totalEngagementScore = donorData.reduce((sum, donor) => sum + donor.engagement, 0);
+    const totalEngagementScore = donorData.reduce((sum, donor) => sum + (donor.engagement || 0), 0);
     const engagementScore = totalEngagementScore / donorData.length;
 
     setAnalytics({
@@ -250,15 +251,6 @@ export default function Analytics() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Workflow Analytics */}
-          <div className="mb-8">
-            <div className="flex items-center space-x-2 mb-4">
-              <Cog6ToothIcon className="h-6 w-6 text-gray-500" />
-              <h2 className="text-xl font-semibold text-gray-900">Workflow Analytics</h2>
-            </div>
-            <WorkflowAnalytics />
           </div>
 
           {/* Recommendations */}

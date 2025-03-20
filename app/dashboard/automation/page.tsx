@@ -22,8 +22,6 @@ import {
   PencilIcon,
   TrashIcon,
 } from '@heroicons/react/24/outline';
-import { WorkflowConfigModal } from '@/components/automation/WorkflowConfigModal';
-import { WorkflowAnalytics } from '@/components/automation/WorkflowAnalytics';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -31,7 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { workflowTemplates, getTemplateById } from '@/lib/workflowTemplates';
+import { workflowTemplates, getTemplateById } from '@/app/lib/workflowTemplates';
 
 interface AutomationFeature {
   id: string;
@@ -75,7 +73,6 @@ export default function AutomationHub() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -205,64 +202,6 @@ export default function AutomationHub() {
                          feature.description.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
-
-  const handleSaveWorkflow = async (config: any) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: workflow, error } = await supabase
-        .from('automation_workflows')
-        .upsert({
-          user_id: user.id,
-          type: config.type,
-          name: config.name,
-          status: 'active',
-          config: {
-            schedule: config.schedule,
-            template: config.template,
-            metrics: config.metrics,
-          },
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update local state
-      setFeatures(prevFeatures =>
-        prevFeatures.map(feature =>
-          feature.id === config.type
-            ? {
-                ...feature,
-                status: 'active',
-                stats: {
-                  totalRuns: 0,
-                  successRate: 100,
-                },
-              }
-            : feature
-        )
-      );
-
-      // Start the workflow
-      const response = await fetch('/api/automation/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ workflowId: workflow.id }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start workflow');
-      }
-    } catch (error) {
-      console.error('Error saving workflow:', error);
-      throw error;
-    }
-  };
 
   if (loading) {
     return (
@@ -427,15 +366,6 @@ export default function AutomationHub() {
           ))}
         </div>
       </div>
-
-      {selectedWorkflow && (
-        <WorkflowConfigModal
-          isOpen={!!selectedWorkflow}
-          onClose={() => setSelectedWorkflow(null)}
-          workflowType={selectedWorkflow === 'new' ? 'donor-communications' : selectedWorkflow}
-          onSave={handleSaveWorkflow}
-        />
-      )}
     </div>
   );
 } 
