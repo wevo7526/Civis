@@ -3,7 +3,7 @@ export interface Project {
   user_id?: string;
   name: string;
   description: string;
-  status: string;
+  status: 'planning' | 'active' | 'completed' | 'on-hold';
   budget: number;
   start_date: string;
   end_date: string;
@@ -84,4 +84,23 @@ export interface AIResponse {
   message?: string;
   content: string;
   data?: any;
+}
+
+export interface Event {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  date: string;
+  location: string;
+  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
+  status: 'active' | 'completed' | 'planned' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+  max_volunteers?: number;
+  volunteer_ids?: string[];
+  volunteer_hours?: { [key: string]: number };
+  budget?: number;
+  amount_raised?: number;
+  fundraising_goal?: number;
 } 

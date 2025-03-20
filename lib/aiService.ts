@@ -160,10 +160,46 @@ export const aiService = {
   },
 
   async generateFundraisingStrategy(project: Project): Promise<AIResponse> {
-    // Implementation
-    return {
-      success: true,
-      content: "Generated fundraising strategy..."
-    };
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_fundraising_strategy',
+          data: {
+            project_name: project.name,
+            project_description: project.description,
+            project_goals: project.goals || [],
+            project_budget: project.budget || 0,
+            project_timeline: project.timeline || '',
+            organization_info: project.organization_info || '',
+            impact_target: project.impact_target || '',
+            impact_metric: project.impact_metric || '',
+            team_size: project.team_size || 0,
+            team_roles: project.team_roles || [],
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate fundraising strategy');
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        message: 'Fundraising strategy generated successfully',
+        content: data.content[0]?.text || '',
+        data: data.data || {},
+      };
+    } catch (error) {
+      console.error('Error generating fundraising strategy:', error);
+      return {
+        success: false,
+        message: 'Failed to generate fundraising strategy. Please try again.',
+        content: '',
+        data: {},
+      };
+    }
   }
 }; 

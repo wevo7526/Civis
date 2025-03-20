@@ -287,7 +287,8 @@ export default function OutreachPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const formData = new FormData(e.currentTarget);
+      const form = e.target as HTMLFormElement;
+      const formData = new FormData(form);
       const schedule = formData.get('schedule') as string;
       
       const newTemplate = {
@@ -338,52 +339,41 @@ export default function OutreachPage() {
         throw new Error('No recipients found for the selected type');
       }
 
-      // Create workflow configuration
-      const workflowConfig = {
-        type: 'outreach',
-        name: template.name,
-        description: template.description,
-        schedule: template.schedule,
-        subject: template.subject,
-        template: template.content,
-        recipients: targetRecipients.map(r => ({
-          id: r.id,
-          email: r.email,
-          name: r.name,
-          type: r.type
-        }))
-      };
+      // Get auth token for edge function
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) throw new Error('Failed to get session');
 
-      // Insert workflow
-      const { data: workflow, error: workflowError } = await supabase
-        .from('automation_workflows')
-        .insert([{
-          user_id: user.id,
-          type: 'outreach',
-          status: 'active',
-          config: workflowConfig,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
+      // Send emails to all recipients
+      const emailPromises = targetRecipients.map(async (recipient) => {
+        try {
+          const response = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              to: recipient.email,
+              subject: template.subject,
+              content: template.content,
+              recipientName: recipient.name,
+            }),
+          });
 
-      if (workflowError) throw workflowError;
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to send email');
+          }
 
-      // Start the workflow
-      const response = await fetch('/api/automation/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          workflowId: workflow.id,
-          immediate: template.schedule === 'immediate'
-        })
+          return response.json();
+        } catch (err) {
+          console.error(`Failed to send email to ${recipient.email}:`, err);
+          return null;
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to start workflow');
-      }
+      // Wait for all emails to be sent
+      await Promise.all(emailPromises);
 
       // Update template status
       const { error: templateError } = await supabase

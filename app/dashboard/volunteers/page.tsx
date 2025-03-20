@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Papa from 'papaparse';
+import { Card } from '@/components/ui/card';
 
 interface VolunteerActivity {
   id: string;
@@ -411,11 +412,84 @@ export default function VolunteersPage() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Volunteers</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Volunteer Management</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Manage your organization's volunteers
+            Track and manage volunteer activities and engagement
           </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <UserPlusIcon className="h-5 w-5 text-purple-500" />
+            <div>
+              <p className="text-sm text-gray-500">Total Volunteers</p>
+              <p className="text-2xl font-bold">{volunteers.length}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <UserPlusIcon className="h-5 w-5 text-blue-500" />
+            <div>
+              <p className="text-sm text-gray-500">Active Volunteers</p>
+              <p className="text-2xl font-bold">
+                {volunteers.filter(v => v.status === 'active').length}
+              </p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <UserPlusIcon className="h-5 w-5 text-green-500" />
+            <div>
+              <p className="text-sm text-gray-500">Total Hours</p>
+              <p className="text-2xl font-bold">
+                {volunteers.reduce((sum, v) => sum + v.total_hours, 0)}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search volunteers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 w-[300px]"
+            />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <FunnelIcon className="h-5 w-5 mr-2" />
+                {statusFilter === 'all' ? 'All Statuses' : statusFilter}
+                <ChevronUpDownIcon className="h-5 w-5 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStatusFilter('all')}>
+                All Statuses
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('active')}>
+                Active
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('pending')}>
+                Pending
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStatusFilter('inactive')}>
+                Inactive
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         <div className="flex gap-3">
           <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
             <DialogTrigger asChild>
@@ -593,45 +667,7 @@ export default function VolunteersPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center gap-4">
-            <div className="relative flex-1">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <Input
-                type="text"
-                placeholder="Search volunteers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <FunnelIcon className="h-5 w-5 mr-2" />
-                  {statusFilter === 'all' ? 'All Statuses' : statusFilter}
-                  <ChevronUpDownIcon className="h-5 w-5 ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setStatusFilter('all')}>
-                  All Statuses
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('active')}>
-                  Active
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('pending')}>
-                  Pending
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('inactive')}>
-                  Inactive
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -647,7 +683,7 @@ export default function VolunteersPage() {
           <TableBody>
             {filteredVolunteers.map((volunteer) => (
               <TableRow
-                key={volunteer.id}
+            key={volunteer.id}
                 className="cursor-pointer hover:bg-gray-50"
                 onClick={() => router.push(`/dashboard/volunteers/${volunteer.id}`)}
               >
@@ -665,15 +701,15 @@ export default function VolunteersPage() {
                   <div className="flex gap-1 flex-wrap">
                     {volunteer.skills.slice(0, 3).map((skill) => (
                       <Badge key={skill} variant="secondary" className="text-xs">
-                        {skill}
+                      {skill}
                       </Badge>
-                    ))}
+                  ))}
                     {volunteer.skills.length > 3 && (
                       <Badge variant="secondary" className="text-xs">
                         +{volunteer.skills.length - 3}
                       </Badge>
                     )}
-                  </div>
+                </div>
                 </TableCell>
                 <TableCell>{volunteer.total_hours}</TableCell>
                 <TableCell>
@@ -684,7 +720,13 @@ export default function VolunteersPage() {
             {filteredVolunteers.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                  No volunteers found
+                  {loading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+                  ) : (
+                    'No volunteers found'
+                  )}
                 </TableCell>
               </TableRow>
             )}
