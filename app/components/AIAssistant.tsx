@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { aiService } from '../../lib/aiService';
+import { globalAI } from '@/lib/globalAIService';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -61,16 +61,11 @@ export default function AIAssistant() {
       setMessages(prev => [...prev, userMessage]);
       setMessage('');
 
-      const response = await aiService.analyzeDonorEngagement(messages.map(m => m.content));
+      const response = await globalAI.getAdvice(message.trim());
       
-      if (!response.success) {
-        setError(response.message);
-        return;
-      }
-
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: response.content,
+        content: response,
         timestamp: new Date().toISOString(),
       }]);
     } catch (err) {

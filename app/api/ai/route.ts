@@ -1,8 +1,21 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
-import { Donor } from '../../lib/types';
-import { Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from '../../lib/types';
+import { 
+  Donor, 
+  Grant, 
+  Volunteer, 
+  Event, 
+  Program, 
+  CommunityStakeholder, 
+  FundraisingCampaign, 
+  Project, 
+  VolunteerActivity,
+  AIRequest, 
+  DonorAnalysisData, 
+  ProjectAnalysisData, 
+  EventAnalysisData 
+} from '@/lib/types';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
@@ -13,8 +26,13 @@ interface AIResponse {
   }>;
 }
 
+// Validate environment variables
+if (!process.env.ANTHROPIC_API_KEY) {
+  throw new Error('ANTHROPIC_API_KEY is not set');
+}
+
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 const supabase = createClient(
@@ -22,7 +40,106 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const SYSTEM_PROMPT = `You are an AI assistant specialized in nonprofit management and fundraising. Your role is to help nonprofit organizations with:
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW = 60; // 1 minute in seconds
+const MAX_REQUESTS = 30; // Maximum requests per window
+
+async function checkRateLimit(userId: string): Promise<boolean> {
+  try {
+    const { data: requests, error } = await supabase
+      .from('ai_rate_limits')
+      .select('count, last_request')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      console.error('Rate limit check error:', error);
+      return true; // Allow request if rate limit check fails
+    }
+
+    const now = new Date();
+    const lastRequest = requests?.last_request ? new Date(requests.last_request) : null;
+    const timeDiff = lastRequest ? (now.getTime() - lastRequest.getTime()) / 1000 : RATE_LIMIT_WINDOW;
+
+    if (!lastRequest || timeDiff >= RATE_LIMIT_WINDOW) {
+      // Reset counter if window has passed
+      await supabase
+        .from('ai_rate_limits')
+        .upsert({
+          user_id: userId,
+          count: 1,
+          last_request: now.toISOString(),
+        });
+      return true;
+    }
+
+    if (requests.count >= MAX_REQUESTS) {
+      return false;
+    }
+
+    // Increment counter
+    await supabase
+      .from('ai_rate_limits')
+      .update({
+        count: requests.count + 1,
+        last_request: now.toISOString(),
+      })
+      .eq('user_id', userId);
+
+    return true;
+  } catch (error) {
+    console.error('Rate limit error:', error);
+    return true; // Allow request if rate limiting fails
+  }
+}
+
+const GLOBAL_SYSTEM_PROMPT = `You are an AI assistant specialized in nonprofit management and fundraising. Your role is to provide expert advice and guidance to nonprofit organizations on various aspects of their operations, including:
+
+1. Fundraising and Development
+   - Fundraising strategies
+   - Donor engagement
+   - Grant writing
+   - Special events
+   - Online fundraising
+
+2. Program Development
+   - Program design
+   - Impact measurement
+   - Service delivery
+   - Community engagement
+   - Program evaluation
+
+3. Organizational Management
+   - Strategic planning
+   - Board governance
+   - Financial management
+   - Human resources
+   - Volunteer management
+
+4. Marketing and Communications
+   - Brand development
+   - Social media strategy
+   - Public relations
+   - Community outreach
+   - Stakeholder engagement
+
+5. Compliance and Risk Management
+   - Legal requirements
+   - Financial regulations
+   - Risk assessment
+   - Insurance
+   - Policy development
+
+Please provide practical, actionable advice based on nonprofit best practices and current industry standards. Focus on:
+- Clear, concise recommendations
+- Step-by-step guidance
+- Real-world examples
+- Resource suggestions
+- Implementation tips
+
+Always maintain a professional tone and emphasize ethical practices and transparency.`;
+
+const AGENT_SYSTEM_PROMPT = `You are an AI assistant specialized in nonprofit management and fundraising. Your role is to help nonprofit organizations with:
 
 1. Donor Relations
 - Analyzing donor engagement and behavior
@@ -50,76 +167,150 @@ const SYSTEM_PROMPT = `You are an AI assistant specialized in nonprofit manageme
 
 Always provide clear, actionable advice and maintain a professional, supportive tone.`;
 
+const validateData = (action: string, data: unknown): { isValid: boolean; message?: string } => {
+  // Handle specialized agent requests
+  switch (action) {
+    case 'analyze_donors':
+    case 'analyzeDonorEngagement':
+    case 'generateOutreachMessage':
+    case 'generateDonorMessage':
+    case 'generate_donor_report':
+      if (!data || typeof data !== 'object') {
+        return { isValid: false, message: 'Data is required' };
+      }
+      // Only validate donor data for donor-specific actions
+      const donorData = data as Record<string, unknown>;
+      if (!donorData.name || !donorData.email) {
+        return { isValid: false, message: 'Donor name and email are required' };
+      }
+      break;
+
+    case 'analyze_projects':
+    case 'analyzeProjects':
+      if (!Array.isArray(data)) {
+        return { isValid: false, message: 'Project data must be an array' };
+      }
+      if (data.length === 0) {
+        return { isValid: false, message: 'No project data provided' };
+      }
+      if (!data.every(item => 
+        typeof item === 'object' && 
+        'id' in item && 
+        'name' in item && 
+        'status' in item
+      )) {
+        return { isValid: false, message: 'Invalid project data structure' };
+      }
+      break;
+
+    case 'analyze_events':
+    case 'analyzeEvents':
+      if (!Array.isArray(data)) {
+        return { isValid: false, message: 'Event data must be an array' };
+      }
+      if (data.length === 0) {
+        return { isValid: false, message: 'No event data provided' };
+      }
+      if (!data.every(item => 
+        typeof item === 'object' && 
+        'id' in item && 
+        'name' in item && 
+        'date' in item
+      )) {
+        return { isValid: false, message: 'Invalid event data structure' };
+      }
+      break;
+
+    case 'generate_grant_proposal':
+      if (!data || typeof data !== 'object') {
+        return { isValid: false, message: 'Project data is required' };
+      }
+      const project = data as Project;
+      if (!project.name || !project.description) {
+        return { isValid: false, message: 'Project name and description are required' };
+      }
+      break;
+
+    case 'matchVolunteers':
+      if (!data || typeof data !== 'object' || !('volunteers' in data) || !('opportunities' in data)) {
+        return { isValid: false, message: 'Volunteer and opportunity data are required' };
+      }
+      break;
+
+    case 'analyzeCommunityEngagement':
+      if (!Array.isArray(data)) {
+        return { isValid: false, message: 'Stakeholder data must be an array' };
+      }
+      break;
+
+    case 'analyzeFundraising':
+      if (!data || typeof data !== 'object' || !('donors' in data) || !('projects' in data) || !('events' in data)) {
+        return { isValid: false, message: 'Donor, project, and event data are required' };
+      }
+      break;
+  }
+
+  return { isValid: true };
+};
+
 export async function POST(request: Request) {
   try {
+    // Authentication
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: 'Please sign in to use this feature' 
-        }, 
+        { success: false, message: 'Please sign in to use this feature' },
         { status: 401 }
       );
     }
 
-    const { action, data, context } = await request.json();
+    // Rate limiting
+    const rateLimitAllowed = await checkRateLimit(session.user.id);
+    if (!rateLimitAllowed) {
+      return NextResponse.json(
+        { success: false, message: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      );
+    }
 
+    // Parse request body
+    const body = await request.json();
+    const { action, data, context } = body;
+
+    // Handle specialized agent requests
     if (!action) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: 'Action is required' 
-        },
+        { success: false, message: 'Action is required' },
         { status: 400 }
       );
     }
 
     if (!data) {
       return NextResponse.json(
-        { 
-          success: false,
-          message: 'Data is required' 
-        },
+        { success: false, message: 'Data is required' },
         { status: 400 }
       );
     }
 
+    // Data validation
+    const validation = validateData(action, data);
+    if (!validation.isValid) {
+      return NextResponse.json(
+        { success: false, message: validation.message },
+        { status: 400 }
+      );
+    }
+
+    // Process request
     let prompt = '';
+    let response;
 
     switch (action) {
       case 'analyze_donors':
-        if (!Array.isArray(data)) {
-          return NextResponse.json(
-            { 
-              success: false,
-              message: 'Donor data must be an array' 
-            },
-            { status: 400 }
-          );
-        }
-
-        if (data.length === 0) {
-          return NextResponse.json(
-            { 
-              success: false,
-              message: 'No donor data provided' 
-            },
-            { status: 400 }
-          );
-        }
-
-        try {
-          const message = await anthropic.messages.create({
-            model: 'claude-3-sonnet-20240229',
-            max_tokens: 1000,
-            messages: [
-              {
-                role: 'user',
-                content: `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
+        prompt = `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
 
 ${JSON.stringify(data, null, 2)}
 
@@ -127,31 +318,8 @@ Please provide:
 1. Key engagement metrics
 2. Giving patterns and trends
 3. Recommendations for improvement
-4. Risk assessment for donor retention`
-              }
-            ],
-            system: SYSTEM_PROMPT,
-            temperature: 0.7,
-          });
-
-          return NextResponse.json({
-            success: true,
-            content: message.content,
-            data: {
-              analyzedDonors: data.length,
-              timestamp: new Date().toISOString()
-            }
-          });
-        } catch (error) {
-          console.error('Error processing donor analysis:', error);
-          return NextResponse.json(
-            { 
-              success: false,
-              message: 'Failed to process donor analysis. Please try again.' 
-            },
-            { status: 500 }
-          );
-        }
+4. Risk assessment for donor retention`;
+        break;
 
       case 'analyze_projects':
         prompt = `Analyze the following project data and provide insights on progress, challenges, and recommendations:
@@ -177,28 +345,15 @@ Please provide:
 4. Recommendations for future events`;
         break;
 
-      case 'generate_donor_report':
-        prompt = `Generate a personalized donor report for the following donor:
-
-${JSON.stringify(data, null, 2)}
-
-Please include:
-1. Giving history summary
-2. Impact of their contributions
-3. Engagement metrics
-4. Personalized recommendations`;
-        break;
-
       case 'generate_grant_proposal': {
-        const project = data;
-        
+        const project = data as Project;
         prompt = `Generate a comprehensive grant proposal for the following project:
 
-Project Name: ${project.project_name || 'Not specified'}
-Description: ${project.project_description || 'Not specified'}
-Goals: ${project.project_goals?.join(', ') || 'Not specified'}
-Budget: $${project.project_budget || 'Not specified'}
-Timeline: ${project.project_timeline || 'Not specified'}
+Project Name: ${project.name}
+Description: ${project.description}
+Goals: ${project.goals?.join(', ') || 'Not specified'}
+Budget: $${project.budget || 'Not specified'}
+Timeline: ${project.timeline || 'Not specified'}
 Impact Target: ${project.impact_target || 'Not specified'}
 Impact Metric: ${project.impact_metric || 'Not specified'}
 Team Size: ${project.team_size || 'Not specified'}
@@ -216,50 +371,20 @@ Please include the following sections:
 9. Sustainability Plan
 
 Make the proposal professional, compelling, and well-structured. Include specific metrics, timelines, and budget details where appropriate.`;
-
-        // Get response from Claude
-        const aiResponse = await anthropic.messages.create({
-          model: 'claude-3-opus-20240229',
-          max_tokens: 4000,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          system: SYSTEM_PROMPT,
-          temperature: 0.7,
-        });
-
-        if (!aiResponse || !aiResponse.content || !aiResponse.content[0]) {
-          throw new Error('Invalid response from AI service');
-        }
-
-        const responseText = aiResponse.content[0].type === 'text' 
-          ? aiResponse.content[0].text 
-          : 'Failed to generate response';
-
-        return NextResponse.json({
-          success: true,
-          content: [{
-            type: 'text',
-            text: responseText
-          }],
-          data: {
-            sections: {
-              executive_summary: responseText.split('\n\n')[0] || '',
-              organization_background: responseText.split('\n\n')[1] || '',
-              project_description: responseText.split('\n\n')[2] || '',
-              goals_and_objectives: responseText.split('\n\n')[3] || '',
-              implementation_plan: responseText.split('\n\n')[4] || '',
-              timeline: responseText.split('\n\n')[5] || '',
-              budget_breakdown: responseText.split('\n\n')[6] || '',
-              impact_and_evaluation: responseText.split('\n\n')[7] || '',
-              sustainability_plan: responseText.split('\n\n')[8] || '',
-            },
-          },
-        });
+        break;
       }
+
+      case 'generate_donor_report':
+        prompt = `Generate a personalized donor report for the following donor:
+
+${JSON.stringify(data, null, 2)}
+
+Please include:
+1. Giving history summary
+2. Impact of their contributions
+3. Engagement metrics
+4. Personalized recommendations`;
+        break;
 
       case 'optimize_event_plan':
         prompt = `Optimize the following event plan:
@@ -334,27 +459,22 @@ The message should:
       }
 
       case 'analyzeDonorEngagement': {
-        // Validate required data
-        if (!data || typeof data !== 'object') {
-          throw new Error('Invalid donor data format');
-        }
-
-        // Ensure all required fields are present
-        const requiredFields = ['name', 'engagement_level', 'last_donation', 'total_donations', 'donation_frequency'];
-        const missingFields = requiredFields.filter(field => !(field in data));
-        
-        if (missingFields.length > 0) {
-          throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-        }
+        const donorData = data as {
+          name: string;
+          engagement_level: string;
+          last_donation: string;
+          total_donations: number;
+          donation_frequency: string;
+        };
 
         prompt = `Analyze the donor engagement data and provide insights:
 
 Donor Information:
-- Name: ${data.name}
-- Engagement Level: ${data.engagement_level}
-- Last Donation: ${data.last_donation}
-- Total Donations: ${data.total_donations}
-- Donation Frequency: ${data.donation_frequency}
+- Name: ${donorData.name}
+- Engagement Level: ${donorData.engagement_level}
+- Last Donation: ${donorData.last_donation}
+- Total Donations: ${donorData.total_donations}
+- Donation Frequency: ${donorData.donation_frequency}
 
 Please provide a detailed analysis including:
 1. Engagement Analysis
@@ -387,10 +507,14 @@ Please format the response in a clear, structured manner with bullet points for 
       }
 
       case 'matchVolunteers': {
-        const { volunteers, opportunities } = data;
+        const matchData = data as {
+          volunteers: Volunteer[];
+          opportunities: VolunteerActivity[];
+        };
+        
         prompt = `Match volunteers with opportunities based on the following data:
-          Volunteers: ${JSON.stringify(volunteers, null, 2)}
-          Opportunities: ${JSON.stringify(opportunities, null, 2)}
+          Volunteers: ${JSON.stringify(matchData.volunteers, null, 2)}
+          Opportunities: ${JSON.stringify(matchData.opportunities, null, 2)}
 
           Provide:
           1. Best matches for each opportunity
@@ -404,12 +528,12 @@ Please format the response in a clear, structured manner with bullet points for 
       case 'optimizeEventPlan': {
         const event = data as Event;
         prompt = `Optimize the event plan for:
-          Title: ${event.title}
+          Name: ${event.name}
           Type: ${event.type}
           Date: ${new Date(event.date).toLocaleDateString()}
           Location: ${event.location}
-          Budget: $${event.budget}
-          Target Attendees: ${event.target_attendees}
+          Budget: $${event.budget || 'Not specified'}
+          Max Volunteers: ${event.max_volunteers || 'Not specified'}
 
           Provide:
           1. Timeline optimization
@@ -488,11 +612,16 @@ Please format the response in a clear, structured manner with bullet points for 
       }
 
       case 'analyzeFundraising': {
-        const { donors, projects, events } = data;
+        const fundraisingData = data as {
+          donors: Donor[];
+          projects: Project[];
+          events: Event[];
+        };
+        
         prompt = `Analyze the overall fundraising performance based on:
-          Donors: ${JSON.stringify(donors, null, 2)}
-          Projects: ${JSON.stringify(projects, null, 2)}
-          Events: ${JSON.stringify(events, null, 2)}
+          Donors: ${JSON.stringify(fundraisingData.donors, null, 2)}
+          Projects: ${JSON.stringify(fundraisingData.projects, null, 2)}
+          Events: ${JSON.stringify(fundraisingData.events, null, 2)}
 
           Provide:
           1. Overall Fundraising Performance
@@ -541,64 +670,51 @@ Format the message as a complete email body, including a greeting and sign-off.`
         );
     }
 
-    const response = await anthropic.messages.create({
-      model: 'claude-3-opus-20240229',
-      max_tokens: 4000,
-      temperature: 0.7,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
-
-    if (!response || !response.content || !response.content[0]) {
-      throw new Error('Invalid response from AI service');
-    }
-
-    const responseText = response.content[0].type === 'text' 
-      ? response.content[0].text 
-      : 'Failed to generate response';
-
-    // Store the interaction in Supabase
     try {
+      response = await anthropic.messages.create({
+        model: 'claude-3-sonnet-20240229',
+        max_tokens: 1000,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        system: AGENT_SYSTEM_PROMPT,
+        temperature: 0.7,
+      });
+
+      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      // Store the interaction in Supabase
       await supabase.from('ai_interactions').insert({
+        user_id: session.user.id,
         action,
         prompt,
         response: responseText,
         context: context || {},
         created_at: new Date().toISOString(),
       });
-    } catch (dbError) {
-      console.error('Error storing AI interaction:', dbError);
-    }
 
-    return NextResponse.json({
-      success: true,
-      content: responseText,
-      data: {
-        sections: {
-          executive_summary: responseText.split('\n\n')[0] || '',
-          organization_background: responseText.split('\n\n')[1] || '',
-          project_description: responseText.split('\n\n')[2] || '',
-          goals_and_objectives: responseText.split('\n\n')[3] || '',
-          implementation_plan: responseText.split('\n\n')[4] || '',
-          timeline: responseText.split('\n\n')[5] || '',
-          budget_breakdown: responseText.split('\n\n')[6] || '',
-          impact_and_evaluation: responseText.split('\n\n')[7] || '',
-          sustainability_plan: responseText.split('\n\n')[8] || '',
-        },
-      },
-    });
+      return NextResponse.json({
+        success: true,
+        content: response.content,
+        data: {
+          analyzedItems: Array.isArray(data) ? data.length : 0,
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Error processing AI request:', error);
+      return NextResponse.json(
+        { success: false, message: 'Failed to process AI request. Please try again.' },
+        { status: 500 }
+      );
+    }
   } catch (error) {
-    console.error('Error in AI route:', error);
+    console.error('API Error:', error);
     return NextResponse.json(
-      { 
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to generate content. Please try again.',
-      },
+      { success: false, message: 'An unexpected error occurred. Please try again.' },
       { status: 500 }
     );
   }
