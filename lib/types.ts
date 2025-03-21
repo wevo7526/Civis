@@ -1,24 +1,103 @@
 export interface Project {
-  id: string;
-  user_id?: string;
-  name: string;
-  description: string;
-  status: 'planning' | 'active' | 'completed' | 'on-hold';
-  budget: number;
-  start_date: string;
-  end_date: string;
-  impact_target: string;
-  impact_metric: string;
-  team_size: number;
-  team_roles: string[];
-  goals: string[];
-  timeline: string;
-  organization_info?: string;
-  budget_breakdown?: string;
-  evaluation_metrics?: string;
-  sustainability_plan?: string;
-  created_at: string;
-  updated_at: string;
+  id?: string;
+  name?: string;
+  description?: string;
+  goals?: string[];
+  budget?: number;
+  timeline?: string;
+  impact_target?: string;
+  impact_metric?: string;
+  team_size?: number;
+  team_roles?: string[];
+  status?: 'planning' | 'active' | 'completed' | 'on_hold';
+  start_date?: string;
+  end_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  organization_id?: string;
+  grant_id?: string;
+  grant_amount?: number;
+  grant_status?: 'pending' | 'approved' | 'rejected';
+  grant_deadline?: string;
+  grant_requirements?: string[];
+  grant_reporting_schedule?: string[];
+  grant_reporting_metrics?: string[];
+  grant_reporting_dates?: string[];
+  grant_reporting_status?: 'on_track' | 'at_risk' | 'behind';
+  grant_reporting_notes?: string[];
+  grant_reporting_attachments?: string[];
+  grant_reporting_submissions?: {
+    date: string;
+    type: string;
+    content: string;
+    status: 'draft' | 'submitted' | 'approved' | 'rejected';
+    feedback?: string;
+  }[];
+  grant_reporting_requirements?: {
+    type: string;
+    due_date: string;
+    status: 'pending' | 'submitted' | 'approved' | 'rejected';
+    content?: string;
+    feedback?: string;
+  }[];
+  grant_reporting_history?: {
+    date: string;
+    type: string;
+    content: string;
+    status: 'draft' | 'submitted' | 'approved' | 'rejected';
+    feedback?: string;
+  }[];
+  grant_reporting_attachments_history?: {
+    date: string;
+    type: string;
+    url: string;
+    name: string;
+    size: number;
+  }[];
+  grant_reporting_comments?: {
+    date: string;
+    user: string;
+    content: string;
+    type: 'internal' | 'external';
+  }[];
+  grant_reporting_reminders?: {
+    date: string;
+    type: string;
+    content: string;
+    status: 'pending' | 'sent' | 'acknowledged';
+  }[];
+  grant_reporting_notifications?: {
+    date: string;
+    type: string;
+    content: string;
+    status: 'pending' | 'sent' | 'acknowledged';
+  }[];
+  grant_reporting_audit_trail?: {
+    date: string;
+    user: string;
+    action: string;
+    details: string;
+  }[];
+  grant_reporting_settings?: {
+    notifications_enabled: boolean;
+    reminder_frequency: string;
+    reporting_template: string;
+    custom_fields: string[];
+  };
+  grant_reporting_analytics?: {
+    submission_rate: number;
+    approval_rate: number;
+    average_response_time: number;
+    compliance_score: number;
+  };
+  grant_reporting_summary?: {
+    total_submissions: number;
+    approved_submissions: number;
+    pending_submissions: number;
+    rejected_submissions: number;
+    next_due_date: string;
+    overall_status: 'on_track' | 'at_risk' | 'behind';
+  };
 }
 
 export interface GrantProposal {
@@ -79,38 +158,37 @@ export interface VolunteerHours {
   created_at: string;
 }
 
-export interface AIRequest {
-  action: 
-    | 'chat'
-    | 'analyze_donors'
-    | 'analyze_projects'
-    | 'analyze_events'
-    | 'generate_content'
-    | 'generate_donor_report'
-    | 'generate_grant_proposal'
-    | 'optimize_event_plan'
-    | 'assess_program_impact'
-    | 'generate_stakeholder_update'
-    | 'generate_fundraising_strategy'
-    | 'generateOutreachMessage'
-    | 'analyzeDonorEngagement'
-    | 'matchVolunteers'
-    | 'optimizeEventPlan'
-    | 'assessProgramImpact'
-    | 'analyzeCommunityEngagement'
-    | 'analyzeProjects'
-    | 'analyzeEvents'
-    | 'analyzeFundraising'
-    | 'generateDonorMessage';
-  data: unknown;
-  context?: Record<string, unknown>;
-}
+export type AIRequest = 
+  | 'analyze_donors'
+  | 'analyzeDonorEngagement'
+  | 'generate_donor_report'
+  | 'generateOutreachMessage'
+  | 'generateDonorMessage'
+  | 'analyzeProjects'
+  | 'analyzeEvents'
+  | 'optimizeEventPlan'
+  | 'assessProgramImpact'
+  | 'analyzeCommunityEngagement'
+  | 'matchVolunteers'
+  | 'analyzeFundraising'
+  | 'generate_grant_proposal'
+  | 'generate_fundraising_strategy'
+  | 'review_grant_proposal'
+  | 'optimize_fundraising_strategy'
+  | 'generate_grant_budget'
+  | 'generate_fundraising_timeline';
 
 export interface AIResponse {
   success: boolean;
-  message: string;
   content: string;
-  data: Record<string, unknown>;
+  data?: {
+    analyzedItems?: number;
+    timestamp?: string;
+    estimatedAmount?: number;
+    timeline?: string[];
+    recommendations?: string[];
+  };
+  error?: string;
 }
 
 export interface DonorAnalysisData {

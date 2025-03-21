@@ -226,8 +226,9 @@ const validateData = (action: string, data: unknown): { isValid: boolean; messag
         return { isValid: false, message: 'Project data is required' };
       }
       const project = data as Project;
-      if (!project.name || !project.description) {
-        return { isValid: false, message: 'Project name and description are required' };
+      // Only validate that we have some basic project information
+      if (!project.name && !project.description && !project.goals?.length) {
+        return { isValid: false, message: 'At least one of: project name, description, or goals is required' };
       }
       break;
 
@@ -347,10 +348,10 @@ Please provide:
 
       case 'generate_grant_proposal': {
         const project = data as Project;
-        prompt = `Generate a comprehensive grant proposal for the following project:
+        prompt = `Generate a compelling grant proposal for the following project:
 
-Project Name: ${project.name}
-Description: ${project.description}
+Project Name: ${project.name || 'Not specified'}
+Description: ${project.description || 'Not specified'}
 Goals: ${project.goals?.join(', ') || 'Not specified'}
 Budget: $${project.budget || 'Not specified'}
 Timeline: ${project.timeline || 'Not specified'}
@@ -359,18 +360,40 @@ Impact Metric: ${project.impact_metric || 'Not specified'}
 Team Size: ${project.team_size || 'Not specified'}
 Team Roles: ${project.team_roles?.join(', ') || 'Not specified'}
 
-Please include the following sections:
-1. Executive Summary
-2. Organization Background
-3. Project Description
-4. Goals and Objectives
-5. Implementation Plan
-6. Timeline
-7. Budget Breakdown
-8. Impact and Evaluation
-9. Sustainability Plan
+Please create a grant proposal that includes:
 
-Make the proposal professional, compelling, and well-structured. Include specific metrics, timelines, and budget details where appropriate.`;
+1. Executive Summary
+   - Project overview
+   - Key objectives
+   - Expected impact
+   - Funding request
+
+2. Project Description
+   - Detailed activities
+   - Implementation approach
+   - Timeline
+   - Team structure
+
+3. Impact & Evaluation
+   - Expected outcomes
+   - Success metrics
+   - Evaluation plan
+   - Sustainability measures
+
+4. Budget & Resources
+   - Cost breakdown
+   - Resource allocation
+   - In-kind contributions
+   - Sustainability plan
+
+Make the proposal:
+- Clear and concise
+- Data-driven
+- Professional yet engaging
+- Focused on impact
+- Easy to understand
+
+Use specific examples and metrics where available. Maintain a professional tone throughout.`;
         break;
       }
 
@@ -672,8 +695,8 @@ Format the message as a complete email body, including a greeting and sign-off.`
 
     try {
       response = await anthropic.messages.create({
-        model: 'claude-3-sonnet-20240229',
-        max_tokens: 1000,
+        model: 'claude-3-opus-20240229',
+        max_tokens: 2000, // Increased for longer grant proposals
         messages: [
           {
             role: 'user',
@@ -686,19 +709,29 @@ Format the message as a complete email body, including a greeting and sign-off.`
 
       const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
 
+      // Format the response for better readability
+      const formattedResponse = responseText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join('\n\n');
+
       // Store the interaction in Supabase
       await supabase.from('ai_interactions').insert({
         user_id: session.user.id,
         action,
         prompt,
-        response: responseText,
+        response: formattedResponse,
         context: context || {},
         created_at: new Date().toISOString(),
       });
 
       return NextResponse.json({
         success: true,
-        content: response.content,
+        content: [{
+          type: 'text',
+          text: formattedResponse
+        }],
         data: {
           analyzedItems: Array.isArray(data) ? data.length : 0,
           timestamp: new Date().toISOString()

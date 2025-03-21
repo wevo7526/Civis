@@ -13,7 +13,9 @@ import {
 } from '@heroicons/react/24/outline';
 import type { Project } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
+import { grantWriterService, GrantDocument } from '@/lib/grantWriterService';
 import SavedItemCard from '../../../components/SavedItemCard';
+import GrantDocumentEditor from '../../../components/GrantDocumentEditor';
 import DocumentEditor from '../../../components/DocumentEditor';
 
 interface SavedItems {
@@ -36,15 +38,6 @@ export default function ProjectDetails() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [aiContent, setAiContent] = useState<{
-    grantProposal: string | null;
-    fundraisingStrategy: string | null;
-    insights: string | null;
-  }>({
-    grantProposal: null,
-    fundraisingStrategy: null,
-    insights: null,
-  });
   const [loadingStates, setLoadingStates] = useState<{
     grantProposal: boolean;
     fundraisingStrategy: boolean;
@@ -65,12 +58,20 @@ export default function ProjectDetails() {
   const [editorType, setEditorType] = useState<'grant' | 'fundraising' | 'insights' | null>(null);
   const [editorItem, setEditorItem] = useState<EditorItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [currentGrantDocument, setCurrentGrantDocument] = useState<GrantDocument | null>(null);
+  const [customPrompt, setCustomPrompt] = useState('');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     fetchProject();
     fetchSavedItems();
   }, [params.id]);
+
+  useEffect(() => {
+    if (project?.id) {
+      fetchSavedItems();
+    }
+  }, [project?.id]);
 
   const fetchProject = async () => {
     try {
@@ -93,14 +94,24 @@ export default function ProjectDetails() {
     if (!project) return;
 
     try {
-      // Fetch grant proposals and fundraising strategies
-      const { data: writingItems, error: writingError } = await supabase
-        .from('writing_items')
+      // Fetch grant documents
+      const { data: grantDocs, error: grantError } = await supabase
+        .from('grant_documents')
         .select('*')
         .eq('project_id', project.id)
         .order('created_at', { ascending: false });
 
-      if (writingError) throw writingError;
+      if (grantError) throw grantError;
+
+      // Fetch fundraising strategies
+      const { data: fundraisingItems, error: fundraisingError } = await supabase
+        .from('writing_items')
+        .select('*')
+        .eq('project_id', project.id)
+        .eq('type', 'fundraising')
+        .order('created_at', { ascending: false });
+
+      if (fundraisingError) throw fundraisingError;
 
       // Fetch insights
       const { data: insights, error: insightsError } = await supabase
@@ -112,21 +123,155 @@ export default function ProjectDetails() {
 
       if (insightsError) throw insightsError;
 
+      // Add type property to each item
+      const grantsWithType = (grantDocs || []).map(doc => ({ ...doc, type: 'grant' }));
+      const fundraisingWithType = (fundraisingItems || []).map(item => ({ ...item, type: 'fundraising' }));
+      const insightsWithType = (insights || []).map(insight => ({ ...insight, type: 'insights' }));
+
       setSavedItems({
-        grants: writingItems?.filter(item => item.type === 'grant') || [],
-        fundraising: writingItems?.filter(item => item.type === 'fundraising') || [],
-        insights: insights || [],
+        grants: grantsWithType,
+        fundraising: fundraisingWithType,
+        insights: insightsWithType,
       });
+
+      // Set the current grant document if it exists
+      if (grantDocs && grantDocs.length > 0) {
+        setCurrentGrantDocument(grantDocs[0]);
+      }
     } catch (err) {
       console.error('Error fetching saved items:', err);
       setError('Failed to fetch saved items');
     }
   };
 
-  const handleOpenEditor = (type: 'grant' | 'fundraising' | 'insights', item?: any) => {
+  const handleOpenEditor = async (type: 'grant' | 'fundraising' | 'insights', item?: any) => {
+    if (!project || !project.id) return;
+    
     setEditorType(type);
-    setEditorItem(item);
+    
+    if (type === 'grant') {
+      if (item) {
+        // If editing an existing document, fetch the latest version
+        const updatedDoc = await grantWriterService.getGrantDocument(item.id);
+        setCurrentGrantDocument(updatedDoc);
+      } else if (!currentGrantDocument) {
+        // Create a new grant document if none exists
+        const newDoc = await grantWriterService.createGrantDocument(project.id);
+        setCurrentGrantDocument(newDoc);
+        // Add the new document to saved items
+        setSavedItems(prev => ({
+          ...prev,
+          grants: [newDoc, ...prev.grants],
+        }));
+      }
+      setEditorItem(item);
+    } else {
+      setEditorItem(item);
+    }
+    
     setShowEditor(true);
+  };
+
+  const handleGenerateSection = async (sectionId: string) => {
+    if (!project || !currentGrantDocument) return;
+
+    try {
+      setLoadingStates(prev => ({ ...prev, grantProposal: true }));
+      setProgressMessage('Generating section...');
+
+      let response;
+      if (sectionId === 'custom_section') {
+        // Handle custom section generation
+        response = await grantWriterService.generateCustomSection(customPrompt);
+      } else {
+        switch (sectionId) {
+          case 'executive_summary':
+            response = await grantWriterService.generateExecutiveSummary();
+            break;
+          case 'organization_background':
+            response = await grantWriterService.generateOrganizationBackground();
+            break;
+          case 'project_overview':
+            response = await grantWriterService.generateProjectOverview();
+            break;
+          case 'problem_statement':
+            response = await grantWriterService.generateProblemStatement();
+            break;
+          case 'target_population':
+            response = await grantWriterService.generateTargetPopulation();
+            break;
+          case 'methodology':
+            response = await grantWriterService.generateMethodology();
+            break;
+          case 'timeline':
+            response = await grantWriterService.generateTimeline();
+            break;
+          case 'budget':
+            response = await grantWriterService.generateBudget();
+            break;
+          case 'evaluation':
+            response = await grantWriterService.generateEvaluation();
+            break;
+          case 'sustainability':
+            response = await grantWriterService.generateSustainability();
+            break;
+          case 'partnerships':
+            response = await grantWriterService.generatePartnerships();
+            break;
+          case 'capacity':
+            response = await grantWriterService.generateCapacity();
+            break;
+          default:
+            throw new Error('Invalid section ID');
+        }
+      }
+
+      if (response.success) {
+        await grantWriterService.updateGrantSection(currentGrantDocument.id, sectionId, response.content);
+        setCurrentGrantDocument(await grantWriterService.getGrantDocument(currentGrantDocument.id));
+        setProgressMessage('Section generated successfully!');
+      } else {
+        throw new Error(response.error || 'Failed to generate section');
+      }
+    } catch (err) {
+      console.error('Error generating section:', err);
+      setError('Failed to generate section');
+      setProgressMessage(null);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, grantProposal: false }));
+    }
+  };
+
+  const handleSaveGrantDocument = async (document: GrantDocument) => {
+    try {
+      const { error } = await supabase
+        .from('grant_documents')
+        .update({
+          sections: document.sections,
+          status: document.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', document.id);
+
+      if (error) throw error;
+      
+      // Update the current document
+      setCurrentGrantDocument(document);
+      
+      // Update the saved items list
+      setSavedItems(prev => ({
+        ...prev,
+        grants: prev.grants.map(grant => 
+          grant.id === document.id ? document : grant
+        ),
+      }));
+      
+      setSuccessMessage('Grant document saved successfully!');
+      setShowEditor(false);
+    } catch (err) {
+      console.error('Error saving grant document:', err);
+      setError('Failed to save grant document');
+    }
   };
 
   const handleGenerateContent = async (prompt: string) => {
@@ -134,15 +279,56 @@ export default function ProjectDetails() {
 
     try {
       setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : editorType === 'fundraising' ? 'fundraisingStrategy' : 'insights']: true }));
-      setProgressMessage('Starting generation...');
+      setProgressMessage(`Generating ${editorType === 'grant' ? 'grant proposal' : editorType === 'fundraising' ? 'fundraising strategy' : 'project insights'}...`);
+      setError(null);
 
       let response;
       switch (editorType) {
         case 'grant':
-          response = await aiService.generateGrantProposal(project);
+          response = await grantWriterService.generateExecutiveSummary();
           break;
         case 'fundraising':
-          response = await aiService.generateFundraisingStrategy(project);
+          response = await aiService.analyzeFundraising({ donors: [], projects: [project], events: [] });
+          if (response.success) {
+            // Structure the fundraising strategy content
+            const structuredContent = `# ${project.name} Fundraising Strategy
+
+## Funding Goals
+- Target Amount: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget).toLocaleString() : project.budget.toLocaleString()) : 'TBD'}
+- Timeline: 12 months
+- Key Milestones:
+  - Month 1-3: Initial donor outreach
+  - Month 4-6: Major fundraising events
+  - Month 7-9: Corporate partnerships
+  - Month 10-12: Final push and campaign closure
+
+## Donor Strategy
+### Target Donors
+- Individual Donors: 60%
+- Corporate Sponsors: 30%
+- Grant Funding: 10%
+
+### Engagement Plan
+${response.content}
+
+## Budget Allocation
+| Category | Percentage | Description |
+|----------|------------|-------------|
+| Marketing | 15% | Digital and print materials |
+| Planning | 25% | Fundraising events and donor meetings |
+| Staff Time | 40% | Fundraising team activities |
+| Technology | 20% | CRM, donation platform, analytics |
+
+### ROI Projections
+- Expected Return: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget) * 1.2 : project.budget * 1.2).toLocaleString() : 'TBD'}
+- Cost per Dollar Raised: $0.20
+- Timeline to Break Even: 6 months`;
+
+            response = {
+              ...response,
+              content: structuredContent
+            };
+          }
           break;
         case 'insights':
           response = await aiService.analyzeProjects([project]);
@@ -151,23 +337,25 @@ export default function ProjectDetails() {
           throw new Error('Invalid editor type');
       }
       
-      if (!response.success) {
-        setError(response.message || 'Failed to generate content');
-        setProgressMessage(null);
-        return;
+      if (response.success) {
+        // Create a new editor item with the generated content
+        const newEditorItem = {
+          id: editorItem?.id || crypto.randomUUID(),
+          title: editorItem?.title || `${project.name} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
+          content: response.content,
+          type: editorType
+        };
+
+        // Update the editor item state
+        setEditorItem(newEditorItem);
+
+        // Keep the editor open and in editing mode
+        setShowEditor(true);
+        setIsEditing(true);
+        setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : editorType === 'fundraising' ? 'Fundraising strategy' : 'Project insights'} generated successfully! Click Save to store your changes.`);
+      } else {
+        throw new Error(response.error || 'Failed to generate content');
       }
-
-      // Update the content in the DocumentEditor
-      setEditorItem({
-        id: crypto.randomUUID(),
-        title: `${project.name} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
-        content: response.content,
-        type: editorType
-      });
-
-      // Set isEditing to true to show the editor
-      setIsEditing(true);
-      setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : editorType === 'fundraising' ? 'Fundraising strategy' : 'Project insights'} generated successfully!`);
     } catch (err) {
       console.error(`Error generating ${editorType}:`, err);
       setError(`Failed to generate ${editorType}`);
@@ -186,24 +374,59 @@ export default function ProjectDetails() {
 
       let savedItem;
       if (editorItem?.id) {
-        // Update existing item
-        const { data, error } = await supabase
+        // First check if the document exists
+        const { data: existingDoc, error: checkError } = await supabase
           .from(editorType === 'insights' ? 'project_content' : 'writing_items')
-          .update({
-            title: title || 'Untitled Document',
-            content,
-            updated_at: new Date().toISOString(),
-          })
+          .select('id')
           .eq('id', editorItem.id)
-          .select()
           .single();
 
-        if (error) {
-          console.error('Error updating document:', error);
-          throw error;
+        if (checkError) {
+          // If document doesn't exist, create a new one
+          const { data, error } = await supabase
+            .from(editorType === 'insights' ? 'project_content' : 'writing_items')
+            .insert([
+              {
+                id: editorItem.id,
+                title: title || 'Untitled Document',
+                content,
+                type: editorType,
+                project_id: project.id,
+                status: 'draft',
+                user_id: user.id,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+            ])
+            .select()
+            .single();
+
+          if (error) {
+            console.error('Error creating document:', error);
+            throw error;
+          }
+          savedItem = data;
+          setSuccessMessage('Document saved successfully!');
+        } else {
+          // Update existing document
+          const { data, error } = await supabase
+            .from(editorType === 'insights' ? 'project_content' : 'writing_items')
+            .update({
+              title: title || 'Untitled Document',
+              content,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', editorItem.id)
+            .select()
+            .single();
+
+          if (error) {
+            console.error('Error updating document:', error);
+            throw error;
+          }
+          savedItem = data;
+          setSuccessMessage('Document updated successfully!');
         }
-        savedItem = data;
-        setSuccessMessage('Document updated successfully!');
       } else {
         // Create new item
         if (editorType === 'insights') {
@@ -230,6 +453,7 @@ export default function ProjectDetails() {
           savedItem = data;
           setSuccessMessage('Insights saved successfully!');
         } else {
+          // Create new writing item (grant or fundraising)
           const { data, error } = await supabase
             .from('writing_items')
             .insert([
@@ -268,11 +492,9 @@ export default function ProjectDetails() {
         ],
       }));
 
-      // Reset editor state
-      setShowEditor(false);
-      setEditorType(null);
-      setEditorItem(null);
-      setIsEditing(false);
+      // Update editor state but don't close it
+      setEditorItem(savedItem);
+      setIsEditing(true);
     } catch (err) {
       console.error('Error saving document:', err instanceof Error ? err.message : 'Unknown error occurred');
       setError(err instanceof Error ? err.message : 'Failed to save document');
@@ -281,14 +503,59 @@ export default function ProjectDetails() {
 
   const handleDeleteItem = async (item: any) => {
     try {
-      const { error } = await supabase
-        .from(item.type === 'insights' ? 'project_content' : 'writing_items')
-        .delete()
-        .eq('id', item.id);
+      if (item.type === 'grant') {
+        // Delete grant document
+        const { error } = await supabase
+          .from('grant_documents')
+          .delete()
+          .eq('id', item.id);
 
-      if (error) throw error;
+        if (error) throw error;
+
+        // Update the UI state
+        setSavedItems(prev => ({
+          ...prev,
+          grants: prev.grants.filter(grant => grant.id !== item.id),
+        }));
+
+        // Clear current document if it was deleted
+        if (currentGrantDocument?.id === item.id) {
+          setCurrentGrantDocument(null);
+        }
+
+        // Close the editor if it's open and showing the deleted document
+        if (showEditor && editorType === 'grant' && currentGrantDocument?.id === item.id) {
+          setShowEditor(false);
+          setEditorType(null);
+          setEditorItem(null);
+        }
+      } else {
+        // Handle other types of items
+        const { error } = await supabase
+          .from(item.type === 'insights' ? 'project_content' : 'writing_items')
+          .delete()
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        // Update the UI state
+        setSavedItems(prev => ({
+          ...prev,
+          [item.type === 'insights' ? 'insights' : 'fundraising']: 
+            prev[item.type === 'insights' ? 'insights' : 'fundraising'].filter(
+              savedItem => savedItem.id !== item.id
+            ),
+        }));
+
+        // Close the editor if it's open and showing the deleted item
+        if (showEditor && editorType === item.type && editorItem?.id === item.id) {
+          setShowEditor(false);
+          setEditorType(null);
+          setEditorItem(null);
+        }
+      }
+
       setSuccessMessage('Item deleted successfully!');
-      fetchSavedItems();
     } catch (err) {
       console.error('Error deleting item:', err);
       setError('Failed to delete item');
@@ -340,12 +607,12 @@ export default function ProjectDetails() {
           </div>
           <div>
             <h3 className="text-sm font-medium text-gray-500">Budget</h3>
-            <p className="mt-1 text-lg font-semibold text-gray-900">${project.budget.toLocaleString()}</p>
+            <p className="mt-1 text-lg font-semibold text-gray-900">${(project.budget || 0).toLocaleString()}</p>
           </div>
           <div>
             <h3 className="text-sm font-medium text-gray-500">Timeline</h3>
             <p className="mt-1 text-lg font-semibold text-gray-900">
-              {new Date(project.start_date).toLocaleDateString()} - {new Date(project.end_date).toLocaleDateString()}
+              {project.start_date ? new Date(project.start_date).toLocaleDateString() : 'Not set'} - {project.end_date ? new Date(project.end_date).toLocaleDateString() : 'Not set'}
             </p>
           </div>
         </div>
@@ -420,7 +687,7 @@ export default function ProjectDetails() {
                 <div>
                   <h3 className="text-sm font-medium text-gray-500">Team Roles</h3>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {project.team_roles.map((role: string, index: number) => (
+                    {(project.team_roles || []).map((role: string, index: number) => (
                       <span
                         key={index}
                         className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
@@ -576,7 +843,7 @@ export default function ProjectDetails() {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {project.team_roles.map((role: string, index: number) => (
+              {(project.team_roles || []).map((role: string, index: number) => (
                 <div
                   key={index}
                   className="bg-gray-50 rounded-lg p-4 border border-gray-200"
@@ -590,8 +857,26 @@ export default function ProjectDetails() {
         )}
       </div>
 
-      {/* Add Document Editor Modal */}
-      {showEditor && editorType && project && (
+      {/* Replace the DocumentEditor with GrantDocumentEditor */}
+      {showEditor && editorType === 'grant' && currentGrantDocument && (
+        <GrantDocumentEditor
+          isOpen={showEditor}
+          onClose={() => {
+            setShowEditor(false);
+            setEditorType(null);
+            setEditorItem(null);
+          }}
+          onSave={handleSaveGrantDocument}
+          document={currentGrantDocument}
+          project={project}
+          onGenerateSection={handleGenerateSection}
+          isGenerating={loadingStates.grantProposal}
+          progressMessage={progressMessage}
+        />
+      )}
+
+      {/* Keep the original DocumentEditor for fundraising and insights */}
+      {showEditor && editorType !== 'grant' && (
         <DocumentEditor
           isOpen={showEditor}
           onClose={() => {

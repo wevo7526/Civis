@@ -9,7 +9,8 @@ import {
   FundraisingCampaign, 
   Project, 
   VolunteerActivity,
-  AIRequest, 
+  AIRequest,
+  AIResponse,
   DonorAnalysisData, 
   ProjectAnalysisData, 
   EventAnalysisData 
@@ -21,30 +22,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-interface AIResponse {
-  success: boolean;
-  content: Array<{
-    type: 'text';
-    text: string;
-  }>;
-  data: {
-    analyzedItems?: number;
-    timestamp: string;
-  };
-}
-
-async function makeAIRequest(action: AIRequest['action'], data: unknown, context?: Record<string, unknown>): Promise<string> {
+async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIResponse> {
   try {
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        action,
-        data,
-        context,
-      }),
+      body: JSON.stringify({ action, data }),
     });
 
     if (!response.ok) {
@@ -53,7 +38,10 @@ async function makeAIRequest(action: AIRequest['action'], data: unknown, context
     }
 
     const responseData = await response.json() as AIResponse;
-    return responseData.content[0].text;
+    return {
+      ...responseData,
+      content: formatContent(responseData.content)
+    };
   } catch (error) {
     console.error('Error making AI request:', error);
     throw error;
@@ -62,11 +50,11 @@ async function makeAIRequest(action: AIRequest['action'], data: unknown, context
 
 export const aiService = {
   // Donor Analysis
-  async analyzeDonors(donors: Donor[]): Promise<string> {
+  async analyzeDonors(donors: Donor[]): Promise<AIResponse> {
     return makeAIRequest('analyze_donors', donors);
   },
 
-  async analyzeDonorEngagement(donor: DonorAnalysisData): Promise<string> {
+  async analyzeDonorEngagement(donor: DonorAnalysisData): Promise<AIResponse> {
     // Ensure donor data has required fields
     const validatedData = {
       ...donor,
@@ -76,7 +64,7 @@ export const aiService = {
     return makeAIRequest('analyzeDonorEngagement', validatedData);
   },
 
-  async generateDonorReport(donor: Donor): Promise<string> {
+  async generateDonorReport(donor: Donor): Promise<AIResponse> {
     // Ensure donor data has required fields
     const validatedData = {
       ...donor,
@@ -86,7 +74,7 @@ export const aiService = {
     return makeAIRequest('generate_donor_report', validatedData);
   },
 
-  async generateOutreachMessage(donor: Donor): Promise<string> {
+  async generateOutreachMessage(donor: Donor): Promise<AIResponse> {
     // Ensure donor data has required fields
     const validatedData = {
       ...donor,
@@ -96,7 +84,7 @@ export const aiService = {
     return makeAIRequest('generateOutreachMessage', validatedData);
   },
 
-  async generateDonorMessage(donor: Donor): Promise<string> {
+  async generateDonorMessage(donor: Donor): Promise<AIResponse> {
     // Ensure donor data has required fields
     const validatedData = {
       ...donor,
@@ -107,40 +95,76 @@ export const aiService = {
   },
 
   // Project Analysis
-  async analyzeProjects(projects: Project[]): Promise<string> {
+  async analyzeProjects(projects: Project[]): Promise<AIResponse> {
     return makeAIRequest('analyzeProjects', projects);
   },
 
-  async generateGrantProposal(project: Project): Promise<string> {
-    return makeAIRequest('generate_grant_proposal', project);
-  },
-
   // Event Analysis
-  async analyzeEvents(events: Event[]): Promise<string> {
+  async analyzeEvents(events: Event[]): Promise<AIResponse> {
     return makeAIRequest('analyzeEvents', events);
   },
 
-  async optimizeEventPlan(event: Event): Promise<string> {
+  async optimizeEventPlan(event: Event): Promise<AIResponse> {
     return makeAIRequest('optimizeEventPlan', event);
   },
 
   // Program Analysis
-  async assessProgramImpact(program: Program): Promise<string> {
+  async assessProgramImpact(program: Program): Promise<AIResponse> {
     return makeAIRequest('assessProgramImpact', program);
   },
 
   // Community Engagement
-  async analyzeCommunityEngagement(stakeholders: CommunityStakeholder[]): Promise<string> {
+  async analyzeCommunityEngagement(stakeholders: CommunityStakeholder[]): Promise<AIResponse> {
     return makeAIRequest('analyzeCommunityEngagement', stakeholders);
   },
 
   // Volunteer Management
-  async matchVolunteers(data: { volunteers: Volunteer[]; opportunities: VolunteerActivity[] }): Promise<string> {
+  async matchVolunteers(data: { volunteers: Volunteer[]; opportunities: VolunteerActivity[] }): Promise<AIResponse> {
     return makeAIRequest('matchVolunteers', data);
   },
 
   // Fundraising Analysis
-  async analyzeFundraising(data: { donors: Donor[]; projects: Project[]; events: Event[] }): Promise<string> {
-    return makeAIRequest('analyzeFundraising', data);
+  async analyzeFundraising(data: { donors: Donor[]; projects: Project[]; events: Event[] }): Promise<AIResponse> {
+    try {
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'analyzeFundraising', data }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+        throw new Error(errorData.message || 'Failed to process request');
+      }
+
+      const responseData = await response.json() as AIResponse;
+      
+      // Ensure content is a string before formatting
+      const content = typeof responseData.content === 'string' 
+        ? responseData.content 
+        : JSON.stringify(responseData.content);
+
+      return {
+        ...responseData,
+        content: formatContent(content)
+      };
+    } catch (error) {
+      console.error('Error analyzing fundraising:', error);
+      return {
+        success: false,
+        content: 'Failed to analyze fundraising data. Please try again.',
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
   }
-}; 
+};
+
+function formatContent(content: string): string {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join('\n\n');
+} 

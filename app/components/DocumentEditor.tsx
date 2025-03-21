@@ -38,21 +38,194 @@ interface DocumentEditorProps {
 
 const TEMPLATES = {
   grant: [
-    { id: 1, name: 'Executive Summary', content: '## Executive Summary\n\n[Your project summary here]' },
-    { id: 2, name: 'Project Goals', content: '## Project Goals\n\n1. [Goal 1]\n2. [Goal 2]\n3. [Goal 3]' },
-    { id: 3, name: 'Budget Breakdown', content: '## Budget Breakdown\n\n| Category | Amount | Description |\n|----------|---------|-------------|\n| [Category] | $[Amount] | [Description] |' },
-    { id: 4, name: 'Impact Statement', content: '## Impact Statement\n\n[Describe the impact of your project]' },
-    { id: 5, name: 'Timeline', content: '## Project Timeline\n\n1. Phase 1: [Description]\n2. Phase 2: [Description]\n3. Phase 3: [Description]' },
+    { 
+      id: 1, 
+      name: 'Executive Summary', 
+      content: `## Executive Summary
+
+[Your project summary here]
+
+### Key Points
+- Project Overview
+- Mission Alignment
+- Expected Impact
+- Funding Request
+- Timeline` 
+    },
+    { 
+      id: 2, 
+      name: 'Project Goals', 
+      content: `## Project Goals and Objectives
+
+### Primary Goals
+1. [Goal 1]
+2. [Goal 2]
+3. [Goal 3]
+
+### Measurable Objectives
+- Objective 1: [Description]
+- Objective 2: [Description]
+- Objective 3: [Description]
+
+### Success Metrics
+- Metric 1: [Description]
+- Metric 2: [Description]
+- Metric 3: [Description]` 
+    },
+    { 
+      id: 3, 
+      name: 'Budget Breakdown', 
+      content: `## Budget Breakdown
+
+| Category | Amount | Description | Justification |
+|----------|---------|-------------|---------------|
+| [Category] | $[Amount] | [Description] | [Justification] |
+
+### Budget Narrative
+[Detailed explanation of budget items and their necessity]` 
+    },
+    { 
+      id: 4, 
+      name: 'Impact Statement', 
+      content: `## Impact Statement
+
+### Target Population
+[Description of who will benefit]
+
+### Expected Outcomes
+1. [Outcome 1]
+2. [Outcome 2]
+3. [Outcome 3]
+
+### Long-term Impact
+[Description of lasting effects]` 
+    },
+    { 
+      id: 5, 
+      name: 'Timeline', 
+      content: `## Project Timeline
+
+### Phase 1: [Name]
+- Start Date: [Date]
+- End Date: [Date]
+- Key Activities:
+  1. [Activity 1]
+  2. [Activity 2]
+  3. [Activity 3]
+
+### Phase 2: [Name]
+- Start Date: [Date]
+- End Date: [Date]
+- Key Activities:
+  1. [Activity 1]
+  2. [Activity 2]
+  3. [Activity 3]` 
+    },
   ],
   fundraising: [
-    { id: 1, name: 'Funding Goals', content: '## Funding Goals\n\n- Target Amount: $[Amount]\n- Timeline: [Duration]\n- Key Milestones: [List]' },
-    { id: 2, name: 'Donor Strategy', content: '## Donor Strategy\n\n1. Target Donors\n2. Engagement Plan\n3. Recognition Program' },
-    { id: 3, name: 'Budget Allocation', content: '## Budget Allocation\n\n| Category | Amount | Purpose |\n|----------|---------|---------|\n| [Category] | $[Amount] | [Purpose] |' },
+    { 
+      id: 1, 
+      name: 'Funding Goals', 
+      content: `## Funding Goals
+
+### Target Amount
+- Total Goal: $[Amount]
+- Timeline: [Duration]
+- Key Milestones:
+  1. [Milestone 1]
+  2. [Milestone 2]
+  3. [Milestone 3]
+
+### Fund Allocation
+| Category | Amount | Purpose |
+|----------|---------|---------|
+| [Category] | $[Amount] | [Purpose] |` 
+    },
+    { 
+      id: 2, 
+      name: 'Donor Strategy', 
+      content: `## Donor Strategy
+
+### Target Donors
+1. [Donor Segment 1]
+   - Characteristics
+   - Giving Capacity
+   - Engagement Approach
+
+2. [Donor Segment 2]
+   - Characteristics
+   - Giving Capacity
+   - Engagement Approach
+
+### Engagement Plan
+- Outreach Methods
+- Communication Schedule
+- Recognition Program` 
+    },
+    { 
+      id: 3, 
+      name: 'Budget Allocation', 
+      content: `## Budget Allocation
+
+### Fundraising Costs
+| Category | Amount | Purpose |
+|----------|---------|---------|
+| [Category] | $[Amount] | [Purpose] |
+
+### ROI Projections
+- Expected Return: $[Amount]
+- Cost per Dollar Raised: $[Amount]
+- Timeline to Break Even: [Duration]` 
+    },
   ],
   insights: [
-    { id: 1, name: 'Key Findings', content: '## Key Findings\n\n1. [Finding 1]\n2. [Finding 2]\n3. [Finding 3]' },
-    { id: 2, name: 'Recommendations', content: '## Recommendations\n\n- [Recommendation 1]\n- [Recommendation 2]\n- [Recommendation 3]' },
-    { id: 3, name: 'Action Items', content: '## Action Items\n\n1. [Action 1]\n2. [Action 2]\n3. [Action 3]' },
+    { 
+      id: 1, 
+      name: 'Key Findings', 
+      content: `## Key Findings
+
+### Project Performance
+1. [Finding 1]
+2. [Finding 2]
+3. [Finding 3]
+
+### Impact Analysis
+- [Impact Point 1]
+- [Impact Point 2]
+- [Impact Point 3]` 
+    },
+    { 
+      id: 2, 
+      name: 'Recommendations', 
+      content: `## Recommendations
+
+### Strategic Recommendations
+- [Recommendation 1]
+- [Recommendation 2]
+- [Recommendation 3]
+
+### Implementation Steps
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]` 
+    },
+    { 
+      id: 3, 
+      name: 'Action Items', 
+      content: `## Action Items
+
+### Immediate Actions
+1. [Action 1]
+   - Timeline: [Duration]
+   - Resources Needed: [List]
+   - Success Criteria: [Description]
+
+### Long-term Actions
+1. [Action 1]
+   - Timeline: [Duration]
+   - Resources Needed: [List]
+   - Success Criteria: [Description]` 
+    },
   ],
 };
 
@@ -77,6 +250,7 @@ export default function DocumentEditor({
   const [activeTemplate, setActiveTemplate] = useState<number | null>(null);
   const [wordCount, setWordCount] = useState(0);
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -109,17 +283,38 @@ export default function DocumentEditor({
     }
   }, [isGenerating]);
 
+  // Update content when initialData changes
+  useEffect(() => {
+    if (initialData?.content) {
+      setContent(initialData.content);
+    }
+  }, [initialData?.content]);
+
   if (!isOpen) return null;
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     setGenerationProgress(0);
-    await onGenerate(prompt);
+    
+    // Add context based on document type
+    const enhancedPrompt = type === 'grant' 
+      ? `Generate a comprehensive grant proposal with the following requirements:\n${prompt}`
+      : type === 'fundraising'
+      ? `Generate a detailed fundraising strategy with the following requirements:\n${prompt}`
+      : `Generate project insights based on the following requirements:\n${prompt}`;
+      
+    await onGenerate(enhancedPrompt);
   };
 
   const handleSave = async () => {
-    await onSave(title, content);
-    onClose();
+    try {
+      setIsSaving(true);
+      await onSave(title, content);
+    } catch (error) {
+      console.error('Error saving document:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleFormatText = (format: string) => {
@@ -417,16 +612,27 @@ export default function DocumentEditor({
               <div className="flex justify-end space-x-3">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  disabled={isSaving}
+                  className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
+                  disabled={isSaving}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
                 >
-                  <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
-                  Save Changes
+                  {isSaving ? (
+                    <>
+                      <ArrowPathIcon className="h-4 w-4 mr-1.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
+                      Save Changes
+                    </>
+                  )}
                 </button>
               </div>
             </div>

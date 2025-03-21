@@ -8,7 +8,7 @@ interface SavedItemCardProps {
     content: string;
     status?: string;
     created_at: string;
-    type?: 'grant' | 'fundraising' | 'insights';
+    type: 'grant' | 'fundraising' | 'insights';
   };
   onEdit: (item: any) => void;
   onDelete: (item: any) => void;
@@ -27,6 +27,15 @@ export default function SavedItemCard({ item, onEdit, onDelete }: SavedItemCardP
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  };
+
+  const handleDelete = () => {
+    const itemToDelete = {
+      ...item,
+      type: item.type || 'grant'
+    };
+    onDelete(itemToDelete);
+    setShowDeleteConfirm(false);
   };
 
   return (
@@ -49,35 +58,28 @@ export default function SavedItemCard({ item, onEdit, onDelete }: SavedItemCardP
       <p className="text-xs text-gray-500 mb-3">
         Created on {new Date(item.created_at).toLocaleDateString()}
       </p>
-      <div className="flex items-center justify-between">
-        <div className="flex space-x-2">
-          <button
-            onClick={() => onEdit(item)}
-            className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <PencilIcon className="h-3 w-3 mr-1" />
-            Edit
-          </button>
-          <button
-            onClick={handleDownload}
-            className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
-          >
-            <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
-            Download
-          </button>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50"
-          >
-            <TrashIcon className="h-3 w-3 mr-1" />
-            Delete
-          </button>
-        </div>
+      
+      <div className="flex space-x-2">
         <button
           onClick={() => onEdit(item)}
-          className="text-xs text-purple-600 hover:text-purple-800"
+          className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
         >
-          View Details
+          <PencilIcon className="h-3 w-3 mr-1" />
+          Edit
+        </button>
+        <button
+          onClick={handleDownload}
+          className="inline-flex items-center px-2 py-1 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50"
+        >
+          <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
+          Download
+        </button>
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          className="inline-flex items-center px-2 py-1 border border-red-300 text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50"
+        >
+          <TrashIcon className="h-3 w-3 mr-1" />
+          Delete
         </button>
       </div>
 
@@ -97,10 +99,7 @@ export default function SavedItemCard({ item, onEdit, onDelete }: SavedItemCardP
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  onDelete(item);
-                  setShowDeleteConfirm(false);
-                }}
+                onClick={handleDelete}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
               >
                 Delete
