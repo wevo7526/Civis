@@ -16,6 +16,17 @@ const securityHeaders = {
 };
 
 export async function middleware(req: NextRequest) {
+  // Block requests with x-middleware-subrequest header
+  if (req.headers.has('x-middleware-subrequest')) {
+    securityLogger.logSuspiciousActivity(req, 'middleware_subrequest_attempt', {
+      headers: Object.fromEntries(req.headers.entries()),
+    });
+    return new NextResponse(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 403 }
+    );
+  }
+
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
