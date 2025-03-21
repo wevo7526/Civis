@@ -14,8 +14,12 @@ import {
   ClockIcon,
 } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import gantt from 'dhtmlx-gantt';
-import 'dhtmlx-gantt/codebase/dhtmlxgantt.css';
+import dynamic from 'next/dynamic';
+
+// Dynamically import GanttChart with no SSR
+const GanttChart = dynamic(() => import('@/app/components/GanttChart'), {
+  ssr: false,
+});
 
 interface Campaign {
   id: string;
@@ -114,12 +118,6 @@ export default function Campaigns() {
   }, []);
 
   useEffect(() => {
-    if (ganttContainer.current) {
-      initializeGantt();
-    }
-  }, [campaignItems]);
-
-  useEffect(() => {
     if (campaignToEdit) {
       setFormData({
         name: campaignToEdit.name,
@@ -150,32 +148,6 @@ export default function Campaigns() {
       setIsItemModalOpen(true);
     }
   }, [campaignItemToEdit]);
-
-  const initializeGantt = () => {
-    gantt.config.date_format = '%Y-%m-%d';
-    gantt.config.columns = [
-      { name: 'text', label: 'Task', tree: true, width: 200 },
-      { name: 'start_date', label: 'Start', align: 'center', width: 100 },
-      { name: 'end_date', label: 'End', align: 'center', width: 100 },
-      { name: 'status', label: 'Status', align: 'center', width: 100 },
-      { name: 'priority', label: 'Priority', align: 'center', width: 100 },
-    ];
-
-    const tasks = campaignItems.map(item => ({
-      id: item.id,
-      text: item.title,
-      start_date: new Date(item.start_date),
-      end_date: new Date(item.end_date),
-      status: item.status,
-      priority: item.priority,
-      progress: item.status === 'completed' ? 1 : item.status === 'in-progress' ? 0.5 : 0,
-      dependencies: item.dependencies.join(','),
-    }));
-
-    gantt.clearAll();
-    gantt.parse({ data: tasks });
-    gantt.render();
-  };
 
   const fetchCampaigns = async () => {
     try {
@@ -422,24 +394,29 @@ export default function Campaigns() {
         </table>
       </div>
 
-      {/* Campaign Gantt Chart */}
-      {selectedCampaign && (
-        <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-gray-900">
-              {selectedCampaign.name} - Timeline
-            </h2>
-            <button
-              onClick={() => setIsItemModalOpen(true)}
-              className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-            >
-              <PlusIcon className="h-4 w-4 mr-1" />
-              Add Task
-            </button>
-          </div>
-          <div ref={ganttContainer} className="h-[400px]"></div>
-        </div>
-      )}
+      {/* Replace the gantt container with the new component */}
+      <div className="mt-8">
+        <GanttChart 
+          data={campaignItems.map(item => ({
+            id: item.id,
+            text: item.title,
+            start_date: item.start_date,
+            end_date: item.end_date,
+            status: item.status,
+            progress: item.status === 'completed' ? 1 : 
+                     item.status === 'in-progress' ? 0.5 : 0,
+          }))}
+          links={campaignItems
+            .filter(item => item.dependencies && item.dependencies.length > 0)
+            .map(item => item.dependencies.map(depId => ({
+              id: `${item.id}-${depId}`,
+              source: depId,
+              target: item.id,
+              type: '0',
+            })))
+            .flat()}
+        />
+      </div>
 
       {/* Add/Edit Campaign Modal */}
       <Dialog

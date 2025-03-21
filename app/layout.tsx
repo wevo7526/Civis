@@ -1,3 +1,5 @@
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import "./globals.css";
 import ClientWrapper from './components/ClientWrapper';
 import { GeistSans } from 'geist/font/sans';
@@ -5,9 +7,14 @@ import { GeistMono } from 'geist/font/mono';
 import { RemindersProvider } from './components/Reminders/RemindersProvider';
 import { NotificationsBell } from './components/Notifications/NotificationsBell';
 
-export const metadata = {
-  title: 'Civis - Nonprofit Management Platform',
-  description: 'Streamline your nonprofit operations with Civis',
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'Civis',
+  description: 'Civis - Empowering Community Engagement',
+  icons: {
+    icon: '/civislogo.png',
+  },
 };
 
 export default function RootLayout({

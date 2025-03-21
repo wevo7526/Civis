@@ -92,16 +92,66 @@ export async function POST(request: Request) {
 
     switch (action) {
       case 'analyze_donors':
-        prompt = `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
+        if (!Array.isArray(data)) {
+          return NextResponse.json(
+            { 
+              success: false,
+              message: 'Donor data must be an array' 
+            },
+            { status: 400 }
+          );
+        }
+
+        if (data.length === 0) {
+          return NextResponse.json(
+            { 
+              success: false,
+              message: 'No donor data provided' 
+            },
+            { status: 400 }
+          );
+        }
+
+        try {
+          const message = await anthropic.messages.create({
+            model: 'claude-3-sonnet-20240229',
+            max_tokens: 1000,
+            messages: [
+              {
+                role: 'user',
+                content: `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
 
 ${JSON.stringify(data, null, 2)}
 
 Please provide:
 1. Key engagement metrics
-2. Giving pattern analysis
-3. Specific recommendations for improvement
-4. Suggested next steps`;
-        break;
+2. Giving patterns and trends
+3. Recommendations for improvement
+4. Risk assessment for donor retention`
+              }
+            ],
+            system: SYSTEM_PROMPT,
+            temperature: 0.7,
+          });
+
+          return NextResponse.json({
+            success: true,
+            content: message.content,
+            data: {
+              analyzedDonors: data.length,
+              timestamp: new Date().toISOString()
+            }
+          });
+        } catch (error) {
+          console.error('Error processing donor analysis:', error);
+          return NextResponse.json(
+            { 
+              success: false,
+              message: 'Failed to process donor analysis. Please try again.' 
+            },
+            { status: 500 }
+          );
+        }
 
       case 'analyze_projects':
         prompt = `Analyze the following project data and provide insights on progress, challenges, and recommendations:

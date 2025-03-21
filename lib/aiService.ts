@@ -7,13 +7,14 @@ export const aiService = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'analyze_donor_engagement',
-          data: { donorData },
+          action: 'analyze_donors',
+          data: donorData,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze donor engagement');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to analyze donor engagement');
       }
 
       const data = await response.json();
@@ -26,7 +27,7 @@ export const aiService = {
     } catch (error) {
       console.error('Error analyzing donor engagement:', error);
       return {
-        message: 'Failed to analyze donor engagement. Please try again.',
+        message: error instanceof Error ? error.message : 'Failed to analyze donor engagement. Please try again.',
         success: false,
         content: '',
         data: {},
