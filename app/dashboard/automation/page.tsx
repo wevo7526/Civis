@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { Loading } from '@/components/ui/loading';
 
 interface Workflow {
   id: string;
@@ -80,9 +81,22 @@ export default function AutomationHub() {
   });
 
   useEffect(() => {
-    fetchWorkflows();
-    fetchEmailTemplates();
-    setLoading(false);
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        await Promise.all([
+          fetchWorkflows(),
+          fetchEmailTemplates()
+        ]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+        toast.error('Failed to load data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, []);
 
   const fetchWorkflows = async () => {
@@ -206,11 +220,7 @@ export default function AutomationHub() {
   });
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-      </div>
-    );
+    return <Loading />;
   }
 
   return (

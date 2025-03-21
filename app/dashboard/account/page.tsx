@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { CreditCard, Package, Receipt, Shield } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 
 interface SubscriptionDetails {
   status: string;
@@ -150,8 +151,8 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loading />
       </div>
     );
   }

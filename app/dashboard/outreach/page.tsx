@@ -36,6 +36,7 @@ import { Badge } from '../../../components/ui/badge';
 import { Card } from '../../../components/ui/card';
 import { workflowTemplates } from '../../../lib/workflowTemplates';
 import { toast } from 'sonner';
+import { Loading } from '@/components/ui/loading';
 
 interface OutreachTemplate {
   id: string;
@@ -93,42 +94,110 @@ export default function OutreachPage() {
     recentParticipants: 0
   });
 
-  useEffect(() => {
-    const loadAllData = async () => {
-      setLoading(true);
-      setError(null);
+  const loadAllData = async (isMounted: boolean) => {
+    if (!isMounted) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const supabase = createClientComponentClient();
       
-      try {
-        await Promise.all([
-          loadData().catch(err => {
-            console.error('Error in loadData:', err);
-            setTemplates([]);
-          }),
-          fetchRecipients().catch(err => {
-            console.error('Error in fetchRecipients:', err);
-            setRecipients([]);
-            setRecipientStats({
-              totalDonors: 0,
-              totalVolunteers: 0,
-              totalParticipants: 0,
-              activeDonors: 0,
-              activeVolunteers: 0,
-              activeParticipants: 0,
-              recentDonors: 0,
-              recentVolunteers: 0,
-              recentParticipants: 0
-            });
-          })
-        ]);
-      } catch (err) {
-        console.error('Error loading data:', err);
-        setError('Failed to load data. Please refresh the page.');
-      } finally {
+      // Fetch data in parallel with proper error handling
+      const [templatesResult, donorsResult, volunteersResult] = await Promise.allSettled([
+        supabase.from('outreach_templates').select('*').order('created_at', { ascending: false }),
+        supabase.from('donors').select('*').order('created_at', { ascending: false }),
+        supabase.from('volunteers').select('*').order('created_at', { ascending: false })
+      ]);
+
+      if (!isMounted) return;
+
+      // Handle templates
+      if (templatesResult.status === 'fulfilled') {
+        const { data: templateData, error: templateError } = templatesResult.value;
+        if (templateError) throw templateError;
+        setTemplates(templateData || []);
+      }
+
+      // Handle donors and volunteers
+      if (donorsResult.status === 'fulfilled' && volunteersResult.status === 'fulfilled') {
+        const { data: donors, error: donorError } = donorsResult.value;
+        const { data: volunteers, error: volunteerError } = volunteersResult.value;
+
+        if (donorError) throw donorError;
+        if (volunteerError) throw volunteerError;
+
+        // Process recipients
+        const processedRecipients = [
+          ...(donors || []).map(donor => ({
+            id: donor.id,
+            name: donor.name,
+            email: donor.email,
+            type: 'donor' as const,
+            status: donor.status,
+            lastContact: donor.last_contact,
+            totalDonations: donor.total_donations,
+            lastDonation: donor.last_donation,
+            tags: donor.tags || [],
+            notes: donor.notes || '',
+            createdAt: donor.created_at,
+            updatedAt: donor.updated_at
+          })),
+          ...(volunteers || []).map(volunteer => ({
+            id: volunteer.id,
+            name: volunteer.name,
+            email: volunteer.email,
+            type: 'volunteer' as const,
+            status: volunteer.status,
+            lastContact: volunteer.last_contact,
+            hours: volunteer.hours,
+            skills: volunteer.skills || [],
+            notes: volunteer.notes || '',
+            createdAt: volunteer.created_at,
+            updatedAt: volunteer.updated_at
+          }))
+        ];
+
+        setRecipients(processedRecipients);
+
+        // Calculate stats
+        const stats = {
+          totalDonors: donors?.length || 0,
+          totalVolunteers: volunteers?.length || 0,
+          totalParticipants: 0,
+          activeDonors: donors?.filter(d => d.status === 'active').length || 0,
+          activeVolunteers: volunteers?.filter(v => v.status === 'active').length || 0,
+          activeParticipants: 0,
+          recentDonors: donors?.filter(d => {
+            const lastContact = new Date(d.last_contact || d.created_at);
+            return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          }).length || 0,
+          recentVolunteers: volunteers?.filter(v => {
+            const lastContact = new Date(v.last_contact || v.created_at);
+            return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          }).length || 0,
+          recentParticipants: 0
+        };
+
+        setRecipientStats(stats);
+      }
+    } catch (err) {
+      if (!isMounted) return;
+      console.error('Error loading data:', err);
+      setError('Failed to load data. Please refresh the page.');
+    } finally {
+      if (isMounted) {
         setLoading(false);
       }
-    };
+    }
+  };
 
-    loadAllData();
+  useEffect(() => {
+    let isMounted = true;
+    loadAllData(isMounted);
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -138,164 +207,6 @@ export default function OutreachPage() {
       setEditorContent('');
     }
   }, [selectedTemplate]);
-
-  const loadData = async () => {
-    const { data: { user }, error: authError } = await createClientComponentClient().auth.getUser();
-    
-    if (authError) {
-      console.error('Authentication error:', authError);
-      setTemplates([]);
-      setError('Authentication failed. Please sign in again.');
-      return;
-    }
-
-    if (!user) {
-      setTemplates([]);
-      setError('Please sign in to view templates');
-      return;
-    }
-
-    // Load templates
-    const { data: templateData, error: templateError } = await createClientComponentClient()
-      .from('outreach_templates')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (templateError) {
-      console.error('Error fetching templates:', templateError);
-      setTemplates([]);
-      setError('Failed to load templates');
-      return;
-    }
-
-    setTemplates(templateData || []);
-  };
-
-  const fetchRecipients = async () => {
-    try {
-      setLoading(true);
-      const supabase = createClientComponentClient();
-
-      // Fetch donors
-      const { data: donors, error: donorError } = await supabase
-        .from('donors')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (donorError) {
-        console.error('Error fetching donors:', donorError.message);
-        throw new Error(`Failed to fetch donors: ${donorError.message}`);
-      }
-
-      // Fetch volunteers
-      const { data: volunteers, error: volunteerError } = await supabase
-        .from('volunteers')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (volunteerError) {
-        console.error('Error fetching volunteers:', volunteerError.message);
-        throw new Error(`Failed to fetch volunteers: ${volunteerError.message}`);
-      }
-
-      // Fetch participants with their details
-      const { data: participants, error: participantError } = await supabase
-        .from('participants')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (participantError) {
-        console.error('Error fetching participant details:', participantError.message);
-        throw new Error(`Failed to fetch participants: ${participantError.message}`);
-      }
-
-      // Process and combine all recipients
-      const processedRecipients = [
-        ...(donors || []).map(donor => ({
-          id: donor.id,
-          name: donor.name,
-          email: donor.email,
-          type: 'donor' as const,
-          status: donor.status,
-          lastContact: donor.last_contact,
-          totalDonations: donor.total_donations,
-          lastDonation: donor.last_donation,
-          tags: donor.tags || [],
-          notes: donor.notes || '',
-          createdAt: donor.created_at,
-          updatedAt: donor.updated_at
-        })),
-        ...(volunteers || []).map(volunteer => ({
-          id: volunteer.id,
-          name: volunteer.name,
-          email: volunteer.email,
-          type: 'volunteer' as const,
-          status: volunteer.status,
-          lastContact: volunteer.last_contact,
-          hours: volunteer.hours,
-          skills: volunteer.skills || [],
-          notes: volunteer.notes || '',
-          createdAt: volunteer.created_at,
-          updatedAt: volunteer.updated_at
-        })),
-        ...(participants || []).map(participant => ({
-          id: participant.id,
-          name: participant.name,
-          email: participant.email,
-          type: 'participant' as const,
-          status: participant.status,
-          lastContact: participant.last_contact,
-          notes: participant.notes || '',
-          createdAt: participant.created_at,
-          updatedAt: participant.updated_at
-        }))
-      ];
-
-      // Update recipients state
-      setRecipients(processedRecipients);
-
-      // Update recipient stats
-      setRecipientStats({
-        totalDonors: donors?.length || 0,
-        totalVolunteers: volunteers?.length || 0,
-        totalParticipants: participants?.length || 0,
-        activeDonors: donors?.filter(d => d.status === 'active').length || 0,
-        activeVolunteers: volunteers?.filter(v => v.status === 'active').length || 0,
-        activeParticipants: participants?.filter(p => p.status === 'active').length || 0,
-        recentDonors: donors?.filter(d => {
-          const lastContact = new Date(d.last_contact || d.created_at);
-          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        }).length || 0,
-        recentVolunteers: volunteers?.filter(v => {
-          const lastContact = new Date(v.last_contact || v.created_at);
-          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        }).length || 0,
-        recentParticipants: participants?.filter(p => {
-          const lastContact = new Date(p.last_contact || p.created_at);
-          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        }).length || 0
-      });
-
-    } catch (err) {
-      console.error('Error in fetchRecipients:', err instanceof Error ? err.message : 'Unknown error occurred');
-      setRecipients([]);
-      setRecipientStats({
-        totalDonors: 0,
-        totalVolunteers: 0,
-        totalParticipants: 0,
-        activeDonors: 0,
-        activeVolunteers: 0,
-        activeParticipants: 0,
-        recentDonors: 0,
-        recentVolunteers: 0,
-        recentParticipants: 0
-      });
-      toast.error('Failed to fetch recipients. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -405,7 +316,7 @@ export default function OutreachPage() {
       if (templateError) throw templateError;
 
       // Refresh templates
-      await loadData();
+      await loadAllData(true);
       
       // Show success message
       setError(null);
@@ -439,8 +350,8 @@ export default function OutreachPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
       </div>
     );
   }

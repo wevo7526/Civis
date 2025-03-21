@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Suspense } from 'react';
 import Sidebar from '../components/Sidebar';
+import Loading from '../loading';
 
 export default function DashboardLayout({
   children,
@@ -11,6 +13,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const [isLoading, setIsLoading] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -23,6 +27,12 @@ export default function DashboardLayout({
     checkSession();
   }, [router, supabase.auth]);
 
+  useEffect(() => {
+    setIsLoading(true);
+    const timer = setTimeout(() => setIsLoading(false), 500); // Minimum loading time for better UX
+    return () => clearTimeout(timer);
+  }, [pathname]);
+
   return (
     <div className="h-screen flex overflow-hidden bg-gray-50">
       <Sidebar />
@@ -30,7 +40,15 @@ export default function DashboardLayout({
         <div className="h-full">
           <main className="py-6">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-              {children}
+              {isLoading ? (
+                <div className="flex items-center justify-center min-h-[400px]">
+                  <Loading />
+                </div>
+              ) : (
+                <Suspense fallback={<Loading />}>
+                  {children}
+                </Suspense>
+              )}
             </div>
           </main>
         </div>

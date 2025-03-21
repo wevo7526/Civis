@@ -11,6 +11,8 @@ export default function Home() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -20,6 +22,15 @@ export default function Home() {
     setLoading(true);
 
     try {
+      if (isForgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        setResetEmailSent(true);
+        return;
+      }
+
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
@@ -45,6 +56,42 @@ export default function Home() {
     }
   };
 
+  if (resetEmailSent) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="flex justify-center">
+            <Image
+              src="/civislogo.png"
+              alt="Civis"
+              width={160}
+              height={42}
+              className="h-10 w-auto"
+            />
+          </div>
+          <h2 className="mt-8 text-center text-3xl font-bold tracking-tight text-gray-900">
+            Check your email
+          </h2>
+          <p className="mt-3 text-center text-sm text-gray-500">
+            We've sent a password reset link to {email}. Please check your email and click the link to reset your password.
+          </p>
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => {
+                setIsForgotPassword(false);
+                setResetEmailSent(false);
+                setError(null);
+              }}
+              className="font-medium text-purple-600 hover:text-purple-500 transition-colors duration-200"
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -58,16 +105,26 @@ export default function Home() {
           />
         </div>
         <h2 className="mt-8 text-center text-3xl font-bold tracking-tight text-gray-900">
-          {isSignUp ? 'Create your account' : 'Welcome back'}
+          {isForgotPassword ? 'Reset your password' : isSignUp ? 'Create your account' : 'Welcome back'}
         </h2>
         <p className="mt-3 text-center text-sm text-gray-500">
-          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="font-medium text-purple-600 hover:text-purple-500 transition-colors duration-200"
-          >
-            {isSignUp ? 'Sign in' : 'Sign up'}
-          </button>
+          {isForgotPassword ? (
+            'Enter your email to receive a password reset link'
+          ) : (
+            <>
+              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+              <button
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setIsForgotPassword(false);
+                  setError(null);
+                }}
+                className="font-medium text-purple-600 hover:text-purple-500 transition-colors duration-200"
+              >
+                {isSignUp ? 'Sign in' : 'Sign up'}
+              </button>
+            </>
+          )}
         </p>
       </div>
 
@@ -105,29 +162,46 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                  </svg>
+            {!isForgotPassword && (
+              <div className="space-y-2">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition-all duration-200"
+                    placeholder="Enter your password"
+                  />
                 </div>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 sm:text-sm transition-all duration-200"
-                  placeholder="Enter your password"
-                />
               </div>
-            </div>
+            )}
+
+            {!isSignUp && !isForgotPassword && (
+              <div className="flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgotPassword(true);
+                    setError(null);
+                  }}
+                  className="text-sm font-medium text-purple-600 hover:text-purple-500 transition-colors duration-200"
+                >
+                  Forgot your password?
+                </button>
+              </div>
+            )}
 
             <div>
               <button
@@ -141,7 +215,7 @@ export default function Home() {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 ) : (
-                  isSignUp ? 'Create account' : 'Sign in'
+                  isForgotPassword ? 'Send reset link' : isSignUp ? 'Create account' : 'Sign in'
                 )}
               </button>
             </div>

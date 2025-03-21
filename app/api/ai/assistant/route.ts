@@ -2,6 +2,21 @@ import { NextResponse } from 'next/server';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { handleError, requireAuth, validateInput } from '@/lib/error-handling';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface RequestBody {
+  messages: Message[];
+  context?: {
+    currentPage?: string;
+    timestamp?: string;
+    [key: string]: any;
+  };
+}
 
 const model = new ChatAnthropic({
   modelName: 'claude-3-opus-20240229',
@@ -25,22 +40,20 @@ export async function POST(request: Request) {
     // Check authentication
     const supabase = createRouteHandlerClient({ cookies });
     const { data: { session } } = await supabase.auth.getSession();
+    const user = requireAuth(session);
 
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const body = await request.json() as RequestBody;
+    
+    // Validate input
+    validateInput(body, {
+      messages: (value) => Array.isArray(value) && value.length > 0,
+      context: (value) => typeof value === 'object' || value === undefined,
+    });
 
-    const { messages, context } = await request.json();
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json(
-        { error: 'Messages array is required' },
-        { status: 400 }
-      );
-    }
+    const { messages, context } = body;
 
     // Convert messages to Anthropic format
-    const anthropicMessages = messages.map(msg => ({
+    const anthropicMessages = messages.map((msg: Message) => ({
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: msg.content,
     }));
@@ -58,31 +71,20 @@ export async function POST(request: Request) {
       throw new Error('No response content received from Claude');
     }
 
+    // Log the interaction
+    await supabase.from('ai_interactions').insert({
+      user_id: user.id,
+      action: 'assistant',
+      prompt: messages[messages.length - 1].content,
+      response: response.content,
+      context: context || {},
+      created_at: new Date().toISOString(),
+    });
+
     return NextResponse.json({
       message: response.content,
     });
   } catch (error) {
-    console.error('AI Assistant Error:', error);
-    
-    // Handle specific Anthropic errors
-    if (error instanceof Error) {
-      if (error.message.includes('API key')) {
-        return NextResponse.json(
-          { error: 'AI service configuration error' },
-          { status: 500 }
-        );
-      }
-      if (error.message.includes('rate limit')) {
-        return NextResponse.json(
-          { error: 'Rate limit exceeded. Please try again later.' },
-          { status: 429 }
-        );
-      }
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to process AI request' },
-      { status: 500 }
-    );
+    return handleError(error);
   }
 } 
