@@ -35,6 +35,7 @@ import {
 import { Badge } from '../../../components/ui/badge';
 import { Card } from '../../../components/ui/card';
 import { workflowTemplates } from '../../../lib/workflowTemplates';
+import { toast } from 'sonner';
 
 interface OutreachTemplate {
   id: string;
@@ -53,8 +54,19 @@ interface Recipient {
   id: string;
   name: string;
   email: string;
-  type: 'donor' | 'volunteer';
-  lastContacted?: string | null;
+  type: 'donor' | 'volunteer' | 'participant';
+  status?: string;
+  lastContact?: string;
+  totalDonations?: number;
+  lastDonation?: string;
+  hours?: number;
+  skills?: string[];
+  tags?: string[];
+  notes?: string;
+  donor?: any;
+  volunteer?: any;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export default function OutreachPage() {
@@ -69,11 +81,16 @@ export default function OutreachPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'donor' | 'volunteer'>('all');
   const router = useRouter();
-  const supabase = createClientComponentClient();
   const [recipientStats, setRecipientStats] = useState({
     totalDonors: 0,
     totalVolunteers: 0,
-    lastEmailSent: null as string | null
+    totalParticipants: 0,
+    activeDonors: 0,
+    activeVolunteers: 0,
+    activeParticipants: 0,
+    recentDonors: 0,
+    recentVolunteers: 0,
+    recentParticipants: 0
   });
 
   useEffect(() => {
@@ -93,7 +110,13 @@ export default function OutreachPage() {
             setRecipientStats({
               totalDonors: 0,
               totalVolunteers: 0,
-              lastEmailSent: null
+              totalParticipants: 0,
+              activeDonors: 0,
+              activeVolunteers: 0,
+              activeParticipants: 0,
+              recentDonors: 0,
+              recentVolunteers: 0,
+              recentParticipants: 0
             });
           })
         ]);
@@ -117,7 +140,7 @@ export default function OutreachPage() {
   }, [selectedTemplate]);
 
   const loadData = async () => {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await createClientComponentClient().auth.getUser();
     
     if (authError) {
       console.error('Authentication error:', authError);
@@ -133,7 +156,7 @@ export default function OutreachPage() {
     }
 
     // Load templates
-    const { data: templateData, error: templateError } = await supabase
+    const { data: templateData, error: templateError } = await createClientComponentClient()
       .from('outreach_templates')
       .select('*')
       .eq('user_id', user.id)
@@ -151,131 +174,126 @@ export default function OutreachPage() {
 
   const fetchRecipients = async () => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (!user) {
-        setRecipients([]);
-        setRecipientStats({
-          totalDonors: 0,
-          totalVolunteers: 0,
-          lastEmailSent: null
-        });
-        return;
-      }
+      setLoading(true);
+      const supabase = createClientComponentClient();
 
-      // Fetch donors with error handling
+      // Fetch donors
       const { data: donors, error: donorError } = await supabase
         .from('donors')
-        .select(`
-          id,
-          name,
-          email,
-          phone,
-          donation_date,
-          status,
-          notes,
-          created_at
-        `)
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .order('donation_date', { ascending: false })
-        .limit(100);
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (donorError) {
-        console.error('Error fetching donors:', donorError);
-        throw donorError;
+        console.error('Error fetching donors:', donorError.message);
+        throw new Error(`Failed to fetch donors: ${donorError.message}`);
       }
 
-      // Fetch volunteers with error handling - get unique participants from activities
-      const { data: activities, error: volunteerError } = await supabase
-        .from('volunteer_activities')
-        .select(`
-          id,
-          title,
-          participant_ids,
-          start_time,
-          status
-        `)
-        .eq('organizer_id', user.id)
-        .order('start_time', { ascending: false });
+      // Fetch volunteers
+      const { data: volunteers, error: volunteerError } = await supabase
+        .from('volunteers')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (volunteerError) {
-        console.error('Error fetching volunteer activities:', volunteerError);
-        throw volunteerError;
+        console.error('Error fetching volunteers:', volunteerError.message);
+        throw new Error(`Failed to fetch volunteers: ${volunteerError.message}`);
       }
 
-      // Get unique participant IDs from all activities
-      const uniqueParticipantIds = Array.from(new Set(
-        (activities || [])
-          .filter(activity => activity.participant_ids)
-          .flatMap(activity => activity.participant_ids)
-      ));
+      // Fetch participants with their details
+      const { data: participants, error: participantError } = await supabase
+        .from('participants')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      // Fetch participant details if there are any participants
-      let volunteerRecipients: Recipient[] = [];
-      if (uniqueParticipantIds.length > 0) {
-        const { data: participants, error: participantError } = await supabase
-          .from('profiles')  // Assuming participant details are stored in a profiles table
-          .select(`
-            id,
-            first_name,
-            last_name,
-            email,
-            created_at
-          `)
-          .in('id', uniqueParticipantIds)
-          .limit(100);
-
-        if (participantError) {
-          console.error('Error fetching participant details:', participantError);
-          throw participantError;
-        }
-
-        volunteerRecipients = (participants || []).map(p => ({
-          id: p.id,
-          name: p.first_name && p.last_name 
-            ? `${p.first_name} ${p.last_name}`
-            : 'Unknown Volunteer',
-          email: p.email || '',
-          type: 'volunteer',
-          lastContacted: activities
-            .filter(a => a.participant_ids?.includes(p.id))
-            .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())[0]
-            ?.start_time || null
-        }));
+      if (participantError) {
+        console.error('Error fetching participant details:', participantError.message);
+        throw new Error(`Failed to fetch participants: ${participantError.message}`);
       }
 
-      // Transform donor data with null checks
-      const donorRecipients: Recipient[] = (donors || []).map(d => ({
-        id: d.id,
-        name: d.name || 'Unknown Donor',
-        email: d.email || '',
-        type: 'donor',
-        lastContacted: d.donation_date
-      }));
+      // Process and combine all recipients
+      const processedRecipients = [
+        ...(donors || []).map(donor => ({
+          id: donor.id,
+          name: donor.name,
+          email: donor.email,
+          type: 'donor' as const,
+          status: donor.status,
+          lastContact: donor.last_contact,
+          totalDonations: donor.total_donations,
+          lastDonation: donor.last_donation,
+          tags: donor.tags || [],
+          notes: donor.notes || '',
+          createdAt: donor.created_at,
+          updatedAt: donor.updated_at
+        })),
+        ...(volunteers || []).map(volunteer => ({
+          id: volunteer.id,
+          name: volunteer.name,
+          email: volunteer.email,
+          type: 'volunteer' as const,
+          status: volunteer.status,
+          lastContact: volunteer.last_contact,
+          hours: volunteer.hours,
+          skills: volunteer.skills || [],
+          notes: volunteer.notes || '',
+          createdAt: volunteer.created_at,
+          updatedAt: volunteer.updated_at
+        })),
+        ...(participants || []).map(participant => ({
+          id: participant.id,
+          name: participant.name,
+          email: participant.email,
+          type: 'participant' as const,
+          status: participant.status,
+          lastContact: participant.last_contact,
+          notes: participant.notes || '',
+          createdAt: participant.created_at,
+          updatedAt: participant.updated_at
+        }))
+      ];
 
-      const allRecipients = [...donorRecipients, ...volunteerRecipients];
-      
-      // Update state with null checks
-      setRecipients(allRecipients);
+      // Update recipients state
+      setRecipients(processedRecipients);
+
+      // Update recipient stats
       setRecipientStats({
-        totalDonors: donorRecipients.length,
-        totalVolunteers: volunteerRecipients.length,
-        lastEmailSent: allRecipients
-          .map(r => r.lastContacted)
-          .filter(Boolean)
-          .sort()
-          .reverse()[0] || null
+        totalDonors: donors?.length || 0,
+        totalVolunteers: volunteers?.length || 0,
+        totalParticipants: participants?.length || 0,
+        activeDonors: donors?.filter(d => d.status === 'active').length || 0,
+        activeVolunteers: volunteers?.filter(v => v.status === 'active').length || 0,
+        activeParticipants: participants?.filter(p => p.status === 'active').length || 0,
+        recentDonors: donors?.filter(d => {
+          const lastContact = new Date(d.last_contact || d.created_at);
+          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        }).length || 0,
+        recentVolunteers: volunteers?.filter(v => {
+          const lastContact = new Date(v.last_contact || v.created_at);
+          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        }).length || 0,
+        recentParticipants: participants?.filter(p => {
+          const lastContact = new Date(p.last_contact || p.created_at);
+          return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        }).length || 0
       });
 
     } catch (err) {
-      console.error('Error in fetchRecipients:', err);
+      console.error('Error in fetchRecipients:', err instanceof Error ? err.message : 'Unknown error occurred');
       setRecipients([]);
       setRecipientStats({
         totalDonors: 0,
         totalVolunteers: 0,
-        lastEmailSent: null
+        totalParticipants: 0,
+        activeDonors: 0,
+        activeVolunteers: 0,
+        activeParticipants: 0,
+        recentDonors: 0,
+        recentVolunteers: 0,
+        recentParticipants: 0
       });
-      setError(err instanceof Error ? err.message : 'Failed to fetch recipients');
+      toast.error('Failed to fetch recipients. Please try again later.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -284,7 +302,7 @@ export default function OutreachPage() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const form = e.target as HTMLFormElement;
@@ -304,7 +322,7 @@ export default function OutreachPage() {
         updated_at: new Date().toISOString()
       };
 
-      const { data: template, error } = await supabase
+      const { data: template, error } = await createClientComponentClient()
         .from('outreach_templates')
         .insert([newTemplate])
         .select()
@@ -327,7 +345,7 @@ export default function OutreachPage() {
 
   const activateTemplate = async (template: OutreachTemplate) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Filter recipients based on template type
@@ -340,7 +358,7 @@ export default function OutreachPage() {
       }
 
       // Get auth token for edge function
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await createClientComponentClient().auth.getSession();
       if (sessionError || !session) throw new Error('Failed to get session');
 
       // Send emails to all recipients
@@ -376,7 +394,7 @@ export default function OutreachPage() {
       await Promise.all(emailPromises);
 
       // Update template status
-      const { error: templateError } = await supabase
+      const { error: templateError } = await createClientComponentClient()
         .from('outreach_templates')
         .update({ 
           status: 'active',
@@ -399,7 +417,7 @@ export default function OutreachPage() {
 
   const deleteTemplate = async (templateId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await createClientComponentClient()
         .from('outreach_templates')
         .delete()
         .eq('id', templateId);
@@ -443,33 +461,39 @@ export default function OutreachPage() {
       </div>
 
       {/* Add recipient stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="p-4">
-          <div className="flex items-center space-x-2">
-            <UserGroupIcon className="h-5 w-5 text-purple-500" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-purple-50 rounded-full">
+              <UserGroupIcon className="h-6 w-6 text-purple-600" />
+            </div>
             <div>
-              <p className="text-sm text-gray-500">Total Donors</p>
-              <p className="text-2xl font-bold">{recipientStats.totalDonors}</p>
+              <p className="text-sm font-medium text-gray-500">Total Donors</p>
+              <p className="text-2xl font-bold text-gray-900">{recipientStats.totalDonors}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center space-x-2">
-            <UserGroupIcon className="h-5 w-5 text-blue-500" />
+        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-blue-50 rounded-full">
+              <UserGroupIcon className="h-6 w-6 text-blue-600" />
+            </div>
             <div>
-              <p className="text-sm text-gray-500">Total Volunteers</p>
-              <p className="text-2xl font-bold">{recipientStats.totalVolunteers}</p>
+              <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
+              <p className="text-2xl font-bold text-gray-900">{recipientStats.totalVolunteers}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center space-x-2">
-            <EnvelopeIcon className="h-5 w-5 text-green-500" />
+        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-green-50 rounded-full">
+              <EnvelopeIcon className="h-6 w-6 text-green-600" />
+            </div>
             <div>
-              <p className="text-sm text-gray-500">Last Email Sent</p>
-              <p className="text-lg">
-                {recipientStats.lastEmailSent 
-                  ? new Date(recipientStats.lastEmailSent).toLocaleDateString()
+              <p className="text-sm font-medium text-gray-500">Last Email Sent</p>
+              <p className="text-lg text-gray-900">
+                {recipients.length > 0 && recipients[0].lastContact 
+                  ? new Date(recipients[0].lastContact).toLocaleDateString()
                   : 'No emails sent yet'}
               </p>
             </div>
@@ -484,17 +508,17 @@ export default function OutreachPage() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex gap-4 mb-8">
         <div className="flex-1">
           <Input
             placeholder="Search templates..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full"
+            className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500"
           />
         </div>
         <Select value={typeFilter} onValueChange={(value: any) => setTypeFilter(value)}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500">
             <SelectValue placeholder="Filter by type" />
           </SelectTrigger>
           <SelectContent>
@@ -508,27 +532,30 @@ export default function OutreachPage() {
       {/* Templates Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTemplates.map((template) => (
-          <Card key={template.id} className="p-6">
+          <Card key={template.id} className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="font-medium text-lg">{template.name}</h3>
-                <p className="text-sm text-gray-500">{template.description}</p>
+                <h3 className="font-medium text-lg text-gray-900">{template.name}</h3>
+                <p className="text-sm text-gray-500 mt-1">{template.description}</p>
               </div>
-              <Badge variant={template.status === 'active' ? 'default' : 'secondary'}>
+              <Badge 
+                variant={template.status === 'active' ? 'default' : 'secondary'}
+                className="bg-purple-100 text-purple-700 border-0"
+              >
                 {template.status}
               </Badge>
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center text-sm text-gray-500">
-                <EnvelopeIcon className="h-4 w-4 mr-2" />
+            <div className="space-y-3">
+              <div className="flex items-center text-sm text-gray-600">
+                <EnvelopeIcon className="h-4 w-4 mr-2 text-gray-400" />
                 {template.type === 'both' ? 'All Recipients' : `${template.type}s Only`}
               </div>
-              <div className="flex items-center text-sm text-gray-500">
-                <ClockIcon className="h-4 w-4 mr-2" />
+              <div className="flex items-center text-sm text-gray-600">
+                <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
                 {template.schedule}
               </div>
             </div>
-            <div className="mt-4 flex justify-end space-x-2">
+            <div className="mt-6 flex justify-end space-x-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -536,6 +563,7 @@ export default function OutreachPage() {
                   setSelectedTemplate(template);
                   setIsPreviewOpen(true);
                 }}
+                className="border-gray-200 hover:bg-gray-50"
               >
                 Preview
               </Button>
@@ -543,6 +571,7 @@ export default function OutreachPage() {
                 <Button
                   size="sm"
                   onClick={() => activateTemplate(template)}
+                  className="bg-purple-600 hover:bg-purple-700"
                 >
                   Activate
                 </Button>
@@ -551,6 +580,7 @@ export default function OutreachPage() {
                 variant="destructive"
                 size="sm"
                 onClick={() => deleteTemplate(template.id)}
+                className="bg-red-50 text-red-600 hover:bg-red-100 border-0"
               >
                 Delete
               </Button>
@@ -561,27 +591,32 @@ export default function OutreachPage() {
 
       {/* Create Template Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl bg-white">
+        <DialogContent className="max-w-4xl bg-white border border-gray-100 shadow-lg">
           <DialogHeader>
-            <DialogTitle>Create New Template</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">Create New Template</DialogTitle>
+            <DialogDescription className="text-gray-600">
               Create a new communication template for your donors and volunteers.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreateTemplate} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="name">Template Name</Label>
-                <Input id="name" name="name" required />
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-sm font-medium text-gray-700">Template Name</Label>
+                <Input 
+                  id="name" 
+                  name="name" 
+                  required 
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
               </div>
-              <div>
-                <Label htmlFor="type">Recipient Type</Label>
+              <div className="space-y-2">
+                <Label htmlFor="type" className="text-sm font-medium text-gray-700">Recipient Type</Label>
                 <Select name="type" defaultValue="both">
-                  <SelectTrigger className="w-full bg-white border-gray-200">
+                  <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white">
+                  <SelectContent className="bg-white border border-gray-100">
                     <SelectItem value="both">All Recipients</SelectItem>
                     <SelectItem value="donor">Donors Only</SelectItem>
                     <SelectItem value="volunteer">Volunteers Only</SelectItem>
@@ -590,33 +625,43 @@ export default function OutreachPage() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea id="description" name="description" required />
+            <div className="space-y-2">
+              <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description</Label>
+              <Textarea 
+                id="description" 
+                name="description" 
+                required 
+                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
             </div>
 
-            <div>
-              <Label htmlFor="subject">Email Subject</Label>
-              <Input id="subject" name="subject" required />
+            <div className="space-y-2">
+              <Label htmlFor="subject" className="text-sm font-medium text-gray-700">Email Subject</Label>
+              <Input 
+                id="subject" 
+                name="subject" 
+                required 
+                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
             </div>
 
-            <div>
-              <Label>Email Content</Label>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Email Content</Label>
               <Textarea
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
                 placeholder="Write your email content here..."
-                className="min-h-[200px]"
+                className="min-h-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
               />
             </div>
 
-            <div>
-              <Label htmlFor="schedule">Schedule</Label>
+            <div className="space-y-2">
+              <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule</Label>
               <Select name="schedule" defaultValue="immediate">
-                <SelectTrigger className="w-full bg-white border-gray-200">
+                <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                   <SelectValue placeholder="Select schedule" />
                 </SelectTrigger>
-                <SelectContent className="bg-white">
+                <SelectContent className="bg-white border border-gray-100">
                   <SelectItem value="immediate">Send Immediately</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
@@ -625,15 +670,19 @@ export default function OutreachPage() {
               </Select>
             </div>
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsCreateOpen(false)}
+                className="border-gray-200 hover:bg-gray-50"
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button 
+                type="submit"
+                className="bg-purple-600 hover:bg-purple-700"
+              >
                 Create Template
               </Button>
             </div>
@@ -643,19 +692,19 @@ export default function OutreachPage() {
 
       {/* Preview Dialog */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-2xl bg-white">
+        <DialogContent className="max-w-2xl bg-white border border-gray-100 shadow-lg">
           <DialogHeader>
-            <DialogTitle>{selectedTemplate?.name}</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">{selectedTemplate?.name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Subject</Label>
-              <p className="mt-1 text-gray-700">{selectedTemplate?.subject}</p>
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Subject</Label>
+              <p className="text-gray-900">{selectedTemplate?.subject}</p>
             </div>
-            <div>
-              <Label>Content</Label>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Content</Label>
               <div
-                className="mt-1 prose max-w-none"
+                className="prose max-w-none bg-gray-50 p-4 rounded-lg"
                 dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
               />
             </div>
