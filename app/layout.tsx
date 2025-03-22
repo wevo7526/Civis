@@ -4,8 +4,8 @@ import "./globals.css";
 import ClientWrapper from './components/ClientWrapper';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
-import { RemindersProvider } from './components/Reminders/RemindersProvider';
 import { NotificationsBell } from './components/Notifications/NotificationsBell';
+import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -25,13 +25,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
-        <RemindersProvider>
-          <div className="fixed top-4 right-4 z-50">
-            <NotificationsBell />
-          </div>
-          {children}
-        </RemindersProvider>
+        <div className="fixed top-4 right-4 z-50">
+          <NotificationsBell />
+        </div>
+        {children}
         <ClientWrapper />
+        <Toaster position="top-right" />
       </body>
     </html>
   );

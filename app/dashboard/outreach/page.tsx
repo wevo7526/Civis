@@ -13,6 +13,9 @@ import {
   PlusIcon,
   ChevronUpDownIcon,
   SparklesIcon,
+  BoldIcon,
+  ItalicIcon,
+  ListBulletIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -70,6 +73,19 @@ interface Recipient {
   updatedAt?: string;
 }
 
+interface EmailTemplate {
+  id: string;
+  name: string;
+  description: string;
+  type: 'donor' | 'volunteer' | 'both';
+  subject: string;
+  content: string;
+  schedule: 'immediate' | 'daily' | 'weekly' | 'monthly';
+  status: 'draft' | 'active' | 'paused';
+  created_at: string;
+  updated_at: string;
+}
+
 export default function OutreachPage() {
   const [templates, setTemplates] = useState<OutreachTemplate[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -102,6 +118,12 @@ export default function OutreachPage() {
     try {
       const supabase = createClientComponentClient();
       
+      // First check if user is authenticated
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
+      }
+
       // Fetch data in parallel with proper error handling
       const [templatesResult, donorsResult, volunteersResult] = await Promise.allSettled([
         supabase.from('outreach_templates').select('*').order('created_at', { ascending: false }),
@@ -114,8 +136,21 @@ export default function OutreachPage() {
       // Handle templates
       if (templatesResult.status === 'fulfilled') {
         const { data: templateData, error: templateError } = templatesResult.value;
-        if (templateError) throw templateError;
+        if (templateError) {
+          console.error('Error fetching templates:', {
+            message: templateError.message,
+            details: templateError.details,
+            hint: templateError.hint
+          });
+          throw new Error(`Failed to fetch templates: ${templateError.message}`);
+        }
         setTemplates(templateData || []);
+      } else {
+        console.error('Templates fetch failed:', {
+          reason: templatesResult.reason,
+          stack: templatesResult.reason instanceof Error ? templatesResult.reason.stack : undefined
+        });
+        throw new Error('Failed to fetch templates');
       }
 
       // Handle donors and volunteers
@@ -123,8 +158,22 @@ export default function OutreachPage() {
         const { data: donors, error: donorError } = donorsResult.value;
         const { data: volunteers, error: volunteerError } = volunteersResult.value;
 
-        if (donorError) throw donorError;
-        if (volunteerError) throw volunteerError;
+        if (donorError) {
+          console.error('Error fetching donors:', {
+            message: donorError.message,
+            details: donorError.details,
+            hint: donorError.hint
+          });
+          throw new Error(`Failed to fetch donors: ${donorError.message}`);
+        }
+        if (volunteerError) {
+          console.error('Error fetching volunteers:', {
+            message: volunteerError.message,
+            details: volunteerError.details,
+            hint: volunteerError.hint
+          });
+          throw new Error(`Failed to fetch volunteers: ${volunteerError.message}`);
+        }
 
         // Process recipients
         const processedRecipients = [
@@ -134,24 +183,23 @@ export default function OutreachPage() {
             email: donor.email,
             type: 'donor' as const,
             status: donor.status,
-            lastContact: donor.last_contact,
-            totalDonations: donor.total_donations,
-            lastDonation: donor.last_donation,
-            tags: donor.tags || [],
+            donationDate: donor.donation_date,
+            phone: donor.phone,
             notes: donor.notes || '',
             createdAt: donor.created_at,
             updatedAt: donor.updated_at
           })),
           ...(volunteers || []).map(volunteer => ({
             id: volunteer.id,
-            name: volunteer.name,
+            name: `${volunteer.first_name} ${volunteer.last_name}`,
             email: volunteer.email,
             type: 'volunteer' as const,
             status: volunteer.status,
-            lastContact: volunteer.last_contact,
-            hours: volunteer.hours,
+            phone: volunteer.phone,
             skills: volunteer.skills || [],
-            notes: volunteer.notes || '',
+            interests: volunteer.interests || [],
+            availability: volunteer.availability || {},
+            totalHours: volunteer.total_hours || 0,
             createdAt: volunteer.created_at,
             updatedAt: volunteer.updated_at
           }))
@@ -168,22 +216,40 @@ export default function OutreachPage() {
           activeVolunteers: volunteers?.filter(v => v.status === 'active').length || 0,
           activeParticipants: 0,
           recentDonors: donors?.filter(d => {
-            const lastContact = new Date(d.last_contact || d.created_at);
-            return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const donationDate = new Date(d.donation_date);
+            return donationDate > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
           }).length || 0,
           recentVolunteers: volunteers?.filter(v => {
-            const lastContact = new Date(v.last_contact || v.created_at);
-            return lastContact > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            const createdAt = new Date(v.created_at);
+            return createdAt > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
           }).length || 0,
           recentParticipants: 0
         };
 
         setRecipientStats(stats);
+      } else {
+        console.error('Donors or volunteers fetch failed:', {
+          donors: donorsResult.status === 'rejected' ? {
+            reason: donorsResult.reason,
+            stack: donorsResult.reason instanceof Error ? donorsResult.reason.stack : undefined
+          } : null,
+          volunteers: volunteersResult.status === 'rejected' ? {
+            reason: volunteersResult.reason,
+            stack: volunteersResult.reason instanceof Error ? volunteersResult.reason.stack : undefined
+          } : null
+        });
+        throw new Error('Failed to fetch donors or volunteers');
       }
     } catch (err) {
       if (!isMounted) return;
-      console.error('Error loading data:', err);
-      setError('Failed to load data. Please refresh the page.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
+      console.error('Error loading data:', {
+        message: errorMessage,
+        error: err,
+        stack: err instanceof Error ? err.stack : undefined
+      });
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       if (isMounted) {
         setLoading(false);
@@ -249,8 +315,12 @@ export default function OutreachPage() {
       if (schedule === 'immediate') {
         await activateTemplate(template);
       }
+
+      toast.success('Template created successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create template');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create template';
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -272,37 +342,55 @@ export default function OutreachPage() {
       const { data: { session }, error: sessionError } = await createClientComponentClient().auth.getSession();
       if (sessionError || !session) throw new Error('Failed to get session');
 
-      // Send emails to all recipients
-      const emailPromises = targetRecipients.map(async (recipient) => {
-        try {
-          const response = await fetch('/api/send-email', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              to: recipient.email,
-              subject: template.subject,
-              content: template.content,
-              recipientName: recipient.name,
-            }),
-          });
+      // Send emails to all recipients with rate limiting
+      const batchSize = 5; // Send 5 emails at a time
+      const batches = [];
+      
+      for (let i = 0; i < targetRecipients.length; i += batchSize) {
+        batches.push(targetRecipients.slice(i, i + batchSize));
+      }
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to send email');
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const batch of batches) {
+        const batchPromises = batch.map(async (recipient) => {
+          try {
+            const response = await fetch('/api/send-email', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+              body: JSON.stringify({
+                to: recipient.email,
+                subject: template.subject,
+                content: template.content,
+                recipientName: recipient.name,
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              console.error(`Failed to send email to ${recipient.email}:`, errorData);
+              failureCount++;
+              return null;
+            }
+
+            successCount++;
+            return response.json();
+          } catch (err) {
+            console.error(`Error sending email to ${recipient.email}:`, err);
+            failureCount++;
+            return null;
           }
+        });
 
-          return response.json();
-        } catch (err) {
-          console.error(`Failed to send email to ${recipient.email}:`, err);
-          return null;
-        }
-      });
-
-      // Wait for all emails to be sent
-      await Promise.all(emailPromises);
+        // Wait for the current batch to complete before sending the next batch
+        await Promise.all(batchPromises);
+        // Add a small delay between batches to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       // Update template status
       const { error: templateError } = await createClientComponentClient()
@@ -318,10 +406,12 @@ export default function OutreachPage() {
       // Refresh templates
       await loadAllData(true);
       
-      // Show success message
-      setError(null);
+      // Show success message with stats
+      toast.success(`Template activated. ${successCount} emails sent successfully${failureCount > 0 ? `, ${failureCount} failed` : ''}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to activate template');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to activate template';
+      setError(errorMessage);
+      toast.error(errorMessage);
       console.error('Error activating template:', err);
     }
   };
@@ -358,6 +448,7 @@ export default function OutreachPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header Section */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Outreach</h1>
@@ -365,15 +456,18 @@ export default function OutreachPage() {
             Create and manage communication templates for donors and volunteers
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
+        <Button 
+          onClick={() => setIsCreateOpen(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
+        >
           <PlusIcon className="h-5 w-5 mr-2" />
           New Template
         </Button>
       </div>
 
-      {/* Add recipient stats */}
+      {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-purple-50 rounded-full">
               <UserGroupIcon className="h-6 w-6 text-purple-600" />
@@ -381,10 +475,13 @@ export default function OutreachPage() {
             <div>
               <p className="text-sm font-medium text-gray-500">Total Donors</p>
               <p className="text-2xl font-bold text-gray-900">{recipientStats.totalDonors}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {recipientStats.activeDonors} active
+              </p>
             </div>
           </div>
         </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-blue-50 rounded-full">
               <UserGroupIcon className="h-6 w-6 text-blue-600" />
@@ -392,33 +489,31 @@ export default function OutreachPage() {
             <div>
               <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
               <p className="text-2xl font-bold text-gray-900">{recipientStats.totalVolunteers}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {recipientStats.activeVolunteers} active
+              </p>
             </div>
           </div>
         </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-green-50 rounded-full">
               <EnvelopeIcon className="h-6 w-6 text-green-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Last Email Sent</p>
-              <p className="text-lg text-gray-900">
-                {recipients.length > 0 && recipients[0].lastContact 
-                  ? new Date(recipients[0].lastContact).toLocaleDateString()
-                  : 'No emails sent yet'}
+              <p className="text-sm font-medium text-gray-500">Recent Activity</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {recipientStats.recentDonors + recipientStats.recentVolunteers}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Last 30 days
               </p>
             </div>
           </div>
         </Card>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
-      )}
-
-      {/* Filters */}
+      {/* Filters Section */}
       <div className="flex gap-4 mb-8">
         <div className="flex-1">
           <Input
@@ -443,7 +538,7 @@ export default function OutreachPage() {
       {/* Templates Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTemplates.map((template) => (
-          <Card key={template.id} className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+          <Card key={template.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-medium text-lg text-gray-900">{template.name}</h3>
@@ -451,7 +546,13 @@ export default function OutreachPage() {
               </div>
               <Badge 
                 variant={template.status === 'active' ? 'default' : 'secondary'}
-                className="bg-purple-100 text-purple-700 border-0"
+                className={`${
+                  template.status === 'active' 
+                    ? 'bg-green-100 text-green-700' 
+                    : template.status === 'draft'
+                    ? 'bg-yellow-100 text-yellow-700'
+                    : 'bg-gray-100 text-gray-700'
+                } border-0`}
               >
                 {template.status}
               </Badge>
@@ -464,6 +565,12 @@ export default function OutreachPage() {
               <div className="flex items-center text-sm text-gray-600">
                 <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
                 {template.schedule}
+              </div>
+              <div className="flex items-center text-sm text-gray-600">
+                <DocumentTextIcon className="h-4 w-4 mr-2 text-gray-400" />
+                {template.content.length > 100 
+                  ? `${template.content.substring(0, 100)}...` 
+                  : template.content}
               </div>
             </div>
             <div className="mt-6 flex justify-end space-x-2">
@@ -482,7 +589,7 @@ export default function OutreachPage() {
                 <Button
                   size="sm"
                   onClick={() => activateTemplate(template)}
-                  className="bg-purple-600 hover:bg-purple-700"
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
                 >
                   Activate
                 </Button>
@@ -518,6 +625,7 @@ export default function OutreachPage() {
                   id="name" 
                   name="name" 
                   required 
+                  placeholder="Enter template name"
                   className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
                 />
               </div>
@@ -527,7 +635,7 @@ export default function OutreachPage() {
                   <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
-                  <SelectContent className="bg-white border border-gray-100">
+                  <SelectContent>
                     <SelectItem value="both">All Recipients</SelectItem>
                     <SelectItem value="donor">Donors Only</SelectItem>
                     <SelectItem value="volunteer">Volunteers Only</SelectItem>
@@ -542,6 +650,7 @@ export default function OutreachPage() {
                 id="description" 
                 name="description" 
                 required 
+                placeholder="Enter template description"
                 className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
               />
             </div>
@@ -552,18 +661,49 @@ export default function OutreachPage() {
                 id="subject" 
                 name="subject" 
                 required 
+                placeholder="Enter email subject"
                 className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
               />
             </div>
 
             <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">Email Content</Label>
-              <Textarea
-                value={editorContent}
-                onChange={(e) => setEditorContent(e.target.value)}
-                placeholder="Write your email content here..."
-                className="min-h-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-              />
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      <BoldIcon className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      <ItalicIcon className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-gray-600 hover:text-gray-900"
+                    >
+                      <ListBulletIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <Textarea
+                  value={editorContent}
+                  onChange={(e) => setEditorContent(e.target.value)}
+                  placeholder="Write your email content here..."
+                  className="min-h-[300px] border-0 focus:ring-0"
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -572,7 +712,7 @@ export default function OutreachPage() {
                 <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                   <SelectValue placeholder="Select schedule" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-100">
+                <SelectContent>
                   <SelectItem value="immediate">Send Immediately</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
@@ -592,7 +732,7 @@ export default function OutreachPage() {
               </Button>
               <Button 
                 type="submit"
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
               >
                 Create Template
               </Button>
@@ -606,18 +746,33 @@ export default function OutreachPage() {
         <DialogContent className="max-w-2xl bg-white border border-gray-100 shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-2xl font-semibold text-gray-900">{selectedTemplate?.name}</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {selectedTemplate?.description}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Type</Label>
+                <p className="text-gray-900">{selectedTemplate?.type === 'both' ? 'All Recipients' : `${selectedTemplate?.type}s Only`}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Schedule</Label>
+                <p className="text-gray-900">{selectedTemplate?.schedule}</p>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">Subject</Label>
               <p className="text-gray-900">{selectedTemplate?.subject}</p>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">Content</Label>
-              <div
-                className="prose max-w-none bg-gray-50 p-4 rounded-lg"
-                dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
-              />
+              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <div
+                  className="prose max-w-none"
+                  dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
+                />
+              </div>
             </div>
           </div>
         </DialogContent>

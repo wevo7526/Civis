@@ -7,6 +7,7 @@ import { Dialog } from '@headlessui/react';
 import { Donor } from '../../lib/types';
 import { createDonorService } from '../../lib/donorService';
 import { createActivityService } from '../../lib/activityService';
+import { toast } from 'react-hot-toast';
 
 interface DonorFormData {
   name: string;
@@ -38,6 +39,7 @@ export default function Donors() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<DonorFormData>(initialFormData);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Initialize services
   const donorService = createDonorService(supabase);
@@ -132,36 +134,44 @@ export default function Donors() {
     }
   };
 
-  const handleDeleteDonor = async () => {
-    if (!donorToDelete) return;
+  const handleDeleteDonor = async (donorToDelete: Donor) => {
     try {
-      setLoading(true);
-      setError(null);
+      setIsDeleting(true);
       
+      // Check if user is authenticated
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        toast.error('Authentication error. Please try again.');
+        return;
+      }
+      if (!user) {
+        toast.error('You must be logged in to delete donors');
+        return;
+      }
+
+      // Verify the donor belongs to the current user
+      if (donorToDelete.user_id !== user.id) {
+        toast.error('You do not have permission to delete this donor');
+        return;
+      }
+
+      // Delete the donor
       const success = await donorService.deleteDonor(donorToDelete.id);
       if (!success) {
-        throw new Error('Failed to delete donor');
+        toast.error('Failed to delete donor. Please try again or contact support if the issue persists.');
+        return;
       }
-      
-      // Create activity after successful deletion
-      const activityResult = await activityService.createDonorActivity(
-        donorToDelete.user_id,
-        'deleted',
-        donorToDelete.name
-      );
 
-      if (!activityResult) {
-        console.warn('Failed to create activity, but donor deletion was successful');
-      }
-      
-      await fetchDonors();
+      // Update local state
+      setDonors(donors.filter(d => d.id !== donorToDelete.id));
       setIsDeleteModalOpen(false);
       setDonorToDelete(null);
-    } catch (err) {
-      console.error('Error deleting donor:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete donor');
+      toast.success('Donor deleted successfully');
+    } catch (error) {
+      console.error('Error in handleDeleteDonor:', error);
+      toast.error('An unexpected error occurred while deleting the donor');
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -430,11 +440,11 @@ export default function Donors() {
                 Cancel
               </button>
               <button
-                onClick={handleDeleteDonor}
-                disabled={loading}
+                onClick={() => handleDeleteDonor(donorToDelete!)}
+                disabled={isDeleting}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                {loading ? 'Deleting...' : 'Delete'}
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </Dialog.Panel>

@@ -125,18 +125,120 @@ export const createDonorService = (supabase: SupabaseClient) => {
 
   const deleteDonor = async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from('donors')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('Error deleting donor:', error);
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Error getting user:', userError);
         return false;
       }
+      if (!user) {
+        console.error('No authenticated user found');
+        return false;
+      }
+
+      console.log('Attempting to delete donor:', {
+        donorId: id,
+        userId: user.id
+      });
+
+      // First check if the donor exists and belongs to the user
+      const { data: donor, error: fetchError } = await supabase
+        .from('donors')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching donor:', {
+          error: fetchError,
+          details: fetchError.details,
+          hint: fetchError.hint,
+          message: fetchError.message,
+          code: fetchError.code,
+          donorId: id,
+          userId: user.id
+        });
+        return false;
+      }
+
+      if (!donor) {
+        console.error('Donor not found or does not belong to user:', {
+          donorId: id,
+          userId: user.id
+        });
+        return false;
+      }
+
+      console.log('Found donor to delete:', donor);
+
+      // Store donor info for activity record
+      const donorInfo = {
+        name: donor.name,
+        email: donor.email
+      };
+
+      // Create activity record BEFORE deletion
+      const activityData = {
+        user_id: user.id,
+        type: 'donor_deleted',
+        title: 'Donor deleted',
+        description: `Deleted donor: ${donorInfo.name}`,
+        metadata: {
+          donor_id: id,
+          donor_name: donorInfo.name,
+          donor_email: donorInfo.email
+        }
+      };
+
+      console.log('Creating activity record:', activityData);
+
+      const { error: activityError } = await supabase
+        .from('activities')
+        .insert([activityData]);
+
+      if (activityError) {
+        console.error('Error creating activity:', {
+          error: activityError,
+          details: activityError.details,
+          hint: activityError.hint,
+          message: activityError.message,
+          code: activityError.code,
+          activityData
+        });
+        return false; // Don't proceed with deletion if activity creation fails
+      }
+
+      console.log('Successfully created activity record');
+
+      // Delete the donor without any activity creation
+      const { error: deleteError } = await supabase
+        .from('donors')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select('id'); // Only select the id to avoid triggering any activity creation
+
+      if (deleteError) {
+        console.error('Error deleting donor:', {
+          error: deleteError,
+          details: deleteError.details,
+          hint: deleteError.hint,
+          message: deleteError.message,
+          code: deleteError.code,
+          donorId: id,
+          userId: user.id
+        });
+        return false;
+      }
+
+      console.log('Successfully deleted donor');
       return true;
     } catch (error) {
-      console.error('Error in deleteDonor:', error);
+      console.error('Unexpected error in deleteDonor:', error);
+      if (error instanceof Error) {
+        console.error('Error stack:', error.stack);
+      }
       return false;
     }
   };

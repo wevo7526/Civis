@@ -12,16 +12,39 @@ interface Activity {
 }
 
 interface CreateActivityParams {
+  user_id: string;
   type: string;
   title: string;
   description: string;
-  user_id: string;
   metadata?: Record<string, any>;
 }
 
 export const createActivityService = (supabase: SupabaseClient) => {
   const createActivity = async (params: CreateActivityParams): Promise<Activity | null> => {
     try {
+      // Ensure user_id is present
+      if (!params.user_id) {
+        console.error('user_id is required for activity creation');
+        return null;
+      }
+
+      // Get the current user to verify
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Error getting user:', userError);
+        return null;
+      }
+      if (!user) {
+        console.error('No authenticated user found');
+        return null;
+      }
+
+      // Verify the user_id matches the authenticated user
+      if (params.user_id !== user.id) {
+        console.error('User ID mismatch');
+        return null;
+      }
+
       const { data, error } = await supabase
         .from('activities')
         .insert([{
@@ -32,7 +55,13 @@ export const createActivityService = (supabase: SupabaseClient) => {
         .single();
 
       if (error) {
-        console.error('Error creating activity:', error);
+        console.error('Error creating activity:', {
+          error,
+          details: error.details,
+          hint: error.hint,
+          message: error.message,
+          code: error.code
+        });
         return null;
       }
       return data;
@@ -44,11 +73,16 @@ export const createActivityService = (supabase: SupabaseClient) => {
 
   const createDonorActivity = async (user_id: string, action: 'added' | 'updated' | 'deleted', donorName: string) => {
     try {
+      if (!user_id) {
+        console.error('user_id is required for donor activity');
+        return null;
+      }
+
       return await createActivity({
+        user_id,
         type: `donor_${action}`,
         title: `Donor ${action}`,
         description: `${donorName} was ${action}`,
-        user_id,
       });
     } catch (error) {
       console.error('Error creating donor activity:', error);
