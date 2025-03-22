@@ -50,7 +50,6 @@ const navigation = [
   {
     name: 'Automation',
     items: [
-      { name: 'Hub', href: '/dashboard/automation', icon: Cog6ToothIcon },
       { name: 'Outreach', href: '/dashboard/outreach', icon: EnvelopeIcon },
     ],
   },
