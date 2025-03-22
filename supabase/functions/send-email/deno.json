@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window", "deno.ns", "dom"],
+    "strict": true,
+    "types": ["https://deno.land/x/types/index.d.ts"],
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "importMap": {
+    "imports": {
+      "std/": "https://deno.land/std@0.168.0/",
+      "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+      "@sendgrid/mail": "https://esm.sh/@sendgrid/mail@7.7.0"
+    }
+  },
+  "tasks": {
+    "start": "deno run --allow-net --allow-env index.ts"
+  }
+} 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
@@ -40,6 +40,13 @@ import { Card } from '../../../components/ui/card';
 import { workflowTemplates } from '../../../lib/workflowTemplates';
 import { toast } from 'sonner';
 import { Loading } from '@/components/ui/loading';
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { format } from "date-fns"
+import { CalendarIcon } from "@heroicons/react/24/outline"
+import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface OutreachTemplate {
   id: string;
@@ -52,6 +59,8 @@ interface OutreachTemplate {
   status: 'draft' | 'active' | 'paused';
   created_at: string;
   updated_at: string;
+  scheduledDate?: string;
+  isScheduled: boolean;
 }
 
 interface Recipient {
@@ -109,6 +118,10 @@ export default function OutreachPage() {
     recentVolunteers: 0,
     recentParticipants: 0
   });
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(new Date());
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [isRichText, setIsRichText] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const loadAllData = async (isMounted: boolean) => {
     if (!isMounted) return;
@@ -284,8 +297,11 @@ export default function OutreachPage() {
 
       const form = e.target as HTMLFormElement;
       const formData = new FormData(form);
-      const schedule = formData.get('schedule') as string;
       
+      // Get the schedule time if scheduled
+      const scheduleTime = isScheduled ? formData.get('schedule-time') as string : null;
+      
+      // Create the template
       const newTemplate = {
         user_id: user.id,
         name: formData.get('name') as string,
@@ -293,10 +309,12 @@ export default function OutreachPage() {
         type: formData.get('type') as 'donor' | 'volunteer' | 'both',
         subject: formData.get('subject') as string,
         content: editorContent,
-        schedule: schedule,
-        status: schedule === 'immediate' ? 'active' : 'draft',
+        schedule: isScheduled ? 'scheduled' : 'immediate',
+        status: isScheduled ? 'draft' : 'active',
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        scheduledDate: isScheduled ? scheduledDate?.toISOString() : undefined,
+        isScheduled: isScheduled
       };
 
       const { data: template, error } = await createClientComponentClient()
@@ -307,16 +325,48 @@ export default function OutreachPage() {
 
       if (error) throw error;
 
-      setTemplates(prev => [...prev, template]);
-      setIsCreateOpen(false);
-      setEditorContent('');
+      // If scheduled, create scheduled email entries
+      if (isScheduled && scheduledDate) {
+        // Filter recipients based on template type
+        const targetRecipients = recipients.filter(r => 
+          template.type === 'both' || r.type === template.type
+        );
 
-      // If schedule is immediate, activate the template right away
-      if (schedule === 'immediate') {
+        if (targetRecipients.length === 0) {
+          throw new Error('No recipients found for the selected type');
+        }
+
+        // Create scheduled email entries
+        const scheduledEmails = targetRecipients.map(recipient => ({
+          template_id: template.id,
+          recipient_id: recipient.id,
+          recipient_email: recipient.email,
+          recipient_name: recipient.name,
+          subject: template.subject,
+          content: template.content,
+          scheduled_date: scheduleTime 
+            ? new Date(`${scheduledDate.toISOString().split('T')[0]}T${scheduleTime}`).toISOString()
+            : new Date(scheduledDate).toISOString(),
+          status: 'pending'
+        }));
+
+        const { error: scheduledError } = await createClientComponentClient()
+          .from('scheduled_emails')
+          .insert(scheduledEmails);
+
+        if (scheduledError) throw scheduledError;
+      } else {
+        // If immediate, send emails right away
         await activateTemplate(template);
       }
 
-      toast.success('Template created successfully');
+      setTemplates(prev => [...prev, template]);
+      setIsCreateOpen(false);
+      setEditorContent('');
+      setScheduledDate(undefined);
+      setIsScheduled(false);
+
+      toast.success(isScheduled ? 'Template scheduled successfully' : 'Template created and activated');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create template';
       setError(errorMessage);
@@ -437,6 +487,96 @@ export default function OutreachPage() {
     const matchesType = typeFilter === 'all' || template.type === typeFilter;
     return matchesSearch && matchesType;
   });
+
+  // Add rich text formatting functions
+  const formatText = (command: string) => {
+    if (!editorRef.current) return;
+    
+    const textarea = editorRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = editorContent.substring(start, end);
+    
+    let newText = editorContent;
+    let newCursorPos = start;
+    
+    switch (command) {
+      case 'bold':
+        newText = editorContent.substring(0, start) + 
+                 `**${selectedText}**` + 
+                 editorContent.substring(end);
+        newCursorPos = start + 2;
+        break;
+      case 'italic':
+        newText = editorContent.substring(0, start) + 
+                 `*${selectedText}*` + 
+                 editorContent.substring(end);
+        newCursorPos = start + 1;
+        break;
+      case 'list':
+        const lines = selectedText.split('\n');
+        newText = editorContent.substring(0, start) + 
+                 lines.map(line => `- ${line}`).join('\n') + 
+                 editorContent.substring(end);
+        newCursorPos = start + 2;
+        break;
+    }
+    
+    setEditorContent(newText);
+    
+    // Restore cursor position after state update
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos + selectedText.length);
+      }
+    }, 0);
+  };
+
+  // Add AI assistant function
+  const handleAIAssist = async () => {
+    try {
+      const toastId = toast.loading('AI is helping with your email...');
+      
+      // Get form data from the form element
+      const form = document.getElementById('create-template-form') as HTMLFormElement;
+      if (!form) throw new Error('Form not found');
+      
+      const formData = new FormData(form);
+      const type = formData.get('type') as string;
+      const subject = formData.get('subject') as string;
+      
+      const response = await fetch('/api/ai/global', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: `Help me write an email for ${type} recipients. The subject is: ${subject}. Please provide suggestions for the email content.`,
+          context: {
+            currentPage: 'outreach',
+            templateType: type,
+            subject: subject
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get AI assistance');
+      }
+
+      const data = await response.json();
+      if (data.success && data.content?.[0]?.text) {
+        setEditorContent(prev => prev + '\n\n' + data.content[0].text);
+        toast.success('AI suggestions added to your email', { id: toastId });
+      } else {
+        throw new Error('Invalid AI response');
+      }
+    } catch (error) {
+      console.error('AI assistance error:', error);
+      toast.error('Failed to get AI assistance');
+    }
+  };
 
   if (loading) {
     return (
@@ -609,15 +749,15 @@ export default function OutreachPage() {
 
       {/* Create Template Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl bg-white border border-gray-100 shadow-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
+          <DialogHeader className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-100">
             <DialogTitle className="text-2xl font-semibold text-gray-900">Create New Template</DialogTitle>
             <DialogDescription className="text-gray-600">
               Create a new communication template for your donors and volunteers.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateTemplate} className="space-y-6">
+          <form id="create-template-form" onSubmit={handleCreateTemplate} className="space-y-6 py-4">
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium text-gray-700">Template Name</Label>
@@ -667,7 +807,38 @@ export default function OutreachPage() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Email Content</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-700">Email Content</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="rich-text"
+                      checked={isRichText}
+                      onCheckedChange={setIsRichText}
+                    />
+                    <Label htmlFor="rich-text" className="text-sm text-gray-600">Rich Text Editor</Label>
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAIAssist}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          <SparklesIcon className="h-4 w-4 mr-2" />
+                          AI Assistant
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Get AI help with writing your email</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
                   <div className="flex items-center space-x-2">
@@ -675,6 +846,7 @@ export default function OutreachPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      onClick={() => formatText('bold')}
                       className="text-gray-600 hover:text-gray-900"
                     >
                       <BoldIcon className="h-4 w-4" />
@@ -683,6 +855,7 @@ export default function OutreachPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      onClick={() => formatText('italic')}
                       className="text-gray-600 hover:text-gray-900"
                     >
                       <ItalicIcon className="h-4 w-4" />
@@ -691,6 +864,7 @@ export default function OutreachPage() {
                       type="button"
                       variant="ghost"
                       size="sm"
+                      onClick={() => formatText('list')}
                       className="text-gray-600 hover:text-gray-900"
                     >
                       <ListBulletIcon className="h-4 w-4" />
@@ -698,6 +872,7 @@ export default function OutreachPage() {
                   </div>
                 </div>
                 <Textarea
+                  ref={editorRef}
                   value={editorContent}
                   onChange={(e) => setEditorContent(e.target.value)}
                   placeholder="Write your email content here..."
@@ -706,44 +881,86 @@ export default function OutreachPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule</Label>
-              <Select name="schedule" defaultValue="immediate">
-                <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
-                  <SelectValue placeholder="Select schedule" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="immediate">Send Immediately</SelectItem>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="schedule"
+                  checked={isScheduled}
+                  onCheckedChange={setIsScheduled}
+                />
+                <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule for later</Label>
+              </div>
 
-            <div className="flex justify-end space-x-3 pt-4">
+              {isScheduled && (
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">Schedule Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal border-gray-200",
+                            !scheduledDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={scheduledDate}
+                          onSelect={setScheduledDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule Time</Label>
+                    <Input
+                      type="time"
+                      id="schedule-time"
+                      className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </form>
+
+          <div className="sticky bottom-0 bg-white z-10 pt-4 border-t border-gray-100">
+            <div className="flex justify-end space-x-3">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => {
+                  setIsCreateOpen(false);
+                  setScheduledDate(undefined);
+                  setIsScheduled(false);
+                  setEditorContent('');
+                }}
                 className="border-gray-200 hover:bg-gray-50"
               >
                 Cancel
               </Button>
               <Button 
                 type="submit"
+                form="create-template-form"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
               >
-                Create Template
+                {isScheduled ? 'Schedule Template' : 'Create Template'}
               </Button>
             </div>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Preview Dialog */}
       <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-2xl bg-white border border-gray-100 shadow-lg">
+        <DialogContent className="max-w-2xl bg-white shadow-lg rounded-lg">
           <DialogHeader>
             <DialogTitle className="text-2xl font-semibold text-gray-900">{selectedTemplate?.name}</DialogTitle>
             <DialogDescription className="text-gray-600">
