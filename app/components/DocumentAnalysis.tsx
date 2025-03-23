@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { PaperClipIcon, ArrowUpTrayIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { PaperClipIcon, ArrowUpTrayIcon, PlusIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import mammoth from 'mammoth';
@@ -34,12 +34,24 @@ interface AnalysisResult {
   }[];
 }
 
+interface AnalysisProgress {
+  stage: string;
+  progress: number;
+  details: string;
+}
+
 export default function DocumentAnalysis() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [query, setQuery] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({
+    stage: '',
+    progress: 0,
+    details: ''
+  });
+
   const supabase = createClientComponentClient();
   const router = useRouter();
 
@@ -60,29 +72,47 @@ export default function DocumentAnalysis() {
 
     setIsLoading(true);
     setError(null);
+    setAnalysisProgress({
+      stage: 'Processing document',
+      progress: 0,
+      details: 'Extracting content from file...'
+    });
 
     try {
       let content = '';
       const fileType = file.type || file.name.split('.').pop()?.toLowerCase();
 
+      setAnalysisProgress({
+        stage: 'Processing document',
+        progress: 0.3,
+        details: 'Reading file content...'
+      });
+
       if (fileType === 'docx' || file.name.endsWith('.docx')) {
-        // Use mammoth to extract text from .docx files
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
         content = result.value;
       } else {
-        // Handle other file types as before
         content = await file.text();
       }
 
-      // Clean up the content
+      setAnalysisProgress({
+        stage: 'Processing document',
+        progress: 0.6,
+        details: 'Cleaning up content...'
+      });
+
       content = content
-        .replace(/\u0000/g, '') // Remove null characters
-        .replace(/\r\n/g, '\n') // Normalize line endings
-        .replace(/\n{3,}/g, '\n\n') // Remove excessive line breaks
+        .replace(/\u0000/g, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
 
-      console.log('Extracted content:', content.substring(0, 200) + '...'); // Log first 200 chars
+      setAnalysisProgress({
+        stage: 'Processing document',
+        progress: 1,
+        details: 'Document processed successfully'
+      });
 
       const document = {
         id: crypto.randomUUID(),
@@ -98,6 +128,11 @@ export default function DocumentAnalysis() {
       setError('Failed to process file. Please try again.');
     } finally {
       setIsLoading(false);
+      setAnalysisProgress({
+        stage: '',
+        progress: 0,
+        details: ''
+      });
     }
   };
 
@@ -107,12 +142,23 @@ export default function DocumentAnalysis() {
 
     setIsLoading(true);
     setError(null);
+    setAnalysisProgress({
+      stage: 'Initializing analysis',
+      progress: 0,
+      details: 'Preparing documents for analysis...'
+    });
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('Please sign in to use the analysis feature');
       }
+
+      setAnalysisProgress({
+        stage: 'Analyzing documents',
+        progress: 0.2,
+        details: 'Processing document content...'
+      });
 
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
@@ -131,11 +177,23 @@ export default function DocumentAnalysis() {
         }),
       });
 
+      setAnalysisProgress({
+        stage: 'Analyzing documents',
+        progress: 0.5,
+        details: 'Generating insights...'
+      });
+
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to analyze documents');
       }
+
+      setAnalysisProgress({
+        stage: 'Analyzing documents',
+        progress: 0.8,
+        details: 'Finalizing results...'
+      });
 
       setAnalysis(data);
     } catch (error) {
@@ -143,6 +201,11 @@ export default function DocumentAnalysis() {
       setError(error instanceof Error ? error.message : 'Failed to analyze documents');
     } finally {
       setIsLoading(false);
+      setAnalysisProgress({
+        stage: '',
+        progress: 0,
+        details: ''
+      });
     }
   };
 
@@ -167,10 +230,11 @@ export default function DocumentAnalysis() {
             className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {isLoading ? (
-              <div className="flex space-x-2">
+              <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce delay-100" />
                 <div className="w-2 h-2 bg-white rounded-full animate-bounce delay-200" />
+                <span className="text-sm">{analysisProgress.stage}</span>
               </div>
             ) : (
               <>
@@ -225,8 +289,19 @@ export default function DocumentAnalysis() {
       {isLoading && (
         <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow">
           <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mb-4" />
-          <p className="text-gray-600">Analyzing documents...</p>
-          <p className="text-sm text-gray-500 mt-2">This may take a few moments</p>
+          <p className="text-gray-600">{analysisProgress.stage}</p>
+          <p className="text-sm text-gray-500 mt-2">{analysisProgress.details}</p>
+          <div className="w-full max-w-xs mt-4">
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${analysisProgress.progress * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              {Math.round(analysisProgress.progress * 100)}% complete
+            </p>
+          </div>
         </div>
       )}
 
@@ -252,7 +327,7 @@ export default function DocumentAnalysis() {
                     <div className="space-y-2">
                       {category.findings.map((finding, idx) => (
                         <div key={idx} className="flex items-start gap-2">
-                          <div className="w-1.5 h-1.5 bg-purple-500 rounded-full mt-2" />
+                          <CheckCircleIcon className="w-4 h-4 text-green-500 mt-1" />
                           <p className="text-sm text-gray-600">{finding}</p>
                         </div>
                       ))}
@@ -272,7 +347,7 @@ export default function DocumentAnalysis() {
                     <div className="space-y-2">
                       {category.insights.map((insight, idx) => (
                         <div key={idx} className="flex items-start gap-2">
-                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2" />
+                          <ArrowPathIcon className="w-4 h-4 text-blue-500 mt-1" />
                           <p className="text-sm text-gray-600">{insight}</p>
                         </div>
                       ))}
