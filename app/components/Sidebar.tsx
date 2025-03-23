@@ -25,6 +25,8 @@ import {
   ChatBubbleLeftRightIcon,
   CreditCardIcon,
   HeartIcon,
+  RocketLaunchIcon,
+  ChartPieIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useState, useEffect } from 'react';
@@ -45,6 +47,13 @@ const navigation = [
     items: [
       { name: 'Events', href: '/dashboard/events', icon: CalendarIcon },
       { name: 'Volunteers', href: '/dashboard/volunteers', icon: UserGroupIcon },
+    ],
+  },
+  {
+    name: 'Resources',
+    items: [
+      { name: 'Strategy', href: '/dashboard/strategy', icon: RocketLaunchIcon },
+      { name: 'Fundraising', href: '/dashboard/fundraising', icon: ChartPieIcon },
     ],
   },
   {

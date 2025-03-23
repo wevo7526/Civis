@@ -17,13 +17,16 @@ interface Event {
   description: string;
   date: string;
   location: string;
-  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
+  type: 'fundraiser' | 'volunteer' | 'community' | 'awareness' | 'other';
   status: 'active' | 'completed' | 'planned' | 'cancelled';
   created_at: string;
   updated_at: string;
   max_volunteers?: number;
   volunteer_ids?: string[];
   volunteer_hours?: { [key: string]: number };
+  budget?: number;
+  amount_raised?: number;
+  fundraising_goal?: number;
 }
 
 interface EventFormData {
@@ -31,9 +34,12 @@ interface EventFormData {
   description: string;
   date: string;
   location: string;
-  type: 'fundraiser' | 'volunteer' | 'community' | 'other';
+  type: 'fundraiser' | 'volunteer' | 'community' | 'awareness' | 'other';
   status: 'active' | 'completed' | 'planned' | 'cancelled';
   max_volunteers?: number;
+  budget?: number;
+  amount_raised?: number;
+  fundraising_goal?: number;
 }
 
 const initialFormData: EventFormData = {
@@ -43,7 +49,10 @@ const initialFormData: EventFormData = {
   location: '',
   type: 'volunteer',
   status: 'planned',
-  max_volunteers: 10
+  max_volunteers: 10,
+  budget: 0,
+  amount_raised: 0,
+  fundraising_goal: 0
 };
 
 export default function Events() {
@@ -72,6 +81,9 @@ export default function Events() {
         type: eventToEdit.type,
         status: eventToEdit.status,
         max_volunteers: eventToEdit.max_volunteers,
+        budget: eventToEdit.budget,
+        amount_raised: eventToEdit.amount_raised,
+        fundraising_goal: eventToEdit.fundraising_goal,
       });
       setIsModalOpen(true);
     }
@@ -245,6 +257,9 @@ export default function Events() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volunteers</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Budget</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Raised</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Goal</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
@@ -279,6 +294,21 @@ export default function Events() {
                   <div className="text-sm text-gray-500">
                     {event.volunteer_ids?.length || 0}
                     {event.max_volunteers && ` / ${event.max_volunteers}`}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">
+                    ${event.budget?.toLocaleString() || '0'}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">
+                    ${event.amount_raised?.toLocaleString() || '0'}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">
+                    ${event.fundraising_goal?.toLocaleString() || '0'}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
@@ -352,6 +382,7 @@ export default function Events() {
                     <option value="fundraiser">Fundraiser</option>
                     <option value="volunteer">Volunteer Event</option>
                     <option value="community">Community Event</option>
+                    <option value="awareness">Awareness Event</option>
                     <option value="other">Other</option>
                   </select>
                 </div>
@@ -417,6 +448,48 @@ export default function Events() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+                    Budget
+                  </label>
+                  <input
+                    type="number"
+                    id="budget"
+                    min="0"
+                    value={formData.budget}
+                    onChange={(e) => setFormData(prev => ({ ...prev, budget: parseFloat(e.target.value) }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="amount_raised" className="block text-sm font-medium text-gray-700">
+                    Amount Raised
+                  </label>
+                  <input
+                    type="number"
+                    id="amount_raised"
+                    min="0"
+                    value={formData.amount_raised}
+                    onChange={(e) => setFormData(prev => ({ ...prev, amount_raised: parseFloat(e.target.value) }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="fundraising_goal" className="block text-sm font-medium text-gray-700">
+                    Fundraising Goal
+                  </label>
+                  <input
+                    type="number"
+                    id="fundraising_goal"
+                    min="0"
+                    value={formData.fundraising_goal}
+                    onChange={(e) => setFormData(prev => ({ ...prev, fundraising_goal: parseFloat(e.target.value) }))}
+                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                  />
+                </div>
 
                 <div className="md:col-span-2">
                   <label htmlFor="description" className="block text-sm font-medium text-gray-700">
