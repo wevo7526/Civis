@@ -1,31 +1,38 @@
 import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { Session } from '@supabase/supabase-js';
 
-export async function requireAuth(session: Session | null) {
-  if (!session?.user) {
-    throw new Error('Authentication required');
+export async function requireAuth() {
+  const supabase = createRouteHandlerClient({ cookies });
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('Unauthorized');
   }
-  return session.user;
+
+  return user;
 }
 
-export function validateInput(data: any, validators: Record<string, (value: any) => boolean>) {
-  for (const [key, validator] of Object.entries(validators)) {
-    if (!(key in data)) {
-      throw new Error(`Missing required field: ${key}`);
-    }
-    if (!validator(data[key])) {
-      throw new Error(`Invalid value for field: ${key}`);
-    }
+export function validateInput(data: any, requiredFields: string[]) {
+  const missingFields = requiredFields.filter(field => !data[field]);
+  
+  if (missingFields.length > 0) {
+    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
   }
-  return true;
 }
 
-export function handleError(error: unknown) {
+export function handleError(error: any) {
   console.error('Error:', error);
-  return {
-    success: false,
-    error: error instanceof Error ? error.message : 'An unexpected error occurred',
-  };
+  
+  if (error instanceof Error) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json(
+    { error: 'Internal server error' },
+    { status: 500 }
+  );
 } 

@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { handleError, requireAuth, validateInput } from '../../../lib/error-handling';
-import { AIResponse } from '../../../lib/types';
+import { handleError, requireAuth, validateInput } from '@/lib/error-handling';
+import { AIResponse } from '@/lib/types';
 
 // Base system prompt for all agents
 const BASE_SYSTEM_PROMPT = `You are an expert grant writer and fundraising strategist for nonprofit organizations. Your role is to help organizations create compelling grant proposals by focusing on:
@@ -289,8 +289,8 @@ export async function POST(request: Request) {
     
     // Validate input
     validateInput(body, {
-      action: (value: unknown) => typeof value === 'string',
-      data: (value: unknown) => typeof value === 'object',
+      action: (value) => typeof value === 'string',
+      data: (value) => typeof value === 'object',
     });
 
     const { action, data } = body;
