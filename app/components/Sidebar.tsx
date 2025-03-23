@@ -52,7 +52,6 @@ const navigation = [
   {
     name: 'Resources',
     items: [
-      { name: 'Strategy', href: '/strategy', icon: RocketLaunchIcon },
       { name: 'Fundraising', href: '/fundraising', icon: ChartPieIcon },
     ],
   },

@@ -162,15 +162,10 @@ export type CampaignStatus = 'planning' | 'active' | 'completed' | 'on-hold';
 
 export interface CampaignItem {
   id: string;
-  campaign_id: string;
-  title: string;
+  name: string;
   description: string;
-  start_date: string;
-  end_date: string;
-  status: CampaignStatus;
-  priority: 'low' | 'medium' | 'high';
-  assigned_to: string;
-  dependencies: string[];
+  amount: number;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -179,57 +174,12 @@ export interface Campaign {
   id: string;
   name: string;
   description: string;
-  start_date: string;
-  end_date: string;
-  status: CampaignStatus;
-  budget: number;
-  impact_target: string;
-  impact_metric: string;
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-  items: CampaignItem[];
-}
-
-export interface FundraisingStrategy {
-  id: string;
-  organization_name: string;
-  organization_type: string;
   target_amount: number;
-  timeframe: string;
-  current_donors: number;
-  status: 'draft' | 'active' | 'completed' | 'paused';
-  progress: number;
-  insights: string[];
-  recommendations: string[];
-  strategy_content: string;
-  mission: string;
-  previous_fundraising: string;
-  key_programs: string;
+  current_amount: number;
+  status: string;
   created_at: string;
   updated_at: string;
-  user_id: string;
-  related_strategy_id?: string; // For linking to the main strategy page
-}
-
-export interface StrategyInsight {
-  id: string;
-  strategy_id: string;
-  content: string;
-  type: 'insight' | 'recommendation';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface FundraisingMetric {
-  id: string;
-  strategy_id: string;
-  name: string;
-  target: number;
-  current: number;
-  unit: string;
-  created_at: string;
-  updated_at: string;
+  items: CampaignItem[];
 }
 
 export interface GrantSection {
