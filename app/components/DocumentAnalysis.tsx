@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { PaperClipIcon, ArrowUpTrayIcon, PlusIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { 
+  PaperClipIcon, 
+  ArrowUpTrayIcon, 
+  PlusIcon, 
+  CheckCircleIcon, 
+  ArrowPathIcon,
+  ChevronDownIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import mammoth from 'mammoth';
@@ -40,6 +48,12 @@ interface AnalysisProgress {
   details: string;
 }
 
+interface FollowUpQuestion {
+  question: string;
+  answer: string;
+  timestamp: string;
+}
+
 export default function DocumentAnalysis() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [query, setQuery] = useState('');
@@ -51,6 +65,11 @@ export default function DocumentAnalysis() {
     progress: 0,
     details: ''
   });
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [followUpQuestions, setFollowUpQuestions] = useState<FollowUpQuestion[]>([]);
+  const [followUpQuery, setFollowUpQuery] = useState('');
+  const [isAskingFollowUp, setIsAskingFollowUp] = useState(false);
 
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -209,6 +228,45 @@ export default function DocumentAnalysis() {
     }
   };
 
+  const handleFollowUpQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUpQuery.trim() || !analysis) return;
+
+    setIsAskingFollowUp(true);
+    try {
+      const response = await fetch('/api/ai/follow-up', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: followUpQuery,
+          context: analysis,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      setFollowUpQuestions(prev => [...prev, {
+        question: followUpQuery,
+        answer: data.answer,
+        timestamp: new Date().toISOString()
+      }]);
+      setFollowUpQuery('');
+    } catch (error) {
+      console.error('Follow-up error:', error);
+      setError('Failed to process follow-up question');
+    } finally {
+      setIsAskingFollowUp(false);
+    }
+  };
+
+  const openModal = (item: any) => {
+    setSelectedItem(item);
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="flex flex-col h-full space-y-4">
       {/* Query Bar */}
@@ -315,86 +373,182 @@ export default function DocumentAnalysis() {
       {/* Analysis Results */}
       {analysis && (
         <div className="space-y-4">
-          {/* Matrix of Insights */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Key Findings Matrix */}
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Key Findings</h3>
-              <div className="space-y-3">
-                {analysis.keyFindings.map((category, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                    <h4 className="font-medium text-gray-700 mb-2">{category.category}</h4>
-                    <div className="space-y-2">
-                      {category.findings.map((finding, idx) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          <CheckCircleIcon className="w-4 h-4 text-green-500 mt-1" />
-                          <p className="text-sm text-gray-600">{finding}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {/* Key Findings Table */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Key Findings</h3>
             </div>
-
-            {/* Strategic Insights Matrix */}
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Strategic Insights</h3>
-              <div className="space-y-3">
-                {analysis.insights.map((category, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                    <h4 className="font-medium text-gray-700 mb-2">{category.category}</h4>
-                    <div className="space-y-2">
-                      {category.insights.map((insight, idx) => (
-                        <div key={idx} className="flex items-start gap-2">
-                          <ArrowPathIcon className="w-4 h-4 text-blue-500 mt-1" />
-                          <p className="text-sm text-gray-600">{insight}</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Findings</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {analysis.keyFindings.map((category, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {category.category}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-500 line-clamp-2">
+                          {category.findings.join(', ')}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => openModal(category)}
+                          className="text-purple-600 hover:text-purple-900"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Recommendations Matrix */}
+          {/* Recommendations Table */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">Recommendations</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recommendation</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {analysis.recommendations.map((rec, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          rec.priority === 'high' ? 'bg-red-100 text-red-800' :
+                          rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {rec.priority.charAt(0).toUpperCase() + rec.priority.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{rec.recommendation}</div>
+                        <div className="text-sm text-gray-500 line-clamp-1">{rec.rationale}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => openModal(rec)}
+                          className="text-purple-600 hover:text-purple-900"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Follow-up Questions Section */}
           <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Recommendations</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {analysis.recommendations.map((rec, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      rec.priority === 'high' ? 'bg-red-100 text-red-800' :
-                      rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {rec.priority.charAt(0).toUpperCase() + rec.priority.slice(1)} Priority
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Follow-up Questions</h3>
+            <form onSubmit={handleFollowUpQuestion} className="flex gap-4 mb-4">
+              <input
+                type="text"
+                value={followUpQuery}
+                onChange={(e) => setFollowUpQuery(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                disabled={isAskingFollowUp}
+              />
+              <button
+                type="submit"
+                disabled={isAskingFollowUp || !followUpQuery.trim()}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isAskingFollowUp ? 'Asking...' : 'Ask'}
+              </button>
+            </form>
+
+            <div className="space-y-4">
+              {followUpQuestions.map((qa, index) => (
+                <div key={index} className="border-b border-gray-200 pb-4 last:border-0">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{qa.question}</p>
+                      <p className="text-sm text-gray-500 mt-1">{qa.answer}</p>
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      {new Date(qa.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="font-medium text-gray-900 text-sm">{rec.recommendation}</p>
-                  <p className="text-xs text-gray-600 mt-1">{rec.rationale}</p>
                 </div>
               ))}
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Relevant Documents Matrix */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Relevant Documents</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {analysis.relevantDocuments.map((doc, index) => (
-                <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-gray-700 text-sm">{doc.title}</h4>
-                    <span className="text-xs text-purple-600">
-                      {(doc.similarity * 100).toFixed(1)}% relevant
-                    </span>
+      {/* Modal */}
+      {isModalOpen && selectedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {selectedItem.category || 'Details'}
+                </h3>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-500"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                {selectedItem.findings ? (
+                  // Key Findings Modal Content
+                  <div className="space-y-2">
+                    {selectedItem.findings.map((finding: string, index: number) => (
+                      <div key={index} className="flex items-start gap-2">
+                        <CheckCircleIcon className="w-5 h-5 text-green-500 mt-0.5" />
+                        <p className="text-gray-600">{finding}</p>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-sm text-gray-600 line-clamp-3">{doc.content}</p>
-                </div>
-              ))}
+                ) : selectedItem.recommendation ? (
+                  // Recommendation Modal Content
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-1 rounded text-sm font-medium ${
+                        selectedItem.priority === 'high' ? 'bg-red-100 text-red-800' :
+                        selectedItem.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {selectedItem.priority.charAt(0).toUpperCase() + selectedItem.priority.slice(1)} Priority
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Recommendation</h4>
+                      <p className="text-gray-600">{selectedItem.recommendation}</p>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Rationale</h4>
+                      <p className="text-gray-600">{selectedItem.rationale}</p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
