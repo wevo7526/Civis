@@ -10,6 +10,8 @@ import {
   ChevronUpDownIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
+  PencilIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
@@ -84,6 +86,8 @@ export default function VolunteersPage() {
     phone: '',
     skills: ''
   });
+  const [deleteVolunteerId, setDeleteVolunteerId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
 
@@ -365,6 +369,27 @@ export default function VolunteersPage() {
         return 'bg-gray-100 text-gray-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+    }
+  };
+
+  const handleDeleteVolunteer = async (id: string) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('volunteers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setVolunteers(prev => prev.filter(v => v.id !== id));
+      setDeleteVolunteerId(null);
+      setSuccessMessage('Volunteer deleted successfully');
+    } catch (err) {
+      console.error('Error deleting volunteer:', err);
+      setError('Failed to delete volunteer');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -687,52 +712,89 @@ export default function VolunteersPage() {
               <TableHead className="text-sm font-medium text-gray-500">Skills</TableHead>
               <TableHead className="text-sm font-medium text-gray-500">Hours</TableHead>
               <TableHead className="text-sm font-medium text-gray-500">Joined</TableHead>
+              <TableHead className="text-sm font-medium text-gray-500">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredVolunteers.map((volunteer) => (
-              <TableRow
-                key={volunteer.id}
-                className="cursor-pointer hover:bg-gray-50 transition-colors duration-150"
-                onClick={() => router.push(`/dashboard/volunteers/${volunteer.id}`)}
-              >
-                <TableCell className="font-medium text-gray-900">
-                  {volunteer.first_name} {volunteer.last_name}
+              <TableRow key={volunteer.id} className="hover:bg-gray-50">
+                <TableCell className="font-medium">
+                  <div className="flex items-center">
+                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center mr-3">
+                      <span className="text-sm font-medium text-purple-600">
+                        {volunteer.first_name[0]}{volunteer.last_name[0]}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {volunteer.first_name} {volunteer.last_name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {volunteer.skills.length} skills
+                      </div>
+                    </div>
+                  </div>
                 </TableCell>
-                <TableCell className="text-gray-600">{volunteer.email}</TableCell>
-                <TableCell className="text-gray-600">{volunteer.phone}</TableCell>
+                <TableCell className="text-sm text-gray-600">{volunteer.email}</TableCell>
+                <TableCell className="text-sm text-gray-600">{volunteer.phone || '-'}</TableCell>
                 <TableCell>
-                  <Badge 
-                    variant="outline" 
-                    className={`${getStatusColor(volunteer.status)} border-0`}
-                  >
-                    {volunteer.status}
+                  <Badge className={getStatusColor(volunteer.status)}>
+                    {volunteer.status.charAt(0).toUpperCase() + volunteer.status.slice(1)}
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-1 flex-wrap">
-                    {volunteer.skills.slice(0, 3).map((skill) => (
-                      <Badge 
-                        key={skill} 
-                        variant="secondary" 
-                        className="text-xs bg-gray-100 text-gray-700 border-0"
-                      >
+                  <div className="flex flex-wrap gap-1">
+                    {volunteer.skills.slice(0, 3).map((skill, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
                         {skill}
                       </Badge>
                     ))}
                     {volunteer.skills.length > 3 && (
-                      <Badge 
-                        variant="secondary" 
-                        className="text-xs bg-gray-100 text-gray-700 border-0"
-                      >
-                        +{volunteer.skills.length - 3}
+                      <Badge variant="secondary" className="text-xs">
+                        +{volunteer.skills.length - 3} more
                       </Badge>
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-gray-600">{volunteer.total_hours}</TableCell>
-                <TableCell className="text-gray-600">
+                <TableCell className="text-sm text-gray-600">{volunteer.total_hours}</TableCell>
+                <TableCell className="text-sm text-gray-600">
                   {new Date(volunteer.created_at).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <span className="sr-only">Open menu</span>
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                        </svg>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setFormData({
+                            firstName: volunteer.first_name,
+                            lastName: volunteer.last_name,
+                            email: volunteer.email,
+                            phone: volunteer.phone || '',
+                            skills: volunteer.skills.join(', ')
+                          });
+                          setIsAddOpen(true);
+                        }}
+                      >
+                        <PencilIcon className="h-4 w-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setDeleteVolunteerId(volunteer.id)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <TrashIcon className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
@@ -752,6 +814,39 @@ export default function VolunteersPage() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!deleteVolunteerId} onOpenChange={(open) => !open && setDeleteVolunteerId(null)}>
+        <DialogContent className="bg-white border border-gray-100 shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">Delete Volunteer</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Are you sure you want to delete this volunteer? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-3 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteVolunteerId(null)}
+              className="border-gray-200 hover:bg-gray-50"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => deleteVolunteerId && handleDeleteVolunteer(deleteVolunteerId)}
+              disabled={loading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {loading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {successMessage && (
+        <div className="fixed top-4 right-4 bg-green-50 border border-green-200 rounded-lg p-4 shadow-lg z-50">
+          <p className="text-sm text-green-600">{successMessage}</p>
+        </div>
+      )}
     </div>
   );
 } 

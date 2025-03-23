@@ -9,7 +9,14 @@ import {
   SparklesIcon, 
   UserGroupIcon, 
   CalendarIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  PencilIcon,
+  CheckIcon,
+  XMarkIcon,
+  ChartPieIcon,
+  CurrencyDollarIcon,
+  TagIcon,
+  ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
 import type { Project } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
@@ -29,6 +36,23 @@ interface EditorItem {
   title: string;
   content: string;
   type: 'grant' | 'fundraising' | 'insights';
+}
+
+interface ProjectMetrics {
+  progress: number;
+  budgetSpent: number;
+  impactAchieved: number;
+  teamEfficiency: number;
+}
+
+interface ProjectFormData {
+  name: string;
+  description: string;
+  impact_target: string;
+  impact_metric: string;
+  start_date: string;
+  end_date: string;
+  budget: number | string;
 }
 
 export default function ProjectDetails() {
@@ -60,6 +84,24 @@ export default function ProjectDetails() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentGrantDocument, setCurrentGrantDocument] = useState<GrantDocument | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
+  const [isEditingProject, setIsEditingProject] = useState(false);
+  const [editedProject, setEditedProject] = useState<Partial<Project> | null>(null);
+  const [metrics, setMetrics] = useState<ProjectMetrics>({
+    progress: 0,
+    budgetSpent: 0,
+    impactAchieved: 0,
+    teamEfficiency: 0,
+  });
+  const [formData, setFormData] = useState<ProjectFormData>({
+    name: '',
+    description: '',
+    impact_target: '',
+    impact_metric: '',
+    start_date: '',
+    end_date: '',
+    budget: 0,
+  });
+  const [formErrors, setFormErrors] = useState<Partial<ProjectFormData>>({});
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -562,6 +604,126 @@ ${response.content}
     }
   };
 
+  const handleEditProject = () => {
+    if (!project) return;
+    setFormData({
+      name: project.name || '',
+      description: project.description || '',
+      impact_target: project.impact_target || '',
+      impact_metric: project.impact_metric || '',
+      start_date: project.start_date || '',
+      end_date: project.end_date || '',
+      budget: typeof project.budget === 'number' ? project.budget : 0,
+    });
+    setIsEditingProject(true);
+    setFormErrors({});
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Partial<ProjectFormData> = {};
+    
+    if (!formData.name || typeof formData.name !== 'string' || !formData.name.trim()) {
+      errors.name = 'Project name is required';
+    }
+    
+    if (!formData.impact_target || typeof formData.impact_target !== 'string' || !formData.impact_target.trim()) {
+      errors.impact_target = 'Impact target is required';
+    }
+    
+    if (!formData.impact_metric || typeof formData.impact_metric !== 'string' || !formData.impact_metric.trim()) {
+      errors.impact_metric = 'Impact metric is required';
+    }
+    
+    if (!formData.start_date) {
+      errors.start_date = 'Start date is required';
+    }
+    
+    if (!formData.end_date) {
+      errors.end_date = 'End date is required';
+    }
+    
+    if (formData.start_date && formData.end_date && new Date(formData.start_date) > new Date(formData.end_date)) {
+      errors.end_date = 'End date must be after start date';
+    }
+    
+    const budgetValue = typeof formData.budget === 'string' ? parseFloat(formData.budget) : formData.budget;
+    if (isNaN(budgetValue) || budgetValue < 0) {
+      errors.budget = 'Budget must be a positive number';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || !validateForm()) return;
+
+    try {
+      const budgetValue = typeof formData.budget === 'string' ? parseFloat(formData.budget) : formData.budget;
+
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          name: formData.name.trim(),
+          description: formData.description.trim(),
+          impact_target: formData.impact_target.trim(),
+          impact_metric: formData.impact_metric.trim(),
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          budget: budgetValue,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', project.id);
+
+      if (error) throw error;
+
+      setProject({ 
+        ...project, 
+        ...formData,
+        budget: budgetValue
+      });
+      setIsEditingProject(false);
+      setFormData({
+        name: '',
+        description: '',
+        impact_target: '',
+        impact_metric: '',
+        start_date: '',
+        end_date: '',
+        budget: 0,
+      });
+      setFormErrors({});
+      setSuccessMessage('Project updated successfully!');
+    } catch (err) {
+      setError('Failed to update project');
+      console.error(err);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingProject(false);
+    setFormData({
+      name: '',
+      description: '',
+      impact_target: '',
+      impact_metric: '',
+      start_date: '',
+      end_date: '',
+      budget: 0,
+    });
+    setFormErrors({});
+  };
+
+  // Add type guard for date strings
+  const formatDate = (dateString: string | undefined): string => {
+    if (!dateString) return 'Not set';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -586,6 +748,7 @@ ${response.content}
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header Section */}
       <div className="mb-8">
         <button
           onClick={() => router.push('/dashboard/projects')}
@@ -594,26 +757,71 @@ ${response.content}
           <ArrowLeftIcon className="h-5 w-5 mr-2" />
           Back to Projects
         </button>
-        <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-        <p className="text-gray-600 mt-2">{project.description}</p>
+        
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+          <p className="text-gray-600 mt-2">{project.description}</p>
+        </div>
       </div>
 
-      {/* Project Status */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Status</h3>
-            <p className="mt-1 text-lg font-semibold text-gray-900 capitalize">{project.status}</p>
+      {/* Project Status and Metrics */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                <ChartPieIcon className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Progress</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.progress}%</p>
+              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-purple-600 h-2 rounded-full"
+                  style={{ width: `${metrics.progress}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Budget</h3>
-            <p className="mt-1 text-lg font-semibold text-gray-900">${(project.budget || 0).toLocaleString()}</p>
+
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Budget Spent</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">${metrics.budgetSpent.toLocaleString()}</p>
+              <p className="mt-1 text-sm text-gray-500">of ${(project.budget ?? 0).toLocaleString()}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Timeline</h3>
-            <p className="mt-1 text-lg font-semibold text-gray-900">
-              {project.start_date ? new Date(project.start_date).toLocaleDateString() : 'Not set'} - {project.end_date ? new Date(project.end_date).toLocaleDateString() : 'Not set'}
-            </p>
+
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                <TagIcon className="h-6 w-6 text-blue-600" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Impact Achieved</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.impactAchieved}%</p>
+              <p className="mt-1 text-sm text-gray-500">of {project.impact_target}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
+                <ArrowTrendingUpIcon className="h-6 w-6 text-yellow-600" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500">Team Efficiency</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.teamEfficiency}%</p>
+              <p className="mt-1 text-sm text-gray-500">based on milestones</p>
+            </div>
           </div>
         </div>
       </div>
@@ -651,16 +859,6 @@ ${response.content}
           >
             Fundraising
           </button>
-          <button
-            onClick={() => setActiveTab('team')}
-            className={`${
-              activeTab === 'team'
-                ? 'border-purple-500 text-purple-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-          >
-            Team
-          </button>
         </nav>
       </div>
 
@@ -670,33 +868,198 @@ ${response.content}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Project Details */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Project Details</h2>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Project Details</h2>
+                {!isEditingProject && (
+                  <button
+                    onClick={handleEditProject}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  >
+                    <PencilIcon className="h-5 w-5 mr-2" />
+                    Edit Project
+                  </button>
+                )}
+              </div>
               <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Impact Target</h3>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_target}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Impact Metric</h3>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_metric}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Team Size</h3>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{project.team_size}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Team Roles</h3>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(project.team_roles || []).map((role: string, index: number) => (
-                      <span
-                        key={index}
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
+                {isEditingProject ? (
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSaveProject();
+                  }}>
+                    <div>
+                      <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                        Project Name
+                      </label>
+                      <input
+                        type="text"
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.name ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.name && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                        Description
+                      </label>
+                      <textarea
+                        id="description"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
+                        Impact Target
+                      </label>
+                      <input
+                        type="text"
+                        id="impact_target"
+                        value={formData.impact_target}
+                        onChange={(e) => setFormData({ ...formData, impact_target: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.impact_target ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.impact_target && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_target}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
+                        Impact Metric
+                      </label>
+                      <input
+                        type="text"
+                        id="impact_metric"
+                        value={formData.impact_metric}
+                        onChange={(e) => setFormData({ ...formData, impact_metric: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.impact_metric ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.impact_metric && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_metric}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
+                          Start Date
+                        </label>
+                        <input
+                          type="date"
+                          id="start_date"
+                          value={formData.start_date}
+                          onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.start_date ? 'border-red-300' : ''
+                          }`}
+                        />
+                        {formErrors.start_date && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.start_date}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
+                          End Date
+                        </label>
+                        <input
+                          type="date"
+                          id="end_date"
+                          value={formData.end_date}
+                          onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.end_date ? 'border-red-300' : ''
+                          }`}
+                        />
+                        {formErrors.end_date && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.end_date}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+                        Budget
+                      </label>
+                      <div className="mt-1 relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input
+                          type="number"
+                          id="budget"
+                          value={formData.budget}
+                          onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="0.01"
+                          className={`block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.budget ? 'border-red-300' : ''
+                          }`}
+                        />
+                      </div>
+                      {formErrors.budget && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.budget}</p>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end space-x-3 mt-6">
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
-                        {role}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Impact Target</h3>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_target}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Impact Metric</h3>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_metric}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Timeline</h3>
+                      <div className="mt-2 flex items-center text-gray-900">
+                        <CalendarIcon className="h-5 w-5 mr-2" />
+                        <span>
+                          {formatDate(project.start_date)} - {formatDate(project.end_date)}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Budget</h3>
+                      <div className="mt-2 flex items-center text-gray-900">
+                        <CurrencyDollarIcon className="h-5 w-5 mr-2" />
+                        <span>${(typeof project.budget === 'number' ? project.budget : 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -827,32 +1190,6 @@ ${response.content}
                 <p className="mt-1 text-sm text-gray-500">Create a fundraising strategy to get started.</p>
               </div>
             )}
-          </div>
-        )}
-
-        {activeTab === 'team' && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Team Members</h2>
-              <button
-                onClick={() => {/* TODO: Implement team member addition */}}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
-              >
-                <UserGroupIcon className="h-5 w-5 mr-2" />
-                Add Team Member
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(project.team_roles || []).map((role: string, index: number) => (
-                <div
-                  key={index}
-                  className="bg-gray-50 rounded-lg p-4 border border-gray-200"
-                >
-                  <h3 className="text-lg font-medium text-gray-900">{role}</h3>
-                  <p className="text-sm text-gray-500 mt-1">Position to be filled</p>
-                </div>
-              ))}
-            </div>
           </div>
         )}
       </div>
