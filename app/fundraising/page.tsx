@@ -2,286 +2,440 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { ChartBarIcon, LightBulbIcon, ArrowTrendingUpIcon, DocumentTextIcon, PlusIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
-import { Project } from '@/app/lib/types';
-import ProjectFundraisingStrategy from './components/ProjectFundraisingStrategy';
-import DocumentEditor from '@/app/components/DocumentEditor';
-import SavedItemCard from '@/app/components/SavedItemCard';
+import { useRouter } from 'next/navigation';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area
+} from 'recharts';
+import {
+  ChartBarIcon,
+  SparklesIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
+  CurrencyDollarIcon,
+  UserGroupIcon,
+  ClockIcon,
+  CalendarIcon,
+  BanknotesIcon,
+  HeartIcon,
+  BuildingOfficeIcon,
+  UserPlusIcon,
+  ChartPieIcon,
+  TagIcon,
+  FolderIcon
+} from '@heroicons/react/24/outline';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
+
+interface TimelineData {
+  month: string;
+  expectedRevenue: number;
+  cumulativeRevenue: number;
+}
+
+interface FundraisingStrategy {
+  id: string;
+  name: string;
+  description: string;
+  targetAmount: number;
+  duration: number;
+  successProbability: number;
+  costToImplement: number;
+  expectedROI: number;
+  donorSegments: {
+    segment: string;
+    percentage: number;
+    averageGift: number;
+  }[];
+  timelineData: TimelineData[];
+  riskFactors: {
+    factor: string;
+    impact: 'high' | 'medium' | 'low';
+    mitigation: string;
+  }[];
+}
+
+interface Project {
+  id: string;
+  name: string;
+}
+
+const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#f97316', '#059669'];
 
 export default function FundraisingPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [strategies, setStrategies] = useState<FundraisingStrategy[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [savedItems, setSavedItems] = useState<any[]>([]);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any | null>(null);
-  const [projectName, setProjectName] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [progressMessage, setProgressMessage] = useState('');
+  const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [saving, setSaving] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     fetchProjects();
-    fetchSavedItems();
   }, []);
 
   const fetchProjects = async () => {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .select('*')
+        .select('id, name')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setProjects(data || []);
-      if (data && data.length > 0) {
-        setSelectedProject(data[0]);
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    }
+  };
+
+  const handleGenerateStrategies = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/generate-fundraising-strategies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: prompt,
+          requirements: {
+            includeMetrics: true,
+            includeTimeline: true,
+            includeDonorSegments: true,
+            includeRiskFactors: true
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate strategies');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch projects');
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setStrategies(data.strategies);
+    } catch (error) {
+      console.error('Error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate strategies');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchSavedItems = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('writing_items')
-        .select('*')
-        .eq('type', 'fundraising')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setSavedItems(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch strategies');
+  const handleSaveStrategy = async (strategy: FundraisingStrategy) => {
+    if (!selectedProject) {
+      setError('Please select a project first');
+      return;
     }
-  };
 
-  const handleEdit = (item: any) => {
-    setEditingItem(item);
-    setProjectName(item.title || '');
-    setIsEditorOpen(true);
-  };
-
-  const handleDeleteItem = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('writing_items')
-        .delete()
-        .eq('id', id);
+      setSaving(true);
+      setError(null);
 
-      if (error) throw error;
-      await fetchSavedItems();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete strategy');
-    }
-  };
-
-  const handleDuplicate = async (item: any) => {
-    try {
-      const { error } = await supabase
-        .from('writing_items')
+      // Save to project_content
+      const { error: contentError } = await supabase
+        .from('project_content')
         .insert({
-          title: `${item.title} (Copy)`,
-          content: item.content,
-          type: 'fundraising',
-          status: 'draft',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          project_id: selectedProject,
+          type: 'fundraisingStrategy',
+          content: JSON.stringify({
+            name: strategy.name,
+            description: strategy.description,
+            targetAmount: strategy.targetAmount,
+            duration: strategy.duration,
+            successProbability: strategy.successProbability,
+            costToImplement: strategy.costToImplement,
+            expectedROI: strategy.expectedROI,
+            donorSegments: strategy.donorSegments,
+            timelineData: strategy.timelineData,
+            riskFactors: strategy.riskFactors
+          }),
+          prompt: prompt,
+          target_amount: strategy.targetAmount,
+          duration: strategy.duration,
+          success_probability: strategy.successProbability,
+          cost_to_implement: strategy.costToImplement,
+          expected_roi: strategy.expectedROI,
+          donor_segments: strategy.donorSegments,
+          timeline_data: strategy.timelineData,
+          risk_factors: strategy.riskFactors
         });
 
-      if (error) throw error;
-      await fetchSavedItems();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to duplicate strategy');
-    }
-  };
-
-  const handleSave = async (title: string, content: string) => {
-    try {
-      if (editingItem) {
-        // Update existing item
-        const { error } = await supabase
-          .from('writing_items')
-          .update({
-            title,
-            content,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingItem.id);
-
-        if (error) throw error;
-      } else {
-        // Create new item
-        const { error } = await supabase
-          .from('writing_items')
-          .insert({
-            title,
-            content,
-            type: 'fundraising',
-            status: 'draft',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-
-        if (error) throw error;
+      if (contentError) {
+        console.error('Error saving to project_content:', contentError);
+        throw new Error('Failed to save strategy to project');
       }
 
-      // Refresh the list
-      await fetchSavedItems();
-      setIsEditorOpen(false);
-      setEditingItem(null);
-      setProjectName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save strategy');
-    }
-  };
+      // Show success message
+      const successMessage = `Strategy "${strategy.name}" saved successfully to project`;
+      setError(successMessage);
 
-  const handleGenerate = async () => {
-    try {
-      setIsGenerating(true);
-      setProgressMessage('Generating strategy...');
-      
-      // Implement your AI generation logic here
-      // For now, we'll just simulate a delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setProgressMessage('Strategy generated successfully!');
-      setIsGenerating(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate strategy');
-      setIsGenerating(false);
+      // Clear the error message after 3 seconds
+      setTimeout(() => {
+        setError(null);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error saving strategy:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save strategy');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header Section */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Fundraising Strategy</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Create and manage your fundraising strategies
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setEditingItem(null);
-                setProjectName('');
-                setIsEditorOpen(true);
-              }}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" />
-              New Strategy
-            </button>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Fundraising Strategy Analysis</h1>
+            <p className="mt-2 text-gray-600">Compare and analyze different fundraising strategies</p>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-sm text-red-600">{error}</p>
+        {/* Project Selection */}
+        <Card className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <FolderIcon className="h-5 w-5 text-purple-600" />
+              <h2 className="text-lg font-semibold text-gray-900">Select Project</h2>
+            </div>
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+              <option value="">Select a project...</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Card>
+
+        {/* Strategy Generation */}
+        <Card className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <SparklesIcon className="h-5 w-5 text-purple-600" />
+              <h2 className="text-lg font-semibold text-gray-900">Generate Strategies</h2>
+            </div>
+            <div className="relative">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Describe your fundraising goals and target audience..."
+                className="w-full pl-5 pr-32 py-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none bg-gray-50/50"
+                rows={3}
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <button
+                  onClick={handleGenerateStrategies}
+                  disabled={loading || !prompt.trim()}
+                  className={`inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg text-white ${
+                    loading || !prompt.trim()
+                      ? 'bg-purple-400 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700'
+                  } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md`}
+                >
+                  {loading ? (
+                    <>
+                      <ArrowTrendingUpIcon className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <SparklesIcon className="h-4 w-4 mr-2" />
+                      Generate Strategies
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Strategy Comparison */}
+        {strategies.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {strategies.map((strategy) => (
+              <div key={strategy.id} className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">{strategy.name}</h3>
+                    <p className="text-gray-600 mt-1">{strategy.description}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-500">Success Rate:</span>
+                    <span className="text-sm font-semibold text-green-600">{strategy.successProbability}%</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-500">Target Amount</h4>
+                    <p className="text-2xl font-bold text-gray-900">${strategy.targetAmount.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-500">Expected ROI</h4>
+                    <p className="text-2xl font-bold text-gray-900">{strategy.expectedROI}%</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-500">Duration</h4>
+                    <p className="text-2xl font-bold text-gray-900">{strategy.duration} months</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-500">Cost to Implement</h4>
+                    <p className="text-2xl font-bold text-gray-900">${strategy.costToImplement.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <h4 className="text-lg font-medium text-gray-900 mb-4">Revenue Timeline</h4>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={strategy.timelineData}>
+                        <defs>
+                          <linearGradient id={`color${strategy.id}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip 
+                          formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                          labelFormatter={(label) => label}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="cumulativeRevenue"
+                          stroke="#8884d8"
+                          fillOpacity={1}
+                          fill={`url(#color${strategy.id})`}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">Donor Segments</h4>
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={strategy.donorSegments}
+                            dataKey="percentage"
+                            nameKey="segment"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          />
+                          <Tooltip 
+                            formatter={(value: number, name: string) => [
+                              `${value}%`,
+                              `${name} ($${strategy.donorSegments.find(s => s.segment === name)?.averageGift.toLocaleString()})`
+                            ]}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">Risk Factors</h4>
+                    <div className="space-y-4">
+                      {strategy.riskFactors.map((risk, index) => (
+                        <div key={index} className="bg-gray-50 p-4 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-gray-900">{risk.factor}</p>
+                              <p className="text-sm text-gray-600 mt-1">{risk.mitigation}</p>
+                            </div>
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                              risk.impact === 'high' ? 'bg-red-100 text-red-800' :
+                              risk.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {risk.impact}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add Save Button */}
+                <div className="mt-6">
+                  <button
+                    onClick={() => handleSaveStrategy(strategy)}
+                    disabled={saving || !selectedProject}
+                    className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
+                      saving || !selectedProject
+                        ? 'bg-purple-400 cursor-not-allowed'
+                        : 'bg-purple-600 hover:bg-purple-700'
+                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200`}
+                  >
+                    {saving ? (
+                      <>
+                        <ArrowTrendingUpIcon className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <FolderIcon className="h-4 w-4 mr-2" />
+                        Save to Project
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-purple-50 rounded-lg">
-                <DocumentTextIcon className="h-6 w-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <h3 className="text-sm font-medium text-gray-500">Total Strategies</h3>
-                <p className="text-2xl font-semibold text-gray-900">{savedItems.length}</p>
-              </div>
-            </div>
+        {/* Error State */}
+        {error && (
+          <div className={`px-4 py-3 rounded-lg ${
+            error.includes('saved successfully') 
+              ? 'bg-green-50 border border-green-200 text-green-700'
+              : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
+            {error}
           </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-green-50 rounded-lg">
-                <CheckCircleIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <h3 className="text-sm font-medium text-gray-500">Approved</h3>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {savedItems.filter(item => item.status === 'approved').length}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-            <div className="flex items-center">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <ClockIcon className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <h3 className="text-sm font-medium text-gray-500">In Review</h3>
-                <p className="text-2xl font-semibold text-gray-900">
-                  {savedItems.filter(item => item.status === 'in_review').length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Content Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          {savedItems.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="mx-auto h-12 w-12 text-gray-400">
-                <DocumentTextIcon className="h-12 w-12" />
-              </div>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No strategies</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Get started by creating a new fundraising strategy.
-              </p>
-            </div>
-          ) : (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedItems.map((item) => (
-                  <SavedItemCard
-                    key={item.id}
-                    item={item}
-                    onEdit={handleEdit}
-                    onDelete={handleDeleteItem}
-                    onDuplicate={handleDuplicate}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
-
-      {/* Editor Modal */}
-      {isEditorOpen && (
-        <DocumentEditor
-          isOpen={isEditorOpen}
-          onClose={() => {
-            setIsEditorOpen(false);
-            setEditingItem(null);
-            setProjectName('');
-          }}
-          onSave={handleSave}
-          initialData={editingItem}
-          type="fundraising"
-          projectName={projectName}
-          onGenerate={handleGenerate}
-          isGenerating={isGenerating}
-          progressMessage={progressMessage}
-          isEditing={!!editingItem}
-        />
-      )}
     </div>
   );
 } 
