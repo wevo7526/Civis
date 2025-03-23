@@ -18,9 +18,9 @@ import {
   TagIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
-import type { Project } from '@/app/lib/types';
+import type { Project, GrantDocument, GrantSection } from '@/app/lib/types';
 import { aiService } from '@/lib/aiService';
-import { grantWriterService, GrantDocument, GrantSection } from '@/app/lib/grantWriterService';
+import { grantWriterService } from '@/app/lib/grantWriterService';
 import SavedItemCard from '../../../components/SavedItemCard';
 import GrantDocumentEditor from '../../../components/GrantDocumentEditor';
 import DocumentEditor from '../../../components/DocumentEditor';
@@ -42,28 +42,22 @@ interface ProjectMetrics {
   progress: number;
   budgetSpent: number;
   impactAchieved: number;
-  teamEfficiency: number;
+  grantSuccess: number;
+  fundraisingProgress: number;
+  timelineProgress: number;
+  riskScore: number;
+  impactProgress: number;
+  budgetProgress: number;
 }
 
 interface ProjectFormData {
   name: string;
   description: string;
-  status: 'planning' | 'active' | 'completed' | 'on_hold';
   impact_target: string;
   impact_metric: string;
   start_date: string;
   end_date: string;
   budget: number | string;
-}
-
-interface FormErrors {
-  name?: string;
-  status?: string;
-  impact_target?: string;
-  impact_metric?: string;
-  start_date?: string;
-  end_date?: string;
-  budget?: string;
 }
 
 export default function ProjectDetails() {
@@ -101,19 +95,23 @@ export default function ProjectDetails() {
     progress: 0,
     budgetSpent: 0,
     impactAchieved: 0,
-    teamEfficiency: 0,
+    grantSuccess: 0,
+    fundraisingProgress: 0,
+    timelineProgress: 0,
+    riskScore: 0,
+    impactProgress: 0,
+    budgetProgress: 0
   });
   const [formData, setFormData] = useState<ProjectFormData>({
     name: '',
     description: '',
-    status: 'planning',
     impact_target: '',
     impact_metric: '',
     start_date: '',
     end_date: '',
     budget: 0,
   });
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [formErrors, setFormErrors] = useState<Partial<ProjectFormData>>({});
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -213,11 +211,11 @@ export default function ProjectDetails() {
           id: crypto.randomUUID(),
           project_id: project.id,
           title: `${project.name || 'Project'} Grant Proposal`,
-          sections: [],
-          status: 'draft',
           type: 'standard',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          status: 'draft',
+          sections: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
         setCurrentGrantDocument(newDoc);
         // Add the new document to saved items
@@ -234,44 +232,33 @@ export default function ProjectDetails() {
     setShowEditor(true);
   };
 
-  const handleGenerateSection = async (sectionId: string) => {
-    if (!project || !currentGrantDocument) return;
-
+  const handleGenerateSection = async (sectionType: string, customPrompt?: string) => {
+    if (!project) return;
+    
     try {
       setLoadingStates(prev => ({ ...prev, grantProposal: true }));
       setProgressMessage('Generating section...');
+      setError(null);
 
-      let response;
-      if (sectionId === 'custom_section') {
-        // Handle custom section generation
-        response = await grantWriterService.generateCustomSection(customPrompt);
-      } else {
-        // Use the generic generateSection method
-        const projectWithStatus = {
-          ...project,
-          status: project.status || 'planning' // Provide a default status if not set
+      const response = await grantWriterService.generateSection(sectionType, project, customPrompt);
+      
+      if (response.success && currentGrantDocument) {
+        const newSection: GrantSection = {
+          id: crypto.randomUUID(),
+          title: sectionType === 'custom' ? 'Custom Section' : sectionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+          content: response.content,
+          status: 'draft',
+          last_updated: new Date().toISOString(),
         };
-        response = await grantWriterService.generateSection(sectionId, projectWithStatus);
-      }
 
-      if (response.success) {
-        // Update the document with the new section
-        const updatedDoc: GrantDocument = {
+        const updatedDocument: GrantDocument = {
           ...currentGrantDocument,
-          sections: [
-            ...currentGrantDocument.sections,
-            {
-              id: crypto.randomUUID(),
-              title: sectionId,
-              content: response.content,
-              status: 'generated' as const,
-              lastUpdated: new Date().toISOString(),
-            },
-          ],
-          updatedAt: new Date().toISOString(),
+          sections: [...currentGrantDocument.sections, newSection],
+          updated_at: new Date().toISOString(),
         };
-        setCurrentGrantDocument(updatedDoc);
-        setProgressMessage('Section generated successfully!');
+
+        setCurrentGrantDocument(updatedDocument);
+        setProgressMessage('Section generated successfully! Click Save to store your changes.');
       } else {
         throw new Error(response.error || 'Failed to generate section');
       }
@@ -406,119 +393,66 @@ ${response.content}
     if (!editorType || !project) return;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
       if (!user) throw new Error('User not found');
 
+      // Check if user has permission to access this project
+      const { data: projectAccess, error: accessError } = await supabase
+        .from('project_members')
+        .select('*')
+        .eq('project_id', project.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (accessError) throw accessError;
+      if (!projectAccess) throw new Error('You do not have permission to edit this project');
+
       let savedItem;
+      const newItem = {
+        id: editorItem?.id || crypto.randomUUID(),
+        title: title || 'Untitled Document',
+        content,
+        type: editorType,
+        project_id: project.id,
+        status: 'draft',
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
       if (editorItem?.id) {
-        // First check if the document exists
-        const { data: existingDoc, error: checkError } = await supabase
+        // Update existing item
+        const { data, error } = await supabase
           .from(editorType === 'insights' ? 'project_content' : 'writing_items')
-          .select('id')
+          .update({
+            title,
+            content,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', editorItem.id)
+          .eq('user_id', user.id) // Ensure user can only update their own items
+          .select()
           .single();
 
-        if (checkError) {
-          // If document doesn't exist, create a new one
-          const { data, error } = await supabase
-            .from(editorType === 'insights' ? 'project_content' : 'writing_items')
-            .insert([
-              {
-                id: editorItem.id,
-                title: title || 'Untitled Document',
-                content,
-                type: editorType,
-                project_id: project.id,
-                status: 'draft',
-                user_id: user.id,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-            ])
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Error creating document:', error);
-            throw error;
-          }
-          savedItem = data;
-          setSuccessMessage('Document saved successfully!');
-        } else {
-          // Update existing document
-          const { data, error } = await supabase
-            .from(editorType === 'insights' ? 'project_content' : 'writing_items')
-            .update({
-              title: title || 'Untitled Document',
-              content,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', editorItem.id)
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Error updating document:', error);
-            throw error;
-          }
-          savedItem = data;
-          setSuccessMessage('Document updated successfully!');
-        }
+        if (error) throw error;
+        savedItem = data;
       } else {
         // Create new item
-        if (editorType === 'insights') {
-          const { data, error } = await supabase
-            .from('project_content')
-            .insert([
-              {
-                project_id: project.id,
-                type: 'insights',
-                title: title || 'Project Insights',
-                content,
-                prompt: '',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-            ])
-            .select()
-            .single();
+        const { data, error } = await supabase
+          .from(editorType === 'insights' ? 'project_content' : 'writing_items')
+          .insert([newItem])
+          .select()
+          .single();
 
-          if (error) {
-            console.error('Error creating insights:', error);
-            throw error;
-          }
-          savedItem = data;
-          setSuccessMessage('Insights saved successfully!');
-        } else {
-          // Create new writing item (grant or fundraising)
-          const { data, error } = await supabase
-            .from('writing_items')
-            .insert([
-              {
-                id: crypto.randomUUID(),
-                title: title || 'Untitled Document',
-                content,
-                type: editorType,
-                project_id: project.id,
-                status: 'draft',
-                user_id: user.id,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              },
-            ])
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Error creating writing item:', error);
-            throw error;
-          }
-          savedItem = data;
-          setSuccessMessage('Document saved successfully!');
+        if (error) {
+          console.error('Error saving document:', error);
+          throw error;
         }
+        savedItem = data;
       }
 
-      // Update the savedItems state with the new/updated item
+      // Update the savedItems state with the new item
       setSavedItems(prev => ({
         ...prev,
         [editorType === 'insights' ? 'insights' : editorType === 'grant' ? 'grants' : 'fundraising']: [
@@ -532,36 +466,45 @@ ${response.content}
       // Update editor state but don't close it
       setEditorItem(savedItem);
       setIsEditing(true);
+      setSuccessMessage('Document saved successfully!');
     } catch (err) {
       console.error('Error saving document:', err instanceof Error ? err.message : 'Unknown error occurred');
       setError(err instanceof Error ? err.message : 'Failed to save document');
     }
   };
 
-  const handleDeleteItem = async (item: any) => {
+  const handleDeleteItem = async (itemId: string) => {
     try {
+      // Find the item in savedItems to determine its type
+      const item = [...savedItems.grants, ...savedItems.fundraising, ...savedItems.insights]
+        .find(item => item.id === itemId);
+
+      if (!item) {
+        throw new Error('Item not found');
+      }
+
       if (item.type === 'grant') {
         // Delete grant document
         const { error } = await supabase
           .from('grant_documents')
           .delete()
-          .eq('id', item.id);
+          .eq('id', itemId);
 
         if (error) throw error;
 
         // Update the UI state
         setSavedItems(prev => ({
           ...prev,
-          grants: prev.grants.filter(grant => grant.id !== item.id),
+          grants: prev.grants.filter(grant => grant.id !== itemId),
         }));
 
         // Clear current document if it was deleted
-        if (currentGrantDocument?.id === item.id) {
+        if (currentGrantDocument?.id === itemId) {
           setCurrentGrantDocument(null);
         }
 
         // Close the editor if it's open and showing the deleted document
-        if (showEditor && editorType === 'grant' && currentGrantDocument?.id === item.id) {
+        if (showEditor && editorType === 'grant' && currentGrantDocument?.id === itemId) {
           setShowEditor(false);
           setEditorType(null);
           setEditorItem(null);
@@ -571,7 +514,7 @@ ${response.content}
         const { error } = await supabase
           .from(item.type === 'insights' ? 'project_content' : 'writing_items')
           .delete()
-          .eq('id', item.id);
+          .eq('id', itemId);
 
         if (error) throw error;
 
@@ -580,12 +523,12 @@ ${response.content}
           ...prev,
           [item.type === 'insights' ? 'insights' : 'fundraising']: 
             prev[item.type === 'insights' ? 'insights' : 'fundraising'].filter(
-              savedItem => savedItem.id !== item.id
+              savedItem => savedItem.id !== itemId
             ),
         }));
 
         // Close the editor if it's open and showing the deleted item
-        if (showEditor && editorType === item.type && editorItem?.id === item.id) {
+        if (showEditor && editorType === item.type && editorItem?.id === itemId) {
           setShowEditor(false);
           setEditorType(null);
           setEditorItem(null);
@@ -594,8 +537,8 @@ ${response.content}
 
       setSuccessMessage('Item deleted successfully!');
     } catch (err) {
-      console.error('Error deleting item:', err);
-      setError('Failed to delete item');
+      console.error('Error deleting item:', err instanceof Error ? err.message : 'Unknown error occurred');
+      setError(err instanceof Error ? err.message : 'Failed to delete item');
     }
   };
 
@@ -604,7 +547,6 @@ ${response.content}
     setFormData({
       name: project.name || '',
       description: project.description || '',
-      status: project.status || 'planning',
       impact_target: project.impact_target || '',
       impact_metric: project.impact_metric || '',
       start_date: project.start_date || '',
@@ -616,14 +558,10 @@ ${response.content}
   };
 
   const validateForm = (): boolean => {
-    const errors: FormErrors = {};
+    const errors: Partial<ProjectFormData> = {};
     
     if (!formData.name || typeof formData.name !== 'string' || !formData.name.trim()) {
       errors.name = 'Project name is required';
-    }
-    
-    if (!formData.status) {
-      errors.status = 'Please select a status';
     }
     
     if (!formData.impact_target || typeof formData.impact_target !== 'string' || !formData.impact_target.trim()) {
@@ -666,7 +604,6 @@ ${response.content}
         .update({
           name: formData.name.trim(),
           description: formData.description.trim(),
-          status: formData.status,
           impact_target: formData.impact_target.trim(),
           impact_metric: formData.impact_metric.trim(),
           start_date: formData.start_date,
@@ -682,12 +619,12 @@ ${response.content}
         ...project, 
         ...formData,
         budget: budgetValue,
+        status: project.status || 'planning'
       });
       setIsEditingProject(false);
       setFormData({
         name: '',
         description: '',
-        status: 'planning',
         impact_target: '',
         impact_metric: '',
         start_date: '',
@@ -707,7 +644,6 @@ ${response.content}
     setFormData({
       name: '',
       description: '',
-      status: 'planning',
       impact_target: '',
       impact_metric: '',
       start_date: '',
@@ -726,6 +662,65 @@ ${response.content}
       return 'Invalid date';
     }
   };
+
+  // Update the calculateMetrics function
+  const calculateMetrics = async () => {
+    if (!project) return;
+
+    try {
+      // Calculate timeline progress
+      if (project.start_date && project.end_date) {
+        const start = new Date(project.start_date);
+        const end = new Date(project.end_date);
+        const now = new Date();
+        const total = end.getTime() - start.getTime();
+        const elapsed = now.getTime() - start.getTime();
+        const timelineProgress = Math.min(Math.max((elapsed / total) * 100, 0), 100);
+        setMetrics(prev => ({ ...prev, timelineProgress }));
+      }
+
+      // Calculate grant success rate
+      const { data: grantDocs, error: grantError } = await supabase
+        .from('grant_documents')
+        .select('id, project_id, status')
+        .eq('project_id', project.id);
+
+      if (grantError) {
+        console.error('Error fetching grant documents:', grantError);
+        return;
+      }
+
+      if (grantDocs && grantDocs.length > 0) {
+        const successfulGrants = grantDocs.filter(doc => doc.status === 'approved').length;
+        const totalGrants = grantDocs.length;
+        const grantSuccess = (successfulGrants / totalGrants) * 100;
+        setMetrics(prev => ({ ...prev, grantSuccess }));
+      }
+
+      // Calculate fundraising progress (placeholder)
+      setMetrics(prev => ({ ...prev, fundraisingProgress: 0 }));
+
+      // Calculate risk score
+      const riskFactors = {
+        timelineOverrun: metrics.timelineProgress > 100 ? 1 : 0,
+        budgetOverrun: 0, // Placeholder
+        lowGrantSuccess: metrics.grantSuccess < 50 ? 1 : 0,
+        lowFundraising: metrics.fundraisingProgress < 50 ? 1 : 0
+      };
+
+      const riskScore = Object.values(riskFactors).reduce((sum, factor) => sum + factor, 0) * 25;
+      setMetrics(prev => ({ ...prev, riskScore }));
+    } catch (error) {
+      console.error('Error calculating metrics:', error);
+    }
+  };
+
+  // Add useEffect to calculate metrics when project changes
+  useEffect(() => {
+    if (project) {
+      calculateMetrics();
+    }
+  }, [project]);
 
   if (loading) {
     return (
@@ -769,25 +764,30 @@ ${response.content}
 
       {/* Project Status and Metrics */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Timeline Progress */}
           <div className="flex items-center space-x-4">
             <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <ChartPieIcon className="h-6 w-6 text-purple-600" />
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                <CalendarIcon className="h-6 w-6 text-blue-600" />
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Progress</h3>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.progress}%</p>
+              <h3 className="text-sm font-medium text-gray-500">Timeline Progress</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{Math.round(metrics.timelineProgress)}%</p>
               <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-purple-600 h-2 rounded-full"
-                  style={{ width: `${metrics.progress}%` }}
+                  className="bg-blue-600 h-2 rounded-full"
+                  style={{ width: `${metrics.timelineProgress}%` }}
                 ></div>
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {formatDate(project.start_date)} - {formatDate(project.end_date)}
+              </p>
             </div>
           </div>
 
+          {/* Budget Progress */}
           <div className="flex items-center space-x-4">
             <div className="flex-shrink-0">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
@@ -795,35 +795,65 @@ ${response.content}
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Budget Spent</h3>
+              <h3 className="text-sm font-medium text-gray-500">Budget Progress</h3>
               <p className="mt-1 text-2xl font-semibold text-gray-900">${metrics.budgetSpent.toLocaleString()}</p>
               <p className="mt-1 text-sm text-gray-500">of ${(project.budget ?? 0).toLocaleString()}</p>
+              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${
+                    metrics.budgetProgress > 90 ? 'bg-red-600' : metrics.budgetProgress > 75 ? 'bg-yellow-600' : 'bg-green-600'
+                  }`}
+                  style={{ width: `${metrics.budgetProgress}%` }}
+                ></div>
+              </div>
             </div>
           </div>
 
+          {/* Impact Progress */}
           <div className="flex items-center space-x-4">
             <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <TagIcon className="h-6 w-6 text-blue-600" />
+              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                <ArrowTrendingUpIcon className="h-6 w-6 text-purple-600" />
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Impact Achieved</h3>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.impactAchieved}%</p>
-              <p className="mt-1 text-sm text-gray-500">of {project.impact_target}</p>
+              <h3 className="text-sm font-medium text-gray-500">Impact Progress</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{Math.round(metrics.impactProgress)}%</p>
+              <p className="mt-1 text-sm text-gray-500">of {project.impact_target} {project.impact_metric}</p>
+              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-purple-600 h-2 rounded-full"
+                  style={{ width: `${metrics.impactProgress}%` }}
+                ></div>
+              </div>
             </div>
           </div>
 
+          {/* Risk Score */}
           <div className="flex items-center space-x-4">
             <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
-                <ArrowTrendingUpIcon className="h-6 w-6 text-yellow-600" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                metrics.riskScore > 75 ? 'bg-red-100' : metrics.riskScore > 50 ? 'bg-yellow-100' : 'bg-green-100'
+              }`}>
+                <ChartPieIcon className={`h-6 w-6 ${
+                  metrics.riskScore > 75 ? 'text-red-600' : metrics.riskScore > 50 ? 'text-yellow-600' : 'text-green-600'
+                }`} />
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-500">Team Efficiency</h3>
-              <p className="mt-1 text-2xl font-semibold text-gray-900">{metrics.teamEfficiency}%</p>
-              <p className="mt-1 text-sm text-gray-500">based on milestones</p>
+              <h3 className="text-sm font-medium text-gray-500">Project Health</h3>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{Math.round(100 - metrics.riskScore)}%</p>
+              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${
+                    metrics.riskScore > 75 ? 'bg-red-600' : metrics.riskScore > 50 ? 'bg-yellow-600' : 'bg-green-600'
+                  }`}
+                  style={{ width: `${metrics.riskScore}%` }}
+                ></div>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {metrics.riskScore > 75 ? 'High Risk' : metrics.riskScore > 50 ? 'Medium Risk' : 'Low Risk'}
+              </p>
             </div>
           </div>
         </div>
@@ -852,16 +882,13 @@ ${response.content}
           >
             Grants
           </button>
-          <button
-            onClick={() => setActiveTab('fundraising')}
-            className={`${
-              activeTab === 'fundraising'
-                ? 'border-purple-500 text-purple-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+          <a
+            href={`/fundraising?project=${project.id}`}
+            className="inline-flex items-center text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm"
           >
+            <ChartBarIcon className="h-5 w-5 mr-2" />
             Fundraising
-          </button>
+          </a>
         </nav>
       </div>
 
@@ -883,102 +910,80 @@ ${response.content}
                   </button>
                 )}
               </div>
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {isEditingProject ? (
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     handleSaveProject();
-                  }} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                          Project Name
-                        </label>
-                        <input
-                          type="text"
-                          id="name"
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                            formErrors.name ? 'border-red-300' : ''
-                          }`}
-                        />
-                        {formErrors.name && (
-                          <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
-                        )}
-                      </div>
+                  }}>
+                    <div>
+                      <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                        Project Name
+                      </label>
+                      <input
+                        type="text"
+                        id="name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.name ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.name && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                      )}
+                    </div>
 
-                      <div>
-                        <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                          Status
-                        </label>
-                        <select
-                          id="status"
-                          value={formData.status}
-                          onChange={(e) => setFormData({ ...formData, status: e.target.value as Project['status'] })}
-                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                            formErrors.status ? 'border-red-300' : ''
-                          }`}
-                        >
-                          <option value="planning">Planning</option>
-                          <option value="active">Active</option>
-                          <option value="completed">Completed</option>
-                          <option value="on_hold">On Hold</option>
-                        </select>
-                        {formErrors.status && (
-                          <p className="mt-1 text-sm text-red-600">{formErrors.status}</p>
-                        )}
-                      </div>
+                    <div>
+                      <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                        Description
+                      </label>
+                      <textarea
+                        id="description"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                      />
+                    </div>
 
-                      <div className="md:col-span-2">
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                          Description
-                        </label>
-                        <textarea
-                          id="description"
-                          value={formData.description}
-                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                          rows={3}
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                        />
-                      </div>
+                    <div>
+                      <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
+                        Impact Target
+                      </label>
+                      <input
+                        type="text"
+                        id="impact_target"
+                        value={formData.impact_target}
+                        onChange={(e) => setFormData({ ...formData, impact_target: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.impact_target ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.impact_target && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_target}</p>
+                      )}
+                    </div>
 
-                      <div>
-                        <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
-                          Impact Target
-                        </label>
-                        <input
-                          type="text"
-                          id="impact_target"
-                          value={formData.impact_target}
-                          onChange={(e) => setFormData({ ...formData, impact_target: e.target.value })}
-                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                            formErrors.impact_target ? 'border-red-300' : ''
-                          }`}
-                        />
-                        {formErrors.impact_target && (
-                          <p className="mt-1 text-sm text-red-600">{formErrors.impact_target}</p>
-                        )}
-                      </div>
+                    <div>
+                      <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
+                        Impact Metric
+                      </label>
+                      <input
+                        type="text"
+                        id="impact_metric"
+                        value={formData.impact_metric}
+                        onChange={(e) => setFormData({ ...formData, impact_metric: e.target.value })}
+                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                          formErrors.impact_metric ? 'border-red-300' : ''
+                        }`}
+                      />
+                      {formErrors.impact_metric && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_metric}</p>
+                      )}
+                    </div>
 
-                      <div>
-                        <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
-                          Impact Metric
-                        </label>
-                        <input
-                          type="text"
-                          id="impact_metric"
-                          value={formData.impact_metric}
-                          onChange={(e) => setFormData({ ...formData, impact_metric: e.target.value })}
-                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                            formErrors.impact_metric ? 'border-red-300' : ''
-                          }`}
-                        />
-                        {formErrors.impact_metric && (
-                          <p className="mt-1 text-sm text-red-600">{formErrors.impact_metric}</p>
-                        )}
-                      </div>
-
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
                           Start Date
@@ -1014,76 +1019,100 @@ ${response.content}
                           <p className="mt-1 text-sm text-red-600">{formErrors.end_date}</p>
                         )}
                       </div>
-
-                      <div>
-                        <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                          Budget
-                        </label>
-                        <div className="mt-1 relative rounded-md shadow-sm">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span className="text-gray-500 sm:text-sm">$</span>
-                          </div>
-                          <input
-                            type="number"
-                            id="budget"
-                            value={formData.budget}
-                            onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
-                            min="0"
-                            step="0.01"
-                            className={`block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                              formErrors.budget ? 'border-red-300' : ''
-                            }`}
-                          />
-                        </div>
-                        {formErrors.budget && (
-                          <p className="mt-1 text-sm text-red-600">{formErrors.budget}</p>
-                        )}
-                      </div>
                     </div>
 
-                    <div className="flex justify-end gap-3">
+                    <div>
+                      <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+                        Budget
+                      </label>
+                      <div className="mt-1 relative rounded-md shadow-sm">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input
+                          type="number"
+                          id="budget"
+                          value={formData.budget}
+                          onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="0.01"
+                          className={`block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.budget ? 'border-red-300' : ''
+                          }`}
+                        />
+                      </div>
+                      {formErrors.budget && (
+                        <p className="mt-1 text-sm text-red-600">{formErrors.budget}</p>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end space-x-3 mt-6">
                       <button
                         type="button"
                         onClick={handleCancelEdit}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         Save Changes
                       </button>
                     </div>
                   </form>
                 ) : (
-                  <>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Impact Target</h3>
-                      <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_target}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Impact Metric</h3>
-                      <p className="mt-1 text-lg font-semibold text-gray-900">{project.impact_metric}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Timeline</h3>
-                      <div className="mt-2 flex items-center text-gray-900">
-                        <CalendarIcon className="h-5 w-5 mr-2" />
-                        <span>
-                          {formatDate(project.start_date)} - {formatDate(project.end_date)}
-                        </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Grant Success Section */}
+                    <div className="bg-purple-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-purple-700">Grant Performance</h3>
+                        <DocumentTextIcon className="h-5 w-5 text-purple-500" />
+                      </div>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm text-purple-600">Success Rate</span>
+                            <span className="text-sm font-medium text-purple-900">{Math.round(metrics.grantSuccess)}%</span>
+                          </div>
+                          <div className="w-full bg-purple-100 rounded-full h-2">
+                            <div
+                              className="bg-purple-600 h-2 rounded-full"
+                              style={{ width: `${metrics.grantSuccess}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div className="text-sm text-purple-600">
+                          {savedItems.grants.length} grant proposals
+                        </div>
+                        <div className="text-sm text-purple-600">
+                          {savedItems.grants.filter(grant => grant.status === 'approved').length} successful grants
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Budget</h3>
-                      <div className="mt-2 flex items-center text-gray-900">
-                        <CurrencyDollarIcon className="h-5 w-5 mr-2" />
-                        <span>${(typeof project.budget === 'number' ? project.budget : 0).toLocaleString()}</span>
+
+                    {/* Grant Insights Section */}
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-blue-700">Grant Insights</h3>
+                        <ChartPieIcon className="h-5 w-5 text-blue-500" />
+                      </div>
+                      <div className="space-y-4">
+                        <div className="text-sm text-blue-600">
+                          {savedItems.grants.length > 0 ? (
+                            <div>
+                              <p>• {savedItems.grants.filter(grant => grant.status === 'approved').length} successful grants</p>
+                              <p>• {savedItems.grants.filter(grant => grant.status === 'rejected').length} unsuccessful grants</p>
+                              <p>• {savedItems.grants.filter(grant => grant.status === 'pending').length} pending review</p>
+                            </div>
+                          ) : (
+                            <p>No grant proposals yet</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -1116,6 +1145,7 @@ ${response.content}
                       item={insight}
                       onEdit={() => handleOpenEditor('insights', insight)}
                       onDelete={handleDeleteItem}
+                      onDuplicate={() => handleOpenEditor('insights', { ...insight, title: `${insight.title} (Copy)` })}
                     />
                   ))}
                 </div>
@@ -1160,6 +1190,7 @@ ${response.content}
                     item={proposal}
                     onEdit={() => handleOpenEditor('grant', proposal)}
                     onDelete={handleDeleteItem}
+                    onDuplicate={() => handleOpenEditor('grant', { ...proposal, title: `${proposal.title} (Copy)` })}
                   />
                 ))}
               </div>
@@ -1170,49 +1201,6 @@ ${response.content}
                 <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-medium text-gray-900">No grant proposals</h3>
                 <p className="mt-1 text-sm text-gray-500">Create a grant proposal to get started.</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'fundraising' && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Fundraising Strategy</h2>
-              <button
-                onClick={() => handleOpenEditor('fundraising')}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700"
-              >
-                <ChartBarIcon className="h-5 w-5 mr-2" />
-                Create Fundraising Strategy
-              </button>
-            </div>
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-red-600">{error}</p>
-              </div>
-            )}
-
-            {/* Display saved fundraising strategies */}
-            {savedItems.fundraising.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {savedItems.fundraising.map((strategy) => (
-                  <SavedItemCard
-                    key={strategy.id}
-                    item={strategy}
-                    onEdit={() => handleOpenEditor('fundraising', strategy)}
-                    onDelete={handleDeleteItem}
-                  />
-                ))}
-              </div>
-            )}
-
-            {savedItems.fundraising.length === 0 && (
-              <div className="text-center py-12">
-                <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No fundraising strategies</h3>
-                <p className="mt-1 text-sm text-gray-500">Create a fundraising strategy to get started.</p>
               </div>
             )}
           </div>

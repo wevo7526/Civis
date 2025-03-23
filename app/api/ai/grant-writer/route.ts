@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { handleError, requireAuth, validateInput } from '@/lib/error-handling';
-import { AIResponse } from '@/lib/types';
+import { handleError, requireAuth, validateInput } from '../../../lib/error-handling';
+import { AIResponse } from '../../../lib/types';
 
 // Base system prompt for all agents
 const BASE_SYSTEM_PROMPT = `You are an expert grant writer and fundraising strategist for nonprofit organizations. Your role is to help organizations create compelling grant proposals by focusing on:
@@ -289,8 +289,8 @@ export async function POST(request: Request) {
     
     // Validate input
     validateInput(body, {
-      action: (value) => typeof value === 'string',
-      data: (value) => typeof value === 'object',
+      action: (value: unknown) => typeof value === 'string',
+      data: (value: unknown) => typeof value === 'object',
     });
 
     const { action, data } = body;
@@ -318,12 +318,25 @@ export async function POST(request: Request) {
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
       });
 
+      // Enhance the user prompt with project context
+      const projectContext = data.project ? `
+Project Context:
+- Name: ${data.project.name}
+- Description: ${data.project.description}
+- Mission: ${data.project.mission}
+- Goals: ${data.project.goals}
+- Target Audience: ${data.project.target_audience}
+- Location: ${data.project.location}
+- Timeline: ${data.project.timeline}
+- Budget: ${data.project.budget}
+` : '';
+
       // Generate response using the specialized agent
       const response = await model.invoke([
         { role: 'system', content: agent.systemPrompt },
-        { role: 'user', content: typeof agent.userPrompt === 'function' 
+        { role: 'user', content: `${projectContext}\n\n${typeof agent.userPrompt === 'function' 
           ? agent.userPrompt(data.prompt) 
-          : agent.userPrompt 
+          : agent.userPrompt}` 
         },
       ]);
 

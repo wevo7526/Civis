@@ -2,167 +2,286 @@
 
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { ChartBarIcon, LightBulbIcon, ArrowTrendingUpIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-
-interface FundraisingStrategy {
-  id: string;
-  organizationName: string;
-  organizationType: string;
-  targetAmount: number;
-  timeframe: string;
-  currentDonors: number;
-  status: 'active' | 'completed' | 'planned';
-  progress: number;
-  insights: string[];
-  recommendations: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+import { ChartBarIcon, LightBulbIcon, ArrowTrendingUpIcon, DocumentTextIcon, PlusIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { Project } from '@/app/lib/types';
+import ProjectFundraisingStrategy from './components/ProjectFundraisingStrategy';
+import DocumentEditor from '@/app/components/DocumentEditor';
+import SavedItemCard from '@/app/components/SavedItemCard';
 
 export default function FundraisingPage() {
-  const [strategies, setStrategies] = useState<FundraisingStrategy[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [savedItems, setSavedItems] = useState<any[]>([]);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [progressMessage, setProgressMessage] = useState('');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    fetchStrategies();
+    fetchProjects();
+    fetchSavedItems();
   }, []);
 
-  const fetchStrategies = async () => {
+  const fetchProjects = async () => {
     try {
       const { data, error } = await supabase
-        .from('fundraising_strategies')
+        .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setStrategies(data || []);
+      setProjects(data || []);
+      if (data && data.length > 0) {
+        setSelectedProject(data[0]);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch strategies');
+      setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchSavedItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('writing_items')
+        .select('*')
+        .eq('type', 'fundraising')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setSavedItems(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch strategies');
+    }
+  };
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    setProjectName(item.title || '');
+    setIsEditorOpen(true);
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('writing_items')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      await fetchSavedItems();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete strategy');
+    }
+  };
+
+  const handleDuplicate = async (item: any) => {
+    try {
+      const { error } = await supabase
+        .from('writing_items')
+        .insert({
+          title: `${item.title} (Copy)`,
+          content: item.content,
+          type: 'fundraising',
+          status: 'draft',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+      await fetchSavedItems();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to duplicate strategy');
+    }
+  };
+
+  const handleSave = async (title: string, content: string) => {
+    try {
+      if (editingItem) {
+        // Update existing item
+        const { error } = await supabase
+          .from('writing_items')
+          .update({
+            title,
+            content,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingItem.id);
+
+        if (error) throw error;
+      } else {
+        // Create new item
+        const { error } = await supabase
+          .from('writing_items')
+          .insert({
+            title,
+            content,
+            type: 'fundraising',
+            status: 'draft',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+      }
+
+      // Refresh the list
+      await fetchSavedItems();
+      setIsEditorOpen(false);
+      setEditingItem(null);
+      setProjectName('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save strategy');
+    }
+  };
+
+  const handleGenerate = async () => {
+    try {
+      setIsGenerating(true);
+      setProgressMessage('Generating strategy...');
+      
+      // Implement your AI generation logic here
+      // For now, we'll just simulate a delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setProgressMessage('Strategy generated successfully!');
+      setIsGenerating(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate strategy');
+      setIsGenerating(false);
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fundraising Strategies</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Create and manage AI-powered fundraising strategies for your organization
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreateForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          <ChartBarIcon className="h-5 w-5 mr-2" />
-          Create New Strategy
-        </button>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        </div>
-      ) : strategies.length === 0 ? (
-        <div className="text-center py-12">
-          <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No fundraising strategies</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating a new fundraising strategy.</p>
-          <div className="mt-6">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header Section */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Fundraising Strategy</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Create and manage your fundraising strategies
+              </p>
+            </div>
             <button
-              onClick={() => setShowCreateForm(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              onClick={() => {
+                setEditingItem(null);
+                setProjectName('');
+                setIsEditorOpen(true);
+              }}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              Create New Strategy
+              <PlusIcon className="h-5 w-5 mr-2" />
+              New Strategy
             </button>
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {strategies.map((strategy) => (
-            <div
-              key={strategy.id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">{strategy.organizationName}</h3>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  strategy.status === 'active' ? 'bg-green-100 text-green-800' :
-                  strategy.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                  'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {strategy.status.charAt(0).toUpperCase() + strategy.status.slice(1)}
-                </span>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-3 bg-purple-50 rounded-lg">
+                <DocumentTextIcon className="h-6 w-6 text-purple-600" />
               </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500">Target Amount</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    ${strategy.targetAmount.toLocaleString()}
-                  </p>
-                </div>
-                
-                <div>
-                  <p className="text-sm text-gray-500">Progress</p>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div
-                      className="bg-blue-600 h-2.5 rounded-full"
-                      style={{ width: `${strategy.progress}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">{strategy.progress}% complete</p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-500">Current Donors</p>
-                  <p className="text-lg font-semibold text-gray-900">{strategy.currentDonors}</p>
-                </div>
-
-                {strategy.insights && strategy.insights.length > 0 && (
-                  <div>
-                    <div className="flex items-center text-sm text-gray-500 mb-2">
-                      <LightBulbIcon className="h-4 w-4 mr-1" />
-                      Latest Insights
-                    </div>
-                    <p className="text-sm text-gray-700">{strategy.insights[0]}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-6 flex space-x-3">
-                <button
-                  onClick={() => {/* TODO: Implement view details */}}
-                  className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <DocumentTextIcon className="h-4 w-4 mr-2" />
-                  View Details
-                </button>
-                <button
-                  onClick={() => {/* TODO: Implement edit */}}
-                  className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <ArrowTrendingUpIcon className="h-4 w-4 mr-2" />
-                  Update Progress
-                </button>
+              <div className="ml-4">
+                <h3 className="text-sm font-medium text-gray-500">Total Strategies</h3>
+                <p className="text-2xl font-semibold text-gray-900">{savedItems.length}</p>
               </div>
             </div>
-          ))}
+          </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-3 bg-green-50 rounded-lg">
+                <CheckCircleIcon className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-medium text-gray-500">Approved</h3>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {savedItems.filter(item => item.status === 'approved').length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+            <div className="flex items-center">
+              <div className="p-3 bg-blue-50 rounded-lg">
+                <ClockIcon className="h-6 w-6 text-blue-600" />
+              </div>
+              <div className="ml-4">
+                <h3 className="text-sm font-medium text-gray-500">In Review</h3>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {savedItems.filter(item => item.status === 'in_review').length}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-      )}
 
-      {/* TODO: Add CreateStrategyForm component */}
+        {/* Content Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+          {savedItems.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="mx-auto h-12 w-12 text-gray-400">
+                <DocumentTextIcon className="h-12 w-12" />
+              </div>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No strategies</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Get started by creating a new fundraising strategy.
+              </p>
+            </div>
+          ) : (
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {savedItems.map((item) => (
+                  <SavedItemCard
+                    key={item.id}
+                    item={item}
+                    onEdit={handleEdit}
+                    onDelete={handleDeleteItem}
+                    onDuplicate={handleDuplicate}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Editor Modal */}
+      {isEditorOpen && (
+        <DocumentEditor
+          isOpen={isEditorOpen}
+          onClose={() => {
+            setIsEditorOpen(false);
+            setEditingItem(null);
+            setProjectName('');
+          }}
+          onSave={handleSave}
+          initialData={editingItem}
+          type="fundraising"
+          projectName={projectName}
+          onGenerate={handleGenerate}
+          isGenerating={isGenerating}
+          progressMessage={progressMessage}
+          isEditing={!!editingItem}
+        />
+      )}
     </div>
   );
 } 

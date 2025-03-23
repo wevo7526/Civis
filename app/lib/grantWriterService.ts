@@ -1,34 +1,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Project } from './types';
+import { Project, GrantDocument, GrantSection } from './types';
 
-export interface GrantSection {
-  id: string;
-  title: string;
-  content: string;
-  status: 'draft' | 'generated' | 'reviewed';
-  lastUpdated: string;
-}
-
-export interface GrantDocument {
-  id: string;
-  project_id: string;
-  title: string;
-  sections: GrantSection[];
-  status: 'draft' | 'in_progress' | 'completed';
-  type: 'standard' | 'custom';
-  createdAt: string;
-  updatedAt: string;
-}
-
-const GRANT_SECTIONS = [
-  {
-    id: 'executive_summary',
-    title: 'Executive Summary',
-    description: 'A concise overview of the project, its goals, and expected impact',
-    required: true,
-  },
-  // ... rest of the sections ...
-];
+const supabase = createClientComponentClient();
 
 export interface AIResponse {
   success: boolean;
@@ -37,89 +10,168 @@ export interface AIResponse {
 }
 
 export const grantWriterService = {
-  async generateSection(sectionId: string, project: Project): Promise<AIResponse> {
+  // Section-specific generation methods
+  async generateSection(sectionId: string, project: Project, customPrompt?: string): Promise<AIResponse> {
     try {
-      // TODO: Implement AI generation logic
+      const response = await fetch('/api/ai/grant-writer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: customPrompt ? 'generate_custom_section' : `generate_${sectionId}`,
+          data: {
+            prompt: customPrompt,
+            project: project,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate section');
+      }
+
+      const data = await response.json();
       return {
-        success: true,
-        content: 'Generated content placeholder'
+        success: data.success,
+        content: data.content,
+        error: data.error,
       };
     } catch (error) {
+      console.error('Error generating section:', error);
       return {
         success: false,
         content: '',
-        error: error instanceof Error ? error.message : 'Failed to generate content'
+        error: error instanceof Error ? error.message : 'Failed to generate content',
       };
     }
   },
 
-  async generateCustomSection(prompt: string): Promise<AIResponse> {
-    try {
-      // TODO: Implement custom AI generation logic
-      return {
-        success: true,
-        content: 'Generated custom content placeholder'
-      };
-    } catch (error) {
-      return {
-        success: false,
-        content: '',
-        error: error instanceof Error ? error.message : 'Failed to generate content'
-      };
-    }
+  async generateCustomSection(prompt: string, project: Project): Promise<AIResponse> {
+    return this.generateSection('custom', project, prompt);
   },
 
+  // Document management methods
   async saveDocument(document: GrantDocument): Promise<void> {
-    const supabase = createClientComponentClient();
+    try {
+      const { error } = await supabase
+        .from('grant_documents')
+        .update({
+          title: document.title,
+          sections: document.sections,
+          status: document.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', document.id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving document:', error);
+      throw error;
+    }
+  },
+
+  async createGrantDocument(projectId: string, title: string): Promise<GrantDocument> {
+    const { data, error } = await supabase
+      .from('grant_documents')
+      .insert([{
+        project_id: projectId,
+        title,
+        type: 'standard',
+        status: 'draft',
+        sections: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updateGrantDocument(id: string, updates: Partial<GrantDocument>): Promise<GrantDocument> {
+    const { data, error } = await supabase
+      .from('grant_documents')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getGrantDocument(id: string): Promise<GrantDocument | null> {
+    const { data, error } = await supabase
+      .from('grant_documents')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getGrantDocuments(projectId: string): Promise<GrantDocument[]> {
+    const { data, error } = await supabase
+      .from('grant_documents')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async deleteGrantDocument(id: string): Promise<void> {
     const { error } = await supabase
       .from('grant_documents')
-      .upsert(document);
+      .delete()
+      .eq('id', id);
 
     if (error) throw error;
   },
 
-  async createGrantDocument(projectId: string): Promise<GrantDocument> {
-    const supabase = createClientComponentClient();
+  async updateGrantSection(documentId: string, sectionId: string, content: string): Promise<void> {
     try {
-      const { data, error } = await supabase
+      // First get the current document
+      const { data: document, error: fetchError } = await supabase
         .from('grant_documents')
-        .insert([
-          {
-            project_id: projectId,
-            sections: GRANT_SECTIONS.map((section: { id: string; title: string; description: string; required: boolean }) => ({
-              id: section.id,
-              title: section.title,
-              content: '',
-              status: 'draft',
-              lastUpdated: new Date().toISOString(),
-            })),
-            status: 'draft',
-            type: 'standard',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-        ])
-        .select()
+        .select('sections')
+        .eq('id', documentId)
         .single();
 
-      if (error) {
-        console.error('Error creating grant document:', error);
-        throw new Error('Failed to create grant document');
-      }
+      if (fetchError) throw fetchError;
 
-      // Transform the response to match the GrantDocument interface
-      return {
-        id: data.id,
-        project_id: data.project_id,
-        title: data.title,
-        sections: data.sections,
-        status: data.status,
-        type: data.type,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
+      // Update the specific section
+      const updatedSections = document.sections.map((section: any) => {
+        if (section.id === sectionId) {
+          return {
+            ...section,
+            content,
+            status: 'generated',
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+        return section;
+      });
+
+      // Update the document with the new sections
+      const { error: updateError } = await supabase
+        .from('grant_documents')
+        .update({
+          sections: updatedSections,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', documentId);
+
+      if (updateError) throw updateError;
     } catch (error) {
-      console.error('Error in createGrantDocument:', error);
+      console.error('Error updating section:', error);
       throw error;
     }
   }

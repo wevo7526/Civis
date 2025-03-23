@@ -251,6 +251,7 @@ export default function DocumentEditor({
   const [wordCount, setWordCount] = useState(0);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -309,9 +310,25 @@ export default function DocumentEditor({
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      await onSave(title, content);
+      setSaveError(null);
+      
+      // Validate inputs
+      if (!title.trim()) {
+        throw new Error('Title is required');
+      }
+      
+      if (!content.trim()) {
+        throw new Error('Content is required');
+      }
+
+      // Call the onSave prop with the current title and content
+      await onSave(title.trim(), content.trim());
+      
+      // If save is successful, close the editor
+      onClose();
     } catch (error) {
       console.error('Error saving document:', error);
+      setSaveError(error instanceof Error ? error.message : 'Failed to save document');
     } finally {
       setIsSaving(false);
     }
@@ -378,58 +395,44 @@ export default function DocumentEditor({
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-6xl w-full h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-gray-500/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <DocumentTextIcon className="h-6 w-6 text-purple-600" />
-            <h3 className="text-lg font-medium text-gray-900">
-              {externalIsEditing ? `Edit ${getDocumentTypeTitle()}` : `Create New ${getDocumentTypeTitle()}`}
-            </h3>
-          </div>
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 bg-white">
           <div className="flex items-center space-x-4">
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-500"
-            >
-              <span className="sr-only">Close</span>
-              <XMarkIcon className="h-6 w-6" />
-            </button>
+            <div className="p-2 bg-purple-50 rounded-xl">
+              <DocumentTextIcon className="h-6 w-6 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {externalIsEditing ? 'Edit' : 'Create'} {getDocumentTypeTitle()}
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5">Project: {projectName}</p>
+            </div>
           </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 rounded-xl p-2 transition-colors duration-200"
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Sidebar */}
-          <div className="w-64 border-r border-gray-200 bg-gray-50 p-4 overflow-y-auto">
+        <div className="flex-1 overflow-hidden flex">
+          {/* Editor Sidebar */}
+          <div className="w-72 border-r border-gray-100 bg-gray-50/50 p-6 overflow-y-auto">
             <div className="space-y-6">
-              {/* Document Info */}
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Document Info</h4>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Templates</h3>
                 <div className="space-y-2">
-                  <div className="text-sm flex items-center justify-between">
-                    <span className="text-gray-500">Words:</span>
-                    <span className="font-medium">{wordCount}</span>
-                  </div>
-                  <div className="text-sm flex items-center justify-between">
-                    <span className="text-gray-500">Type:</span>
-                    <span className="font-medium capitalize">{type}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Templates */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Templates</h4>
-                <div className="space-y-2">
-                  {TEMPLATES[type].map(template => (
+                  {TEMPLATES[type].map((template) => (
                     <button
                       key={template.id}
                       onClick={() => handleTemplateSelect(template.id)}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm ${
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                         activeTemplate === template.id
-                          ? 'bg-purple-100 text-purple-700'
+                          ? 'bg-purple-100 text-purple-700 shadow-sm'
                           : 'text-gray-700 hover:bg-gray-100'
                       }`}
                     >
@@ -438,205 +441,179 @@ export default function DocumentEditor({
                   ))}
                 </div>
               </div>
-
-              {/* AI Assistant */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">AI Assistant</h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => setShowTemplates(!showTemplates)}
-                    className="w-full flex items-center px-3 py-2 rounded-md text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    <SparklesIcon className="h-4 w-4 mr-2" />
-                    Show AI Suggestions
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
-          {/* Main Editor Area */}
+          {/* Editor Main Area */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Title Input */}
-            <div className="p-4 border-b border-gray-200">
+            <div className="px-8 py-5 border-b border-gray-100 bg-white">
               <input
                 type="text"
-                id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full text-xl font-semibold border-0 focus:ring-0 p-0"
-                placeholder="Enter document title..."
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-gray-50/50"
+                placeholder="Document Title"
               />
             </div>
-
-            {/* Editor Content */}
-            <div className="flex-1 overflow-y-auto">
-              {!externalIsEditing && !content ? (
-                <div className="h-full p-4">
-                  <div className="max-w-2xl mx-auto">
-                    <div className="text-center mb-8">
-                      <SparklesIcon className="mx-auto h-12 w-12 text-purple-600" />
-                      <h3 className="mt-2 text-lg font-medium text-gray-900">Generate with AI</h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Describe what you want to generate and let AI help you create content
-                      </p>
-                    </div>
-                    <div className="space-y-4">
-                      <textarea
-                        id="prompt"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        rows={6}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                        placeholder={`Describe what you want in your ${getDocumentTypeTitle().toLowerCase()}...`}
-                      />
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Formatting Toolbar */}
+              <div className="px-8 py-3 border-b border-gray-100 bg-white">
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-1 bg-gray-50/50 rounded-lg p-1">
+                    <button
+                      onClick={() => handleFormatText('bold')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Bold"
+                    >
+                      <BoldIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleFormatText('italic')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Italic"
+                    >
+                      <ItalicIcon className="h-4 w-4" />
+                    </button>
+                    <div className="w-px h-4 bg-gray-200 mx-1" />
+                    <button
+                      onClick={() => handleFormatText('bullet')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Bullet List"
+                    >
+                      <ListBulletIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleFormatText('number')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Numbered List"
+                    >
+                      <QueueListIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center space-x-1 bg-gray-50/50 rounded-lg p-1">
+                    <button
+                      onClick={() => handleFormatText('quote')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Quote"
+                    >
+                      <ChatBubbleLeftIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleFormatText('code')}
+                      className="p-2 text-gray-600 hover:text-purple-600 hover:bg-white rounded-md transition-all duration-200"
+                      title="Code Block"
+                    >
+                      <CodeBracketIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {previewMode ? (
+                  <div className="h-full overflow-y-auto p-8 prose prose-purple max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <textarea
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    onSelect={handleTextareaSelect}
+                    className="w-full h-full p-8 font-mono text-sm focus:outline-none resize-none bg-gray-50/50"
+                    placeholder="Start writing your content here..."
+                  />
+                )}
+              </div>
+              
+              {/* AI Generation Bar */}
+              <div className="border-t border-gray-100 bg-white p-4">
+                <div className="max-w-3xl mx-auto">
+                  <div className="relative">
+                    <textarea
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      placeholder="Ask AI to help with your content..."
+                      className="w-full pl-5 pr-32 py-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none bg-gray-50/50"
+                      rows={1}
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
                       <button
                         onClick={handleGenerate}
                         disabled={isGenerating || !prompt.trim()}
-                        className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
+                        className={`inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-lg text-white ${
+                          isGenerating || !prompt.trim()
+                            ? 'bg-purple-400 cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-700'
+                        } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md`}
                       >
                         {isGenerating ? (
-                          <div className="w-full">
-                            <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                              <div 
-                                className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
-                                style={{ width: `${generationProgress}%` }}
-                              ></div>
-                            </div>
-                            <div className="flex items-center justify-center">
-                              <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                              {progressMessage || `Generating... ${generationProgress}%`}
-                            </div>
-                          </div>
+                          <>
+                            <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
                         ) : (
                           <>
-                            <PencilIcon className="h-5 w-5 mr-2" />
-                            Generate Content
+                            <SparklesIcon className="h-4 w-4 mr-2" />
+                            Generate with AI
                           </>
                         )}
                       </button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="h-full flex flex-col">
-                  {/* Toolbar */}
-                  <div className="border-b border-gray-200 p-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex space-x-1">
-                        <button
-                          onClick={() => handleFormatText('bold')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Bold"
-                        >
-                          <BoldIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('italic')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Italic"
-                        >
-                          <ItalicIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('bullet')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Bullet List"
-                        >
-                          <ListBulletIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('numbered-list')}
-                          className="p-2 hover:bg-gray-100 rounded"
-                          title="Numbered List"
-                        >
-                          <QueueListIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('quote')}
-                          className="p-2 hover:bg-gray-100 rounded"
-                          title="Quote"
-                        >
-                          <ChatBubbleLeftIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('code')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Code"
-                        >
-                          <CodeBracketIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => setShowTemplates(!showTemplates)}
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                        >
-                          <DocumentDuplicateIcon className="h-4 w-4 mr-1.5" />
-                          Templates
-                        </button>
-                        <button
-                          onClick={() => setPreviewMode(!previewMode)}
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                        >
-                          <EyeIcon className="h-4 w-4 mr-1.5" />
-                          {previewMode ? 'Edit' : 'Preview'}
-                        </button>
-                      </div>
+                  {progressMessage && (
+                    <div className="mt-3 flex items-center text-sm text-purple-600">
+                      <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                      {progressMessage}
                     </div>
-                  </div>
-
-                  {/* Editor/Preview Area */}
-                  <div className="flex-1 p-4 overflow-y-auto">
-                    {previewMode ? (
-                      <div className="prose max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <textarea
-                        id="content"
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        onSelect={handleTextareaSelect}
-                        className="w-full h-full resize-none border-0 focus:ring-0 p-0"
-                        placeholder="Start writing your content..."
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-gray-200 p-4">
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={onClose}
-                  disabled={isSaving}
-                  className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
-                >
-                  {isSaving ? (
-                    <>
-                      <ArrowPathIcon className="h-4 w-4 mr-1.5 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
-                      Save Changes
-                    </>
                   )}
-                </button>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-8 py-5 border-t border-gray-100 bg-white">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setPreviewMode(!previewMode)}
+              className="inline-flex items-center px-4 py-2.5 border border-gray-200 text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              <EyeIcon className="h-4 w-4 mr-2" />
+              {previewMode ? 'Edit Mode' : 'Preview Mode'}
+            </button>
+          </div>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={onClose}
+              disabled={isSaving}
+              className="px-5 py-2.5 border border-gray-200 text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-medium rounded-xl text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? (
+                <>
+                  <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <DocumentCheckIcon className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </button>
+          </div>
+          {saveError && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-50 text-red-600 px-4 py-2 rounded-lg text-sm font-medium flex items-center">
+              <XMarkIcon className="h-4 w-4 mr-2" />
+              {saveError}
+            </div>
+          )}
         </div>
       </div>
     </div>

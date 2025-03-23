@@ -22,9 +22,9 @@ import {
 } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { GrantSection, GrantDocument, AIResponse } from '@/lib/grantWriterService';
-import { Project } from '@/lib/types';
-import { grantWriterService } from '@/lib/grantWriterService';
+import { GrantSection, GrantDocument } from '@/app/lib/types';
+import { Project } from '@/app/lib/types';
+import { grantWriterService, AIResponse } from '@/app/lib/grantWriterService';
 
 interface GrantSectionTemplate {
   id: string;
@@ -110,10 +110,14 @@ const GRANT_SECTIONS: GrantSectionTemplate[] = [
 
 const getSectionStatusIcon = (status: GrantSection['status']) => {
   switch (status) {
-    case 'generated':
+    case 'approved':
       return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
     case 'draft':
       return <PencilIcon className="h-4 w-4 text-yellow-500" />;
+    case 'in_review':
+      return <ClockIcon className="h-4 w-4 text-blue-500" />;
+    case 'rejected':
+      return <XCircleIcon className="h-4 w-4 text-red-500" />;
     default:
       return <ClockIcon className="h-4 w-4 text-gray-400" />;
   }
@@ -125,7 +129,7 @@ interface GrantDocumentEditorProps {
   document: GrantDocument;
   project: Project;
   onSave: (document: GrantDocument) => Promise<void>;
-  onGenerateSection: (sectionId: string) => Promise<void>;
+  onGenerateSection: (sectionId: string, customPrompt?: string) => Promise<void>;
   isGenerating: boolean;
   progressMessage?: string | null;
 }
@@ -307,7 +311,7 @@ export default function GrantDocumentEditor({
   onSave,
   onGenerateSection,
   isGenerating: externalIsGenerating,
-  progressMessage,
+  progressMessage: externalProgressMessage,
 }: GrantDocumentEditorProps) {
   const [document, setDocument] = useState<GrantDocument>(initialDocument);
   const [previewMode, setPreviewMode] = useState(false);
@@ -319,15 +323,28 @@ export default function GrantDocumentEditor({
   const [selectedText, setSelectedText] = useState('');
   const [wordCount, setWordCount] = useState(0);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [progressMessage, setProgressMessage] = useState<string | null>(externalProgressMessage || null);
 
   // Update document when initialDocument changes
   useEffect(() => {
     setDocument(initialDocument);
   }, [initialDocument]);
 
+  // Update progress message when external progress message changes
+  useEffect(() => {
+    if (externalProgressMessage) {
+      setProgressMessage(externalProgressMessage);
+    } else {
+      setProgressMessage(null);
+    }
+  }, [externalProgressMessage]);
+
   // Update isGenerating state when external state changes
   useEffect(() => {
     setIsGenerating(externalIsGenerating);
+    if (!externalIsGenerating) {
+      setProgressMessage(null); // Clear progress message when generation is complete
+    }
   }, [externalIsGenerating]);
 
   useEffect(() => {
@@ -341,71 +358,76 @@ export default function GrantDocumentEditor({
   }, [selectedSection, document]);
 
   const handleSectionUpdate = (sectionId: string, content: string) => {
-    setDocument((prev: GrantDocument) => ({
+    setDocument(prev => ({
       ...prev,
-      sections: prev.sections.map((section: GrantSection) =>
+      sections: prev.sections.map(section =>
         section.id === sectionId
-          ? { ...section, content, lastUpdated: new Date().toISOString() }
+          ? { ...section, content, last_updated: new Date().toISOString() }
           : section
       ),
-      updatedAt: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }));
   };
 
   const handleAddSection = (sectionId: string) => {
+    const template = GRANT_SECTIONS.find(s => s.id === sectionId);
+    if (!template) return;
+
     const newSection: GrantSection = {
       id: crypto.randomUUID(),
-      title: sectionId,
+      title: template.title,
       content: SECTION_TEMPLATES[sectionId as keyof typeof SECTION_TEMPLATES] || '',
       status: 'draft',
-      lastUpdated: new Date().toISOString(),
+      last_updated: new Date().toISOString(),
     };
 
-    setDocument((prev: GrantDocument) => ({
+    setDocument(prev => ({
       ...prev,
       sections: [...prev.sections, newSection],
-      updatedAt: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }));
     setSelectedSection(newSection.id);
   };
 
   const handleGenerateContent = async () => {
     if (!selectedSection) return;
-
+    
     try {
       setIsGenerating(true);
-      setError(null);
-
-      const response = await grantWriterService.generateCustomSection(customPrompt);
-      if (response.success) {
-        handleSectionUpdate(selectedSection, response.content);
-      } else {
-        throw new Error(response.error || 'Failed to generate content');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate content');
+      setProgressMessage('Generating content...');
+      await onGenerateSection(selectedSection, customPrompt);
+      setCustomPrompt(''); // Clear the custom prompt after successful generation
+    } catch (error) {
+      console.error('Error generating content:', error);
+      setError('Failed to generate content');
     } finally {
       setIsGenerating(false);
+      setProgressMessage(null); // Clear the progress message
     }
   };
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      await onSave(document);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save document');
+      setProgressMessage('Saving document...');
+      await onSave({
+        ...document,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error saving document:', error);
+      setError('Failed to save document');
     } finally {
       setIsSaving(false);
+      setProgressMessage(null); // Clear the progress message
     }
   };
 
   const handleDeleteSection = (sectionId: string) => {
-    setDocument((prev: GrantDocument) => ({
+    setDocument(prev => ({
       ...prev,
-      sections: prev.sections.filter((section: GrantSection) => section.id !== sectionId),
-      updatedAt: new Date().toISOString(),
+      sections: prev.sections.filter(section => section.id !== sectionId),
+      updated_at: new Date().toISOString(),
     }));
     if (selectedSection === sectionId) {
       setSelectedSection(null);
@@ -451,7 +473,11 @@ export default function GrantDocumentEditor({
             <DocumentTextIcon className="h-8 w-8 text-purple-600" />
             <div>
               <h2 className="text-2xl font-semibold text-gray-900">Grant Proposal</h2>
-              <p className="text-sm text-gray-500">Last saved: {new Date(document.updatedAt).toLocaleString()}</p>
+              {isSaving ? (
+                <p className="text-sm text-yellow-500">Saving...</p>
+              ) : (
+                <p className="text-sm text-gray-500">Last saved: {new Date(document.updated_at).toLocaleString()}</p>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-3">
@@ -501,7 +527,11 @@ export default function GrantDocumentEditor({
         {progressMessage && (
           <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
             <div className="flex">
-              <ArrowPathIcon className="h-5 w-5 text-blue-400 mr-3 animate-spin" />
+              {isGenerating ? (
+                <ArrowPathIcon className="h-5 w-5 text-blue-400 mr-3 animate-spin" />
+              ) : (
+                <CheckCircleIcon className="h-5 w-5 text-blue-400 mr-3" />
+              )}
               <p className="text-sm text-blue-700">{progressMessage}</p>
             </div>
           </div>
@@ -522,31 +552,79 @@ export default function GrantDocumentEditor({
                 </button>
               </div>
 
+              {/* Grant Status */}
+              <div className="mb-6">
+                <label htmlFor="success_status" className="block text-sm font-medium text-gray-700 mb-2">
+                  Grant Status
+                </label>
+                <div className="relative">
+                  <select
+                    id="success_status"
+                    value={document.success_status || ''}
+                    onChange={(e) => setDocument(prev => ({
+                      ...prev,
+                      success_status: e.target.value as 'successful' | 'unsuccessful' | null
+                    }))}
+                    className={`block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm rounded-md appearance-none ${
+                      document.success_status === 'successful' ? 'bg-green-50 border-green-300' :
+                      document.success_status === 'unsuccessful' ? 'bg-red-50 border-red-300' :
+                      'bg-yellow-50 border-yellow-300'
+                    }`}
+                  >
+                    <option value="">Pending Review</option>
+                    <option value="successful">Successful</option>
+                    <option value="unsuccessful">Unsuccessful</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                    <svg className="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center space-x-2">
+                  {document.success_status === 'successful' ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Funding Approved
+                    </span>
+                  ) : document.success_status === 'unsuccessful' ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                      Funding Denied
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                      Awaiting Decision
+                    </span>
+                  )}
+                </div>
+              </div>
+
               {/* Existing Sections */}
               <div className="mb-6">
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Existing Sections</h4>
                 <div className="space-y-1">
-                  {document.sections.map((section) => (
-                    <button
-                      key={section.id}
-                      onClick={() => setSelectedSection(section.id)}
-                      className={`w-full text-left px-4 py-2.5 text-sm rounded-md transition-colors duration-150 flex items-center justify-between ${
-                        selectedSection === section.id
-                          ? 'bg-purple-50 text-purple-700'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        {getSectionStatusIcon(section.status)}
-                        <span>
-                          {section.title.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {section.content.trim().split(/\s+/).filter(word => word.length > 0).length} words
-                      </div>
-                    </button>
-                  ))}
+                  {document.sections.map((section) => {
+                    const sectionTemplate = GRANT_SECTIONS.find(s => s.id === section.id);
+                    const displayTitle = sectionTemplate?.title || section.title;
+                    return (
+                      <button
+                        key={section.id}
+                        onClick={() => setSelectedSection(section.id)}
+                        className={`w-full text-left px-4 py-2.5 text-sm rounded-md transition-colors duration-150 flex items-center justify-between ${
+                          selectedSection === section.id
+                            ? 'bg-purple-50 text-purple-700'
+                            : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          {getSectionStatusIcon(section.status)}
+                          <span>{displayTitle}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {section.content.trim().split(/\s+/).filter(word => word.length > 0).length} words
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -592,35 +670,44 @@ export default function GrantDocumentEditor({
                       <div className="flex-1 p-6">
                         <div className="h-full bg-white rounded-lg shadow-sm flex flex-col">
                           {/* Toolbar */}
-                          <div className="flex items-center space-x-2 p-4 border-b border-gray-200">
-                            <button
-                              onClick={() => handleFormatText('bold')}
-                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                              title="Bold"
-                            >
-                              <BoldIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleFormatText('italic')}
-                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                              title="Italic"
-                            >
-                              <ItalicIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleFormatText('list')}
-                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                              title="Bullet List"
-                            >
-                              <ListBulletIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleFormatText('numbered')}
-                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                              title="Numbered List"
-                            >
-                              <QueueListIcon className="h-5 w-5" />
-                            </button>
+                          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                            <div className="flex items-center space-x-4">
+                              <button
+                                onClick={() => handleFormatText('bold')}
+                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                                title="Bold"
+                              >
+                                <BoldIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleFormatText('italic')}
+                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                                title="Italic"
+                              >
+                                <ItalicIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleFormatText('list')}
+                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                                title="Bullet List"
+                              >
+                                <ListBulletIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleFormatText('numbered')}
+                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                                title="Numbered List"
+                              >
+                                <QueueListIcon className="h-5 w-5" />
+                              </button>
+                              <div className="h-6 w-px bg-gray-300 mx-2"></div>
+                              <div className="text-sm text-gray-500">
+                                {wordCount} words
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                Last updated: {new Date(document.sections.find(s => s.id === selectedSection)?.last_updated || '').toLocaleString()}
+                              </div>
+                            </div>
                           </div>
 
                           {/* Editor */}
@@ -640,22 +727,32 @@ export default function GrantDocumentEditor({
                   {/* Footer */}
                   <div className="px-6 py-4 bg-white border-t border-gray-200">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="text-sm text-gray-500">
-                          {wordCount} words
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Last updated: {new Date(document.sections.find(s => s.id === selectedSection)?.lastUpdated || '').toLocaleString()}
-                        </div>
+                      <div className="flex-1 mr-4">
+                        <input
+                          type="text"
+                          value={customPrompt}
+                          onChange={(e) => setCustomPrompt(e.target.value)}
+                          placeholder="Enter custom prompt for AI generation..."
+                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-purple-500 focus:border-purple-500"
+                        />
                       </div>
                       <div className="flex space-x-3">
                         <button
-                          onClick={() => onGenerateSection(selectedSection)}
+                          onClick={() => handleGenerateContent()}
                           disabled={isGenerating}
                           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <SparklesIcon className="h-5 w-5 mr-2" />
-                          {isGenerating ? 'Generating...' : 'Generate'}
+                          {isGenerating ? (
+                            <>
+                              <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <SparklesIcon className="h-5 w-5 mr-2" />
+                              Generate
+                            </>
+                          )}
                         </button>
                         <button
                           onClick={() => handleDeleteSection(selectedSection)}

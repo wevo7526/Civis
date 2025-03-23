@@ -84,12 +84,15 @@ export interface FundraisingCampaign {
   id: string;
   name: string;
   description: string;
+  type: 'annual' | 'capital' | 'emergency' | 'program';
   goal: number;
   current_amount: number;
   start_date: string;
   end_date: string;
   status: 'planned' | 'active' | 'completed' | 'cancelled';
-  type: 'annual' | 'capital' | 'emergency' | 'program';
+  target_audience: string;
+  campaign_strategy: string;
+  success_metrics: string;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -116,36 +119,39 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  status: 'planning' | 'active' | 'completed' | 'on_hold';
-  budget: number;
+  status: 'active' | 'completed' | 'on_hold' | 'planning';
   start_date: string;
   end_date: string;
+  budget: number;
   impact_target: string;
   impact_metric: string;
   team_size: number;
   team_roles: string[];
-  goals: string[];
-  timeline: string;
   impact_current: number;
+  timeline: string;
+  goals: string[];
   grant?: {
     title: string;
     organization: string;
     amount: number;
     deadline: string;
-    status: string;
+    status: 'draft' | 'submitted' | 'awarded' | 'rejected';
     description: string;
     impact_statement: string;
     budget: number;
+    progress: {
+      proposal_status: 'not_started' | 'in_progress' | 'completed' | 'reviewed';
+      last_updated: string;
+      next_deadline: string;
+      sections_completed: number;
+      total_sections: number;
+      review_notes: string;
+    };
   };
   campaign?: {
-    name: string;
-    description: string;
+    type: 'annual' | 'capital' | 'emergency' | 'program';
     goal: number;
-    current_amount: number;
-    start_date: string;
     end_date: string;
-    status: string;
-    type: string;
   };
   created_at: string;
   updated_at: string;
@@ -224,4 +230,30 @@ export interface FundraisingMetric {
   unit: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface GrantSection {
+  id: string;
+  title: string;
+  content: string;
+  status: 'draft' | 'in_review' | 'approved' | 'rejected';
+  last_updated: string;
+}
+
+export interface GrantDocument {
+  id: string;
+  project_id: string;
+  title: string;
+  type: 'standard' | 'custom';
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  success_status?: 'successful' | 'unsuccessful' | null;
+  sections: GrantSection[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIResponse {
+  success: boolean;
+  content: string;
+  error?: string;
 } 

@@ -126,6 +126,14 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
           description: formData.description,
           impact_statement: '',
           budget: Number(formData.budget),
+          progress: {
+            proposal_status: 'not_started' as const,
+            last_updated: new Date().toISOString(),
+            next_deadline: formData.grant_deadline,
+            sections_completed: 0,
+            total_sections: 0,
+            review_notes: ''
+          }
         },
         campaign: {
           name: formData.name,
