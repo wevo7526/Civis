@@ -21,9 +21,9 @@ import {
 } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { GrantSection, GrantDocument, AIResponse } from '@/lib/grantWriterService';
-import { Project } from '@/lib/types';
-import { grantWriterService } from '@/lib/grantWriterService';
+import { GrantSection, GrantDocument, AIResponse } from '@/app/lib/grantWriterService';
+import { Project } from '@/app/lib/types';
+import { grantWriterService } from '@/app/lib/grantWriterService';
 
 interface GrantDocumentEditorProps {
   isOpen: boolean;

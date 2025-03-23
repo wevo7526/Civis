@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { globalAI } from '@/lib/globalAIService';
+import { aiService } from '@/app/lib/aiService';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -11,11 +11,15 @@ interface Message {
   timestamp: string;
 }
 
-export default function AIAssistant() {
+interface AIAssistantProps {
+  onGenerateResponse: (response: string) => void;
+}
+
+export default function AIAssistant({ onGenerateResponse }: AIAssistantProps) {
   const [mounted, setMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [message, setMessage] = useState('');
+  const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -46,29 +50,15 @@ export default function AIAssistant() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isLoading) return;
+    if (!prompt.trim()) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const userMessage = {
-        role: 'user' as const,
-        content: message.trim(),
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, userMessage]);
-      setMessage('');
-
-      const response = await globalAI.getAdvice(message.trim());
-      
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: response,
-        timestamp: new Date().toISOString(),
-      }]);
-    } catch (err) {
+      const response = await aiService.chat(prompt);
+      onGenerateResponse(response.content);
+    } catch (error) {
       setError('An error occurred while processing your request.');
     } finally {
       setIsLoading(false);
@@ -134,17 +124,18 @@ export default function AIAssistant() {
 
             <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
               <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Ask about nonprofit management..."
+                <textarea
+                  id="prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  rows={3}
                   className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                  placeholder="Ask about nonprofit management..."
                   disabled={isLoading}
                 />
                 <button
                   type="submit"
-                  disabled={isLoading || !message.trim()}
+                  disabled={isLoading || !prompt.trim()}
                   className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 >
                   {isLoading ? (

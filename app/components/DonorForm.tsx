@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Donor } from '@/lib/types';
+import { Donor } from '@/app/lib/types';
 
 interface DonorFormProps {
   donor?: Donor;
@@ -11,10 +11,14 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
   const [formData, setFormData] = useState({
     name: donor?.name || '',
     email: donor?.email || '',
-    last_donation: donor?.last_donation || new Date().toISOString().split('T')[0],
+    phone: donor?.phone || '',
+    donation_date: donor?.donation_date || new Date().toISOString().split('T')[0],
     amount: donor?.amount || 0,
+    status: donor?.status || 'active',
+    notes: donor?.notes || '',
+    last_donation: donor?.last_donation || new Date().toISOString().split('T')[0],
     engagement: donor?.engagement || 0,
-    last_contact: donor?.last_contact || new Date().toISOString().split('T')[0],
+    last_contact: donor?.last_contact || new Date().toISOString().split('T')[0]
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,14 +57,27 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
       </div>
 
       <div>
-        <label htmlFor="last_donation" className="block text-sm font-medium text-gray-700">
-          Last Donation Date
+        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+          Phone
+        </label>
+        <input
+          type="tel"
+          id="phone"
+          value={formData.phone}
+          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="donation_date" className="block text-sm font-medium text-gray-700">
+          Donation Date
         </label>
         <input
           type="date"
-          id="last_donation"
-          value={formData.last_donation}
-          onChange={(e) => setFormData({ ...formData, last_donation: e.target.value })}
+          id="donation_date"
+          value={formData.donation_date}
+          onChange={(e) => setFormData({ ...formData, donation_date: e.target.value })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           required
         />
@@ -88,6 +105,48 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
       </div>
 
       <div>
+        <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+          Status
+        </label>
+        <select
+          id="status"
+          value={formData.status}
+          onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          required
+        >
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+
+      <div>
+        <label htmlFor="notes" className="block text-sm font-medium text-gray-700">
+          Notes
+        </label>
+        <textarea
+          id="notes"
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          rows={3}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="last_donation" className="block text-sm font-medium text-gray-700">
+          Last Donation Date
+        </label>
+        <input
+          type="date"
+          id="last_donation"
+          value={formData.last_donation}
+          onChange={(e) => setFormData({ ...formData, last_donation: e.target.value })}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+        />
+      </div>
+
+      <div>
         <label htmlFor="engagement" className="block text-sm font-medium text-gray-700">
           Engagement Level (0-100)
         </label>
@@ -97,7 +156,6 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
           value={formData.engagement}
           onChange={(e) => setFormData({ ...formData, engagement: parseInt(e.target.value) })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          required
           min="0"
           max="100"
         />
@@ -113,7 +171,6 @@ export default function DonorForm({ donor, onSubmit, onCancel }: DonorFormProps)
           value={formData.last_contact}
           onChange={(e) => setFormData({ ...formData, last_contact: e.target.value })}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          required
         />
       </div>
 

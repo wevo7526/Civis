@@ -52,8 +52,8 @@ const navigation = [
   {
     name: 'Resources',
     items: [
-      { name: 'Strategy', href: '/dashboard/strategy', icon: RocketLaunchIcon },
-      { name: 'Fundraising', href: '/dashboard/fundraising', icon: ChartPieIcon },
+      { name: 'Strategy', href: '/strategy', icon: RocketLaunchIcon },
+      { name: 'Fundraising', href: '/fundraising', icon: ChartPieIcon },
     ],
   },
   {

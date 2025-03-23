@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
-import { Event } from '@/lib/types';
+import { Event } from '@/app/lib/types';
 import { UserGroupIcon, ClockIcon, ChartBarIcon, CalendarIcon, BanknotesIcon, CurrencyDollarIcon, ArrowTrendingUpIcon } from '@heroicons/react/24/outline';
 import { Badge } from '@/components/ui/badge';
 
