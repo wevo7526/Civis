@@ -2,9 +2,21 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
+import { MailDataRequired } from '@sendgrid/mail';
 
 // Initialize SendGrid with API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
+
+if (!SENDGRID_API_KEY) {
+  throw new Error('SENDGRID_API_KEY is not set');
+}
+
+if (!SENDGRID_FROM_EMAIL) {
+  throw new Error('SENDGRID_FROM_EMAIL is not set');
+}
+
+sgMail.setApiKey(SENDGRID_API_KEY);
 
 export async function POST(request: Request) {
   try {
@@ -30,9 +42,9 @@ export async function POST(request: Request) {
     }
 
     // Prepare email data
-    const msg = {
+    const msg: MailDataRequired = {
       to,
-      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@yourdomain.com',
+      from: { email: SENDGRID_FROM_EMAIL as string },
       subject,
       html: content,
       trackingSettings: {
@@ -43,7 +55,13 @@ export async function POST(request: Request) {
     };
 
     // Send email
-    await sgMail.send(msg);
+    const response = await sgMail.send(msg);
+    
+    if (!response || response[0]?.statusCode !== 202) {
+      throw new Error('Failed to send email via SendGrid');
+    }
+
+    const messageId = response[0]?.headers['x-message-id'];
 
     // Log the email send in your database
     const { error: logError } = await supabase
@@ -56,7 +74,8 @@ export async function POST(request: Request) {
           subject,
           content,
           status: 'sent',
-          sent_at: new Date().toISOString()
+          sent_at: new Date().toISOString(),
+          sendgrid_message_id: messageId
         }
       ]);
 
@@ -65,11 +84,19 @@ export async function POST(request: Request) {
       // Don't throw here, as the email was sent successfully
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      messageId
+    });
   } catch (error) {
     console.error('Error sending email:', error);
+    
+    // Return more detailed error information
     return NextResponse.json(
-      { error: 'Failed to send email' },
+      { 
+        error: 'Failed to send email',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

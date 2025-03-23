@@ -55,12 +55,10 @@ interface OutreachTemplate {
   type: 'donor' | 'volunteer' | 'both';
   subject: string;
   content: string;
-  schedule: 'immediate' | 'daily' | 'weekly' | 'monthly';
   status: 'draft' | 'active' | 'paused';
   created_at: string;
   updated_at: string;
   scheduledDate?: string;
-  isScheduled: boolean;
 }
 
 interface Recipient {
@@ -119,9 +117,19 @@ export default function OutreachPage() {
     recentParticipants: 0
   });
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(new Date());
-  const [isScheduled, setIsScheduled] = useState(false);
   const [isRichText, setIsRichText] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    type: 'both',
+    subject: '',
+  });
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const timeInputRef = useRef<HTMLInputElement>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<OutreachTemplate | null>(null);
 
   const loadAllData = async (isMounted: boolean) => {
     if (!isMounted) return;
@@ -287,6 +295,115 @@ export default function OutreachPage() {
     }
   }, [selectedTemplate]);
 
+  // Update form data handler
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Update select handler
+  const handleSelectChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      type: value
+    }));
+  };
+
+  // Update rich text formatting functions
+  const formatText = (command: string) => {
+    if (!editorRef.current) return;
+    
+    const textarea = editorRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = editorContent.substring(start, end);
+    
+    let newText = editorContent;
+    let newCursorPos = start;
+    
+    switch (command) {
+      case 'bold':
+        newText = editorContent.substring(0, start) + 
+                 `**${selectedText}**` + 
+                 editorContent.substring(end);
+        newCursorPos = start + 2;
+        break;
+      case 'italic':
+        newText = editorContent.substring(0, start) + 
+                 `*${selectedText}*` + 
+                 editorContent.substring(end);
+        newCursorPos = start + 1;
+        break;
+      case 'list':
+        const lines = selectedText.split('\n');
+        newText = editorContent.substring(0, start) + 
+                 lines.map(line => `- ${line}`).join('\n') + 
+                 editorContent.substring(end);
+        newCursorPos = start + 2;
+        break;
+    }
+    
+    setEditorContent(newText);
+    
+    // Restore cursor position after state update
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos + selectedText.length);
+      }
+    }, 0);
+  };
+
+  // Update AI assistant function
+  const handleAIGenerate = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('Please enter a prompt');
+      return;
+    }
+
+    try {
+      setIsGenerating(true);
+      const toastId = toast.loading('Generating content...');
+      
+      const response = await fetch('/api/ai/global', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: `Help me write an email for ${formData.type} recipients. The subject is: ${formData.subject}. ${aiPrompt}`,
+          context: {
+            currentPage: 'outreach',
+            templateType: formData.type,
+            subject: formData.subject
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get AI assistance');
+      }
+
+      const data = await response.json();
+      if (data.success && data.content?.[0]?.text) {
+        setEditorContent(prev => prev + '\n\n' + data.content[0].text);
+        toast.success('Content generated successfully', { id: toastId });
+        setAiPrompt('');
+      } else {
+        throw new Error('Invalid AI response');
+      }
+    } catch (error) {
+      console.error('AI generation error:', error);
+      toast.error('Failed to generate content');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Update handleCreateTemplate
   const handleCreateTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -295,82 +412,58 @@ export default function OutreachPage() {
       const { data: { user } } = await createClientComponentClient().auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const form = e.target as HTMLFormElement;
-      const formData = new FormData(form);
-      
-      // Get the schedule time if scheduled
-      const scheduleTime = isScheduled ? formData.get('schedule-time') as string : null;
-      
+      // Validate required fields
+      if (!formData.name || !formData.subject || !editorContent) {
+        throw new Error('Please fill in all required fields');
+      }
+
       // Create the template
       const newTemplate = {
         user_id: user.id,
-        name: formData.get('name') as string,
-        description: formData.get('description') as string,
-        type: formData.get('type') as 'donor' | 'volunteer' | 'both',
-        subject: formData.get('subject') as string,
+        name: formData.name,
+        type: formData.type as 'donor' | 'volunteer' | 'both',
+        subject: formData.subject,
         content: editorContent,
-        schedule: isScheduled ? 'scheduled' : 'immediate',
-        status: isScheduled ? 'draft' : 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        scheduledDate: isScheduled ? scheduledDate?.toISOString() : undefined,
-        isScheduled: isScheduled
+        schedule: 'immediate', // Add default schedule value
+        status: 'draft' // Start as draft
       };
 
-      const { data: template, error } = await createClientComponentClient()
+      // Create the template in the database
+      const { data: template, error: templateError } = await createClientComponentClient()
         .from('outreach_templates')
         .insert([newTemplate])
         .select()
         .single();
 
-      if (error) throw error;
-
-      // If scheduled, create scheduled email entries
-      if (isScheduled && scheduledDate) {
-        // Filter recipients based on template type
-        const targetRecipients = recipients.filter(r => 
-          template.type === 'both' || r.type === template.type
-        );
-
-        if (targetRecipients.length === 0) {
-          throw new Error('No recipients found for the selected type');
-        }
-
-        // Create scheduled email entries
-        const scheduledEmails = targetRecipients.map(recipient => ({
-          template_id: template.id,
-          recipient_id: recipient.id,
-          recipient_email: recipient.email,
-          recipient_name: recipient.name,
-          subject: template.subject,
-          content: template.content,
-          scheduled_date: scheduleTime 
-            ? new Date(`${scheduledDate.toISOString().split('T')[0]}T${scheduleTime}`).toISOString()
-            : new Date(scheduledDate).toISOString(),
-          status: 'pending'
-        }));
-
-        const { error: scheduledError } = await createClientComponentClient()
-          .from('scheduled_emails')
-          .insert(scheduledEmails);
-
-        if (scheduledError) throw scheduledError;
-      } else {
-        // If immediate, send emails right away
-        await activateTemplate(template);
+      if (templateError) {
+        console.error('Template creation error:', templateError);
+        throw new Error(templateError.message);
       }
 
-      setTemplates(prev => [...prev, template]);
+      if (!template) {
+        throw new Error('Failed to create template - no data returned');
+      }
+
+      // Update the templates list
+      setTemplates(prev => [template, ...prev]);
+      
+      // Reset form
       setIsCreateOpen(false);
       setEditorContent('');
-      setScheduledDate(undefined);
-      setIsScheduled(false);
+      setFormData({
+        name: '',
+        description: '',
+        type: 'both',
+        subject: '',
+      });
 
-      toast.success(isScheduled ? 'Template scheduled successfully' : 'Template created and activated');
+      // Show success message
+      toast.success('Template created successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create template';
       setError(errorMessage);
       toast.error(errorMessage);
+      console.error('Error creating template:', err);
     }
   };
 
@@ -488,93 +581,106 @@ export default function OutreachPage() {
     return matchesSearch && matchesType;
   });
 
-  // Add rich text formatting functions
-  const formatText = (command: string) => {
-    if (!editorRef.current) return;
-    
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = editorContent.substring(start, end);
-    
-    let newText = editorContent;
-    let newCursorPos = start;
-    
-    switch (command) {
-      case 'bold':
-        newText = editorContent.substring(0, start) + 
-                 `**${selectedText}**` + 
-                 editorContent.substring(end);
-        newCursorPos = start + 2;
-        break;
-      case 'italic':
-        newText = editorContent.substring(0, start) + 
-                 `*${selectedText}*` + 
-                 editorContent.substring(end);
-        newCursorPos = start + 1;
-        break;
-      case 'list':
-        const lines = selectedText.split('\n');
-        newText = editorContent.substring(0, start) + 
-                 lines.map(line => `- ${line}`).join('\n') + 
-                 editorContent.substring(end);
-        newCursorPos = start + 2;
-        break;
-    }
-    
-    setEditorContent(newText);
-    
-    // Restore cursor position after state update
-    setTimeout(() => {
-      if (textarea) {
-        textarea.focus();
-        textarea.setSelectionRange(newCursorPos, newCursorPos + selectedText.length);
-      }
-    }, 0);
-  };
+  // Add edit template function
+  const handleEditTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
 
-  // Add AI assistant function
-  const handleAIAssist = async () => {
     try {
-      const toastId = toast.loading('AI is helping with your email...');
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (!editingTemplate) throw new Error('No template selected for editing');
+
+      // Validate required fields
+      if (!formData.name || !formData.subject || !editorContent) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      // Update the template
+      const updatedTemplate = {
+        name: formData.name,
+        type: formData.type as 'donor' | 'volunteer' | 'both',
+        subject: formData.subject,
+        content: editorContent,
+        status: editingTemplate.status // Keep the current status
+      };
+
+      // First, check if the template exists and user has access
+      const { data: existingTemplate, error: checkError } = await createClientComponentClient()
+        .from('outreach_templates')
+        .select('*')
+        .eq('id', editingTemplate.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (checkError || !existingTemplate) {
+        throw new Error('Template not found or access denied');
+      }
+
+      // Update the template in the database
+      const { data: template, error: templateError } = await createClientComponentClient()
+        .from('outreach_templates')
+        .update(updatedTemplate)
+        .eq('id', editingTemplate.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (templateError) {
+        console.error('Template update error:', templateError);
+        throw new Error(templateError.message);
+      }
+
+      if (!template) {
+        throw new Error('Failed to update template - no data returned');
+      }
+
+      // Update the templates list
+      setTemplates(prev => prev.map(t => t.id === template.id ? template : t));
       
-      // Get form data from the form element
-      const form = document.getElementById('create-template-form') as HTMLFormElement;
-      if (!form) throw new Error('Form not found');
-      
-      const formData = new FormData(form);
-      const type = formData.get('type') as string;
-      const subject = formData.get('subject') as string;
-      
-      const response = await fetch('/api/ai/global', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: `Help me write an email for ${type} recipients. The subject is: ${subject}. Please provide suggestions for the email content.`,
-          context: {
-            currentPage: 'outreach',
-            templateType: type,
-            subject: subject
-          }
-        }),
+      // Reset form and close dialog
+      setIsCreateOpen(false);
+      setIsEditMode(false);
+      setEditingTemplate(null);
+      setEditorContent('');
+      setFormData({
+        name: '',
+        description: '',
+        type: 'both',
+        subject: '',
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get AI assistance');
-      }
+      // Show success message
+      toast.success('Template updated successfully');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update template';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      console.error('Error updating template:', err);
+    }
+  };
 
-      const data = await response.json();
-      if (data.success && data.content?.[0]?.text) {
-        setEditorContent(prev => prev + '\n\n' + data.content[0].text);
-        toast.success('AI suggestions added to your email', { id: toastId });
-      } else {
-        throw new Error('Invalid AI response');
-      }
-    } catch (error) {
-      console.error('AI assistance error:', error);
-      toast.error('Failed to get AI assistance');
+  // Add function to open edit mode
+  const openEditMode = (template: OutreachTemplate) => {
+    setEditingTemplate(template);
+    setIsEditMode(true);
+    setIsCreateOpen(true);
+    setFormData({
+      name: template.name,
+      description: template.description,
+      type: template.type,
+      subject: template.subject,
+    });
+    setEditorContent(template.content);
+  };
+
+  // Update the form submission handler
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    if (isEditMode) {
+      await handleEditTemplate(e);
+    } else {
+      await handleCreateTemplate(e);
     }
   };
 
@@ -703,10 +809,6 @@ export default function OutreachPage() {
                 {template.type === 'both' ? 'All Recipients' : `${template.type}s Only`}
               </div>
               <div className="flex items-center text-sm text-gray-600">
-                <ClockIcon className="h-4 w-4 mr-2 text-gray-400" />
-                {template.schedule}
-              </div>
-              <div className="flex items-center text-sm text-gray-600">
                 <DocumentTextIcon className="h-4 w-4 mr-2 text-gray-400" />
                 {template.content.length > 100 
                   ? `${template.content.substring(0, 100)}...` 
@@ -724,6 +826,14 @@ export default function OutreachPage() {
                 className="border-gray-200 hover:bg-gray-50"
               >
                 Preview
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openEditMode(template)}
+                className="border-gray-200 hover:bg-gray-50"
+              >
+                Edit
               </Button>
               {template.status === 'draft' && (
                 <Button
@@ -751,19 +861,23 @@ export default function OutreachPage() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
           <DialogHeader className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-100">
-            <DialogTitle className="text-2xl font-semibold text-gray-900">Create New Template</DialogTitle>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">
+              {isEditMode ? 'Edit Template' : 'Create New Template'}
+            </DialogTitle>
             <DialogDescription className="text-gray-600">
-              Create a new communication template for your donors and volunteers.
+              {isEditMode ? 'Update your communication template.' : 'Create a new communication template for your donors and volunteers.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form id="create-template-form" onSubmit={handleCreateTemplate} className="space-y-6 py-4">
-            <div className="grid grid-cols-2 gap-6">
+          <form id="create-template-form" onSubmit={handleFormSubmit} className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium text-gray-700">Template Name</Label>
                 <Input 
                   id="name" 
                   name="name" 
+                  value={formData.name}
+                  onChange={handleFormChange}
                   required 
                   placeholder="Enter template name"
                   className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
@@ -771,7 +885,7 @@ export default function OutreachPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="type" className="text-sm font-medium text-gray-700">Recipient Type</Label>
-                <Select name="type" defaultValue="both">
+                <Select value={formData.type} onValueChange={handleSelectChange}>
                   <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
@@ -785,21 +899,12 @@ export default function OutreachPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm font-medium text-gray-700">Description</Label>
-              <Textarea 
-                id="description" 
-                name="description" 
-                required 
-                placeholder="Enter template description"
-                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="subject" className="text-sm font-medium text-gray-700">Email Subject</Label>
               <Input 
                 id="subject" 
                 name="subject" 
+                value={formData.subject}
+                onChange={handleFormChange}
                 required 
                 placeholder="Enter email subject"
                 className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
@@ -815,132 +920,115 @@ export default function OutreachPage() {
                       id="rich-text"
                       checked={isRichText}
                       onCheckedChange={setIsRichText}
+                      className="data-[state=checked]:bg-purple-600 data-[state=unchecked]:bg-gray-200 relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 [&>span]:bg-white [&>span]:translate-x-0 data-[state=checked]:[&>span]:translate-x-4"
                     />
                     <Label htmlFor="rich-text" className="text-sm text-gray-600">Rich Text Editor</Label>
                   </div>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={handleAIAssist}
-                          className="text-gray-600 hover:text-gray-900"
-                        >
-                          <SparklesIcon className="h-4 w-4 mr-2" />
-                          AI Assistant
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Get AI help with writing your email</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
                 </div>
               </div>
               <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('bold')}
-                      className="text-gray-600 hover:text-gray-900"
-                    >
-                      <BoldIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('italic')}
-                      className="text-gray-600 hover:text-gray-900"
-                    >
-                      <ItalicIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('list')}
-                      className="text-gray-600 hover:text-gray-900"
-                    >
-                      <ListBulletIcon className="h-4 w-4" />
-                    </Button>
+                {isRichText && (
+                  <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                    <div className="flex items-center space-x-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => formatText('bold')}
+                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                            >
+                              <BoldIcon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Bold</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => formatText('italic')}
+                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                            >
+                              <ItalicIcon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Italic</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => formatText('list')}
+                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                            >
+                              <ListBulletIcon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Bullet List</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
-                </div>
+                )}
                 <Textarea
                   ref={editorRef}
                   value={editorContent}
                   onChange={(e) => setEditorContent(e.target.value)}
                   placeholder="Write your email content here..."
-                  className="min-h-[300px] border-0 focus:ring-0"
+                  className="min-h-[200px] border-0 focus:ring-0"
                 />
               </div>
-            </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="schedule"
-                  checked={isScheduled}
-                  onCheckedChange={setIsScheduled}
-                />
-                <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule for later</Label>
-              </div>
-
-              {isScheduled && (
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-gray-700">Schedule Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal border-gray-200",
-                            !scheduledDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {scheduledDate ? format(scheduledDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={scheduledDate}
-                          onSelect={setScheduledDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="schedule" className="text-sm font-medium text-gray-700">Schedule Time</Label>
-                    <Input
-                      type="time"
-                      id="schedule-time"
-                      className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
+              {/* AI Assistant Section */}
+              <div className="mt-2 space-y-2">
+                <Label className="text-sm font-medium text-gray-700">AI Assistant</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="Enter your prompt for AI assistance..."
+                    className="flex-1 border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAIGenerate}
+                    disabled={isGenerating}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    {isGenerating ? 'Generating...' : 'Generate'}
+                  </Button>
                 </div>
-              )}
+              </div>
             </div>
-          </form>
 
-          <div className="sticky bottom-0 bg-white z-10 pt-4 border-t border-gray-100">
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
                   setIsCreateOpen(false);
-                  setScheduledDate(undefined);
-                  setIsScheduled(false);
+                  setIsEditMode(false);
+                  setEditingTemplate(null);
                   setEditorContent('');
+                  setFormData({
+                    name: '',
+                    description: '',
+                    type: 'both',
+                    subject: '',
+                  });
                 }}
                 className="border-gray-200 hover:bg-gray-50"
               >
@@ -950,11 +1038,12 @@ export default function OutreachPage() {
                 type="submit"
                 form="create-template-form"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
+                disabled={!formData.name || !formData.subject || !editorContent}
               >
-                {isScheduled ? 'Schedule Template' : 'Create Template'}
+                {isEditMode ? 'Update Template' : 'Create Template'}
               </Button>
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -973,10 +1062,6 @@ export default function OutreachPage() {
                 <Label className="text-sm font-medium text-gray-700">Type</Label>
                 <p className="text-gray-900">{selectedTemplate?.type === 'both' ? 'All Recipients' : `${selectedTemplate?.type}s Only`}</p>
               </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-700">Schedule</Label>
-                <p className="text-gray-900">{selectedTemplate?.schedule}</p>
-              </div>
             </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">Subject</Label>
@@ -990,6 +1075,26 @@ export default function OutreachPage() {
                   dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
                 />
               </div>
+            </div>
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+              <Button
+                variant="outline"
+                onClick={() => setIsPreviewOpen(false)}
+                className="border-gray-200 hover:bg-gray-50"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedTemplate) {
+                    activateTemplate(selectedTemplate);
+                    setIsPreviewOpen(false);
+                  }
+                }}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                Send Now
+              </Button>
             </div>
           </div>
         </DialogContent>
