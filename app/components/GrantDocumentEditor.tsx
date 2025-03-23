@@ -17,13 +17,107 @@ import {
   ClockIcon,
   XCircleIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { GrantSection, GrantDocument, AIResponse } from '@/app/lib/grantWriterService';
-import { Project } from '@/app/lib/types';
-import { grantWriterService } from '@/app/lib/grantWriterService';
+import { GrantSection, GrantDocument, AIResponse } from '@/lib/grantWriterService';
+import { Project } from '@/lib/types';
+import { grantWriterService } from '@/lib/grantWriterService';
+
+interface GrantSectionTemplate {
+  id: string;
+  title: string;
+  description: string;
+  required: boolean;
+}
+
+const GRANT_SECTIONS: GrantSectionTemplate[] = [
+  {
+    id: 'executive_summary',
+    title: 'Executive Summary',
+    description: 'A concise overview of the project, its goals, and expected impact',
+    required: true,
+  },
+  {
+    id: 'organization_background',
+    title: 'Organization Background & Mission',
+    description: 'History, mission, and track record of the organization',
+    required: true,
+  },
+  {
+    id: 'project_overview',
+    title: 'Project Overview & Goals',
+    description: 'Detailed description of the project and its objectives',
+    required: true,
+  },
+  {
+    id: 'problem_statement',
+    title: 'Problem Statement & Need',
+    description: 'Clear articulation of the problem and why this project is needed',
+    required: true,
+  },
+  {
+    id: 'target_population',
+    title: 'Target Population & Impact',
+    description: 'Description of beneficiaries and expected impact',
+    required: true,
+  },
+  {
+    id: 'methodology',
+    title: 'Project Design & Methodology',
+    description: 'Detailed approach to implementing the project',
+    required: true,
+  },
+  {
+    id: 'timeline',
+    title: 'Timeline & Milestones',
+    description: 'Project schedule and key milestones',
+    required: true,
+  },
+  {
+    id: 'budget',
+    title: 'Budget & Resource Allocation',
+    description: 'Detailed budget breakdown and resource requirements',
+    required: true,
+  },
+  {
+    id: 'evaluation',
+    title: 'Evaluation & Success Metrics',
+    description: 'How project success will be measured and evaluated',
+    required: true,
+  },
+  {
+    id: 'sustainability',
+    title: 'Sustainability Plan',
+    description: 'How the project will be sustained beyond the grant period',
+    required: true,
+  },
+  {
+    id: 'partnerships',
+    title: 'Partnerships & Collaborations',
+    description: 'Key partners and their roles in the project',
+    required: false,
+  },
+  {
+    id: 'capacity',
+    title: 'Organizational Capacity',
+    description: 'Organization\'s ability to implement the project',
+    required: true,
+  },
+];
+
+const getSectionStatusIcon = (status: GrantSection['status']) => {
+  switch (status) {
+    case 'generated':
+      return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
+    case 'draft':
+      return <PencilIcon className="h-4 w-4 text-yellow-500" />;
+    default:
+      return <ClockIcon className="h-4 w-4 text-gray-400" />;
+  }
+};
 
 interface GrantDocumentEditorProps {
   isOpen: boolean;
@@ -246,430 +340,341 @@ export default function GrantDocumentEditor({
     }
   }, [selectedSection, document]);
 
-  if (!isOpen || !document) return null;
-
-  const handleSectionSelect = (sectionId: string) => {
-    setSelectedSection(sectionId);
-  };
-
-  const handleContentChange = (sectionId: string, content: string) => {
-    if (!document) return;
-
-    setDocument({
-      ...document,
-      sections: document.sections.map(section =>
+  const handleSectionUpdate = (sectionId: string, content: string) => {
+    setDocument((prev: GrantDocument) => ({
+      ...prev,
+      sections: prev.sections.map((section: GrantSection) =>
         section.id === sectionId
-          ? { ...section, content, status: 'draft' }
+          ? { ...section, content, lastUpdated: new Date().toISOString() }
           : section
       ),
-    });
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
-  const handleGenerateSection = async (sectionId: string, customPromptText?: string) => {
-    if (!project) return;
-    
-    setIsGenerating(true);
-    setError(null);
-    
-    try {
-      let response: AIResponse;
-      if (customPromptText) {
-        response = await grantWriterService.generateCustomSection(customPromptText);
-      } else {
-        await onGenerateSection(sectionId);
-        return;
-      }
+  const handleAddSection = (sectionId: string) => {
+    const newSection: GrantSection = {
+      id: crypto.randomUUID(),
+      title: sectionId,
+      content: SECTION_TEMPLATES[sectionId as keyof typeof SECTION_TEMPLATES] || '',
+      status: 'draft',
+      lastUpdated: new Date().toISOString(),
+    };
 
-      if (!response.success) {
+    setDocument((prev: GrantDocument) => ({
+      ...prev,
+      sections: [...prev.sections, newSection],
+      updatedAt: new Date().toISOString(),
+    }));
+    setSelectedSection(newSection.id);
+  };
+
+  const handleGenerateContent = async () => {
+    if (!selectedSection) return;
+
+    try {
+      setIsGenerating(true);
+      setError(null);
+
+      const response = await grantWriterService.generateCustomSection(customPrompt);
+      if (response.success) {
+        handleSectionUpdate(selectedSection, response.content);
+      } else {
         throw new Error(response.error || 'Failed to generate content');
       }
-
-      // Update the section content
-      const updatedSections = document.sections.map(section => {
-        if (section.id === sectionId) {
-          return {
-            ...section,
-            content: response.content,
-            status: 'generated' as const,
-            lastUpdated: new Date().toISOString(),
-          };
-        }
-        return section;
-      });
-
-      setDocument(prev => ({
-        ...prev,
-        sections: updatedSections,
-      }));
-
-      // Remove automatic save
-      setCustomPrompt('');
-    } catch (error) {
-      console.error('Error generating section:', error);
-      setError(error instanceof Error ? error.message : 'Failed to generate content');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate content');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleSave = async () => {
-    if (!document) return;
-    
-    setIsSaving(true);
-    setError(null);
-    
     try {
+      setIsSaving(true);
       await onSave(document);
-      // Update the local document state to match the saved state
-      setDocument(prev => ({
-        ...prev,
-        status: 'in_progress',
-        updatedAt: new Date().toISOString(),
-      }));
-    } catch (error) {
-      console.error('Error saving document:', error);
-      setError(error instanceof Error ? error.message : 'Failed to save document');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save document');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleFormatText = (format: string) => {
-    if (!selectedSection || !document) return;
+  const handleDeleteSection = (sectionId: string) => {
+    setDocument((prev: GrantDocument) => ({
+      ...prev,
+      sections: prev.sections.filter((section: GrantSection) => section.id !== sectionId),
+      updatedAt: new Date().toISOString(),
+    }));
+    if (selectedSection === sectionId) {
+      setSelectedSection(null);
+    }
+  };
+
+  const handleFormatText = (format: 'bold' | 'italic' | 'list' | 'numbered') => {
+    if (!selectedSection || !selectedText) return;
 
     const section = document.sections.find(s => s.id === selectedSection);
     if (!section) return;
 
-    const textarea = window.document.querySelector('#content') as HTMLTextAreaElement;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = section.content.substring(start, end);
-    let newText = section.content;
+    let newContent = section.content;
+    const startIndex = section.content.indexOf(selectedText);
+    const endIndex = startIndex + selectedText.length;
 
     switch (format) {
       case 'bold':
-        newText = section.content.substring(0, start) + `**${selectedText}**` + section.content.substring(end);
+        newContent = section.content.slice(0, startIndex) + `**${selectedText}**` + section.content.slice(endIndex);
         break;
       case 'italic':
-        newText = section.content.substring(0, start) + `*${selectedText}*` + section.content.substring(end);
+        newContent = section.content.slice(0, startIndex) + `*${selectedText}*` + section.content.slice(endIndex);
         break;
-      case 'bullet':
-        newText = section.content.substring(0, start) + `\n- ${selectedText}` + section.content.substring(end);
+      case 'list':
+        newContent = section.content.slice(0, startIndex) + `- ${selectedText}` + section.content.slice(endIndex);
         break;
-      case 'numbered-list':
-        newText = section.content.substring(0, start) + `\n1. ${selectedText}` + section.content.substring(end);
-        break;
-      case 'quote':
-        newText = section.content.substring(0, start) + `\n> ${selectedText}` + section.content.substring(end);
-        break;
-      case 'code':
-        newText = section.content.substring(0, start) + `\`${selectedText}\`` + section.content.substring(end);
+      case 'numbered':
+        newContent = section.content.slice(0, startIndex) + `1. ${selectedText}` + section.content.slice(endIndex);
         break;
     }
 
-    handleContentChange(selectedSection, newText);
+    handleSectionUpdate(selectedSection, newContent);
   };
 
-  const handleTextareaSelect = () => {
-    const textarea = window.document.querySelector('#content') as HTMLTextAreaElement;
-    if (!textarea) return;
-    const section = document.sections.find(s => s.id === selectedSection);
-    if (!section) return;
-    setSelectedText(section.content.substring(textarea.selectionStart, textarea.selectionEnd));
-  };
-
-  const getSectionStatusIcon = (status: string) => {
-    switch (status) {
-      case 'generated':
-        return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
-      case 'draft':
-        return <PencilIcon className="h-4 w-4 text-yellow-500" />;
-      default:
-        return <ClockIcon className="h-4 w-4 text-gray-400" />;
-    }
-  };
-
-  const currentSectionIndex = document.sections.findIndex(s => s.id === selectedSection);
-  const canGoBack = currentSectionIndex > 0;
-  const canGoForward = currentSectionIndex < document.sections.length - 1;
+  if (!isOpen || !document) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg max-w-6xl w-full h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50">
+      <div className="absolute inset-4 mx-auto max-w-7xl bg-white rounded-lg shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <DocumentTextIcon className="h-6 w-6 text-purple-600" />
-            <h3 className="text-lg font-medium text-gray-900">
-              Grant Proposal Editor
-            </h3>
-          </div>
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-4">
+            <DocumentTextIcon className="h-8 w-8 text-purple-600" />
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-900">Grant Proposal</h2>
+              <p className="text-sm text-gray-500">Last saved: {new Date(document.updatedAt).toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
             <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="text-gray-400 hover:text-gray-500"
+              onClick={() => setPreviewMode(!previewMode)}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
             >
-              <span className="sr-only">Toggle Sidebar</span>
-              {showSidebar ? (
-                <ChevronLeftIcon className="h-6 w-6" />
+              <EyeIcon className="h-5 w-5 mr-2" />
+              {previewMode ? 'Edit' : 'Preview'}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? (
+                <>
+                  <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                  Saving...
+                </>
               ) : (
-                <ChevronRightIcon className="h-6 w-6" />
+                <>
+                  <DocumentCheckIcon className="h-5 w-5 mr-2" />
+                  Save
+                </>
               )}
             </button>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-500"
+              className="inline-flex items-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
             >
-              <span className="sr-only">Close</span>
-              <XMarkIcon className="h-6 w-6" />
+              <XMarkIcon className="h-5 w-5" />
             </button>
           </div>
         </div>
 
+        {/* Status Messages */}
+        {error && (
+          <div className="px-6 py-4 bg-red-50 border-b border-red-200">
+            <div className="flex">
+              <XCircleIcon className="h-5 w-5 text-red-400 mr-3" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {progressMessage && (
+          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
+            <div className="flex">
+              <ArrowPathIcon className="h-5 w-5 text-blue-400 mr-3 animate-spin" />
+              <p className="text-sm text-blue-700">{progressMessage}</p>
+            </div>
+          </div>
+        )}
+
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Sidebar */}
-          {showSidebar && (
-            <div className="w-64 border-r border-gray-200 bg-gray-50 p-4 overflow-y-auto">
-              <div className="space-y-6">
-                {/* Document Info */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Document Info</h4>
-                  <div className="space-y-2">
-                    <div className="text-sm flex items-center justify-between">
-                      <span className="text-gray-500">Words:</span>
-                      <span className="font-medium">{wordCount}</span>
-                    </div>
-                    <div className="text-sm flex items-center justify-between">
-                      <span className="text-gray-500">Status:</span>
-                      <span className={`font-medium ${
-                        document.status === 'draft' ? 'text-yellow-500' :
-                        document.status === 'in_progress' ? 'text-blue-500' :
-                        'text-green-500'
-                      }`}>
-                        {document.status.replace('_', ' ')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+          {/* Sidebar */}
+          <div className={`w-80 border-r border-gray-200 ${showSidebar ? '' : 'hidden'}`}>
+            <div className="p-4 h-full overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-gray-900">Sections</h3>
+                <button
+                  onClick={() => setShowSidebar(false)}
+                  className="p-1 text-gray-400 hover:text-gray-500"
+                >
+                  <ChevronLeftIcon className="h-5 w-5" />
+                </button>
+              </div>
 
-                {/* Sections */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Sections</h4>
-                  <div className="space-y-1">
-                    {document.sections.map(section => (
-                      <button
-                        key={section.id}
-                        onClick={() => handleSectionSelect(section.id)}
-                        className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 ${
-                          selectedSection === section.id
-                            ? 'bg-purple-50 text-purple-700 font-medium'
-                            : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        <span className="truncate">{section.title}</span>
-                      </button>
-                    ))}
-                  </div>
+              {/* Existing Sections */}
+              <div className="mb-6">
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Existing Sections</h4>
+                <div className="space-y-1">
+                  {document.sections.map((section) => (
+                    <button
+                      key={section.id}
+                      onClick={() => setSelectedSection(section.id)}
+                      className={`w-full text-left px-4 py-2.5 text-sm rounded-md transition-colors duration-150 flex items-center justify-between ${
+                        selectedSection === section.id
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        {getSectionStatusIcon(section.status)}
+                        <span>
+                          {section.title.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {section.content.trim().split(/\s+/).filter(word => word.length > 0).length} words
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Available Sections */}
+              <div>
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Add New Section</h4>
+                <div className="space-y-1">
+                  {Object.keys(SECTION_TEMPLATES).map((sectionId: string) => (
+                    <button
+                      key={sectionId}
+                      onClick={() => handleAddSection(sectionId)}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-150"
+                    >
+                      <div className="font-medium">
+                        {sectionId.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {GRANT_SECTIONS.find(s => s.id === sectionId)?.description}
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Main Editor Area */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Section Navigation */}
-            {selectedSection && (
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <div className="flex items-center space-x-4">
-                  <button
-                    onClick={() => canGoBack && handleSectionSelect(document.sections[currentSectionIndex - 1].id)}
-                    disabled={!canGoBack}
-                    className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronLeftIcon className="h-5 w-5" />
-                  </button>
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {document.sections.find(s => s.id === selectedSection)?.title}
-                  </h2>
-                  <button
-                    onClick={() => canGoForward && handleSectionSelect(document.sections[currentSectionIndex + 1].id)}
-                    disabled={!canGoForward}
-                    className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronRightIcon className="h-5 w-5" />
-                  </button>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setPreviewMode(!previewMode)}
-                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <EyeIcon className="h-4 w-4 mr-1" />
-                    {previewMode ? 'Edit' : 'Preview'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border-l-4 border-red-400 p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <XCircleIcon className="h-5 w-5 text-red-400" />
-                  </div>
-                  <div className="ml-3">
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Editor/Preview Area */}
-            <div className="flex-1 overflow-y-auto p-4">
+            {/* Editor/Preview */}
+            <div className="flex-1 overflow-hidden bg-gray-50">
               {selectedSection ? (
-                previewMode ? (
-                  <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {document.sections.find(s => s.id === selectedSection)?.content || ''}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col">
-                    {/* Toolbar */}
-                    <div className="border-b border-gray-200 p-2 mb-4">
-                      <div className="flex space-x-1">
+                <div className="h-full flex flex-col">
+                  {previewMode ? (
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div className="prose max-w-none bg-white p-8 rounded-lg shadow-sm">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {document.sections.find(s => s.id === selectedSection)?.content || ''}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col">
+                      <div className="flex-1 p-6">
+                        <div className="h-full bg-white rounded-lg shadow-sm flex flex-col">
+                          {/* Toolbar */}
+                          <div className="flex items-center space-x-2 p-4 border-b border-gray-200">
+                            <button
+                              onClick={() => handleFormatText('bold')}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                              title="Bold"
+                            >
+                              <BoldIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleFormatText('italic')}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                              title="Italic"
+                            >
+                              <ItalicIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleFormatText('list')}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                              title="Bullet List"
+                            >
+                              <ListBulletIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleFormatText('numbered')}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+                              title="Numbered List"
+                            >
+                              <QueueListIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+
+                          {/* Editor */}
+                          <div className="flex-1 p-4">
+                            <textarea
+                              value={document.sections.find(s => s.id === selectedSection)?.content || ''}
+                              onChange={(e) => handleSectionUpdate(selectedSection, e.target.value)}
+                              className="w-full h-full p-4 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 resize-none font-mono text-sm"
+                              placeholder="Start writing..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Footer */}
+                  <div className="px-6 py-4 bg-white border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="text-sm text-gray-500">
+                          {wordCount} words
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Last updated: {new Date(document.sections.find(s => s.id === selectedSection)?.lastUpdated || '').toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="flex space-x-3">
                         <button
-                          onClick={() => handleFormatText('bold')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Bold"
+                          onClick={() => onGenerateSection(selectedSection)}
+                          disabled={isGenerating}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <BoldIcon className="h-4 w-4 text-gray-600" />
+                          <SparklesIcon className="h-5 w-5 mr-2" />
+                          {isGenerating ? 'Generating...' : 'Generate'}
                         </button>
                         <button
-                          onClick={() => handleFormatText('italic')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Italic"
+                          onClick={() => handleDeleteSection(selectedSection)}
+                          className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                         >
-                          <ItalicIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('bullet')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Bullet List"
-                        >
-                          <ListBulletIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('numbered-list')}
-                          className="p-2 hover:bg-gray-100 rounded"
-                          title="Numbered List"
-                        >
-                          <QueueListIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('quote')}
-                          className="p-2 hover:bg-gray-100 rounded"
-                          title="Quote"
-                        >
-                          <ChatBubbleLeftIcon className="h-4 w-4 text-gray-600" />
-                        </button>
-                        <button
-                          onClick={() => handleFormatText('code')}
-                          className="p-2 rounded hover:bg-gray-100"
-                          title="Code"
-                        >
-                          <CodeBracketIcon className="h-4 w-4 text-gray-600" />
+                          <TrashIcon className="h-5 w-5 mr-2" />
+                          Delete
                         </button>
                       </div>
                     </div>
-
-                    {/* Content Editor */}
-                    <textarea
-                      id="content"
-                      value={document.sections.find(s => s.id === selectedSection)?.content || ''}
-                      onChange={(e) => {
-                        const updatedSections = document.sections.map(section => {
-                          if (section.id === selectedSection) {
-                            return {
-                              ...section,
-                              content: e.target.value,
-                              status: 'draft' as const,
-                              lastUpdated: new Date().toISOString(),
-                            };
-                          }
-                          return section;
-                        });
-                        setDocument(prev => ({
-                          ...prev,
-                          sections: updatedSections,
-                        }));
-                      }}
-                      onSelect={handleTextareaSelect}
-                      className="flex-1 w-full resize-none border-0 focus:ring-0 p-0"
-                      placeholder="Start writing your content..."
-                    />
                   </div>
-                )
+                </div>
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-500">
-                  Select a section to begin editing
+                <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                  <DocumentTextIcon className="h-12 w-12 mb-4" />
+                  <p className="text-lg font-medium">Select a section to start editing</p>
+                  <p className="text-sm mt-2">Or add a new section from the sidebar</p>
                 </div>
               )}
-            </div>
-
-            {/* Bottom Bar with Prompt Input */}
-            <div className="border-t border-gray-200 p-4">
-              <div className="flex items-center space-x-4">
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    value={customPrompt}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
-                    placeholder="Enter a custom prompt for this section..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500"
-                  />
-                </div>
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {isSaving ? (
-                      <>
-                        <ArrowPathIcon className="h-4 w-4 mr-1.5 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <DocumentCheckIcon className="h-4 w-4 mr-1.5" />
-                        Save
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => selectedSection && handleGenerateSection(selectedSection, customPrompt)}
-                    disabled={!selectedSection || isGenerating}
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <ArrowPathIcon className="h-4 w-4 mr-1.5 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <SparklesIcon className="h-4 w-4 mr-1.5" />
-                        Generate
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>

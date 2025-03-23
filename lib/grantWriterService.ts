@@ -17,9 +17,11 @@ export interface GrantSection {
 
 export interface GrantDocument {
   id: string;
-  projectId: string;
+  project_id: string;
+  title: string;
   sections: GrantSection[];
-  status: 'draft' | 'in_progress' | 'complete';
+  status: 'draft' | 'in_progress' | 'completed';
+  type: 'standard' | 'custom';
   createdAt: string;
   updatedAt: string;
 }
@@ -257,6 +259,7 @@ export const grantWriterService = {
         .insert([
           {
             project_id: projectId,
+            title: 'Grant Proposal',
             sections: GRANT_SECTIONS.map(section => ({
               id: section.id,
               title: section.title,
@@ -265,6 +268,7 @@ export const grantWriterService = {
               lastUpdated: new Date().toISOString(),
             })),
             status: 'draft',
+            type: 'standard',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -280,9 +284,11 @@ export const grantWriterService = {
       // Transform the response to match the GrantDocument interface
       return {
         id: data.id,
-        projectId: data.project_id,
+        project_id: data.project_id,
+        title: data.title,
         sections: data.sections,
         status: data.status,
+        type: data.type,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       };

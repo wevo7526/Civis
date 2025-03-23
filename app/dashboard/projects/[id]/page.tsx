@@ -18,9 +18,9 @@ import {
   TagIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
-import type { Project } from '@/lib/types';
+import type { Project } from '@/app/lib/types';
 import { aiService } from '@/lib/aiService';
-import { grantWriterService, GrantDocument } from '@/lib/grantWriterService';
+import { grantWriterService, GrantDocument, GrantSection } from '@/app/lib/grantWriterService';
 import SavedItemCard from '../../../components/SavedItemCard';
 import GrantDocumentEditor from '../../../components/GrantDocumentEditor';
 import DocumentEditor from '../../../components/DocumentEditor';
@@ -48,11 +48,22 @@ interface ProjectMetrics {
 interface ProjectFormData {
   name: string;
   description: string;
+  status: 'planning' | 'active' | 'completed' | 'on_hold';
   impact_target: string;
   impact_metric: string;
   start_date: string;
   end_date: string;
   budget: number | string;
+}
+
+interface FormErrors {
+  name?: string;
+  status?: string;
+  impact_target?: string;
+  impact_metric?: string;
+  start_date?: string;
+  end_date?: string;
+  budget?: string;
 }
 
 export default function ProjectDetails() {
@@ -95,13 +106,14 @@ export default function ProjectDetails() {
   const [formData, setFormData] = useState<ProjectFormData>({
     name: '',
     description: '',
+    status: 'planning',
     impact_target: '',
     impact_metric: '',
     start_date: '',
     end_date: '',
     budget: 0,
   });
-  const [formErrors, setFormErrors] = useState<Partial<ProjectFormData>>({});
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -193,12 +205,20 @@ export default function ProjectDetails() {
     
     if (type === 'grant') {
       if (item) {
-        // If editing an existing document, fetch the latest version
-        const updatedDoc = await grantWriterService.getGrantDocument(item.id);
-        setCurrentGrantDocument(updatedDoc);
+        // If editing an existing document, use the item directly
+        setCurrentGrantDocument(item);
       } else if (!currentGrantDocument) {
-        // Create a new grant document if none exists
-        const newDoc = await grantWriterService.createGrantDocument(project.id);
+        // Create a new grant document
+        const newDoc: GrantDocument = {
+          id: crypto.randomUUID(),
+          project_id: project.id,
+          title: `${project.name || 'Project'} Grant Proposal`,
+          sections: [],
+          status: 'draft',
+          type: 'standard',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
         setCurrentGrantDocument(newDoc);
         // Add the new document to saved items
         setSavedItems(prev => ({
@@ -226,51 +246,31 @@ export default function ProjectDetails() {
         // Handle custom section generation
         response = await grantWriterService.generateCustomSection(customPrompt);
       } else {
-        switch (sectionId) {
-          case 'executive_summary':
-            response = await grantWriterService.generateExecutiveSummary();
-            break;
-          case 'organization_background':
-            response = await grantWriterService.generateOrganizationBackground();
-            break;
-          case 'project_overview':
-            response = await grantWriterService.generateProjectOverview();
-            break;
-          case 'problem_statement':
-            response = await grantWriterService.generateProblemStatement();
-            break;
-          case 'target_population':
-            response = await grantWriterService.generateTargetPopulation();
-            break;
-          case 'methodology':
-            response = await grantWriterService.generateMethodology();
-            break;
-          case 'timeline':
-            response = await grantWriterService.generateTimeline();
-            break;
-          case 'budget':
-            response = await grantWriterService.generateBudget();
-            break;
-          case 'evaluation':
-            response = await grantWriterService.generateEvaluation();
-            break;
-          case 'sustainability':
-            response = await grantWriterService.generateSustainability();
-            break;
-          case 'partnerships':
-            response = await grantWriterService.generatePartnerships();
-            break;
-          case 'capacity':
-            response = await grantWriterService.generateCapacity();
-            break;
-          default:
-            throw new Error('Invalid section ID');
-        }
+        // Use the generic generateSection method
+        const projectWithStatus = {
+          ...project,
+          status: project.status || 'planning' // Provide a default status if not set
+        };
+        response = await grantWriterService.generateSection(sectionId, projectWithStatus);
       }
 
       if (response.success) {
-        await grantWriterService.updateGrantSection(currentGrantDocument.id, sectionId, response.content);
-        setCurrentGrantDocument(await grantWriterService.getGrantDocument(currentGrantDocument.id));
+        // Update the document with the new section
+        const updatedDoc: GrantDocument = {
+          ...currentGrantDocument,
+          sections: [
+            ...currentGrantDocument.sections,
+            {
+              id: crypto.randomUUID(),
+              title: sectionId,
+              content: response.content,
+              status: 'generated' as const,
+              lastUpdated: new Date().toISOString(),
+            },
+          ],
+          updatedAt: new Date().toISOString(),
+        };
+        setCurrentGrantDocument(updatedDoc);
         setProgressMessage('Section generated successfully!');
       } else {
         throw new Error(response.error || 'Failed to generate section');
@@ -286,16 +286,7 @@ export default function ProjectDetails() {
 
   const handleSaveGrantDocument = async (document: GrantDocument) => {
     try {
-      const { error } = await supabase
-        .from('grant_documents')
-        .update({
-          sections: document.sections,
-          status: document.status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', document.id);
-
-      if (error) throw error;
+      await grantWriterService.saveDocument(document);
       
       // Update the current document
       setCurrentGrantDocument(document);
@@ -327,13 +318,17 @@ export default function ProjectDetails() {
       let response;
       switch (editorType) {
         case 'grant':
-          response = await grantWriterService.generateExecutiveSummary();
+          const projectWithStatus = {
+            ...project,
+            status: project.status || 'planning' // Provide a default status if not set
+          };
+          response = await grantWriterService.generateSection('executive_summary', projectWithStatus);
           break;
         case 'fundraising':
           response = await aiService.analyzeFundraising({ donors: [], projects: [project], events: [] });
           if (response.success) {
             // Structure the fundraising strategy content
-            const structuredContent = `# ${project.name} Fundraising Strategy
+            const structuredContent = `# ${project.name || 'Project'} Fundraising Strategy
 
 ## Funding Goals
 - Target Amount: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget).toLocaleString() : project.budget.toLocaleString()) : 'TBD'}
@@ -383,7 +378,7 @@ ${response.content}
         // Create a new editor item with the generated content
         const newEditorItem = {
           id: editorItem?.id || crypto.randomUUID(),
-          title: editorItem?.title || `${project.name} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
+          title: editorItem?.title || `${project.name || 'Project'} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
           content: response.content,
           type: editorType
         };
@@ -609,6 +604,7 @@ ${response.content}
     setFormData({
       name: project.name || '',
       description: project.description || '',
+      status: project.status || 'planning',
       impact_target: project.impact_target || '',
       impact_metric: project.impact_metric || '',
       start_date: project.start_date || '',
@@ -620,10 +616,14 @@ ${response.content}
   };
 
   const validateForm = (): boolean => {
-    const errors: Partial<ProjectFormData> = {};
+    const errors: FormErrors = {};
     
     if (!formData.name || typeof formData.name !== 'string' || !formData.name.trim()) {
       errors.name = 'Project name is required';
+    }
+    
+    if (!formData.status) {
+      errors.status = 'Please select a status';
     }
     
     if (!formData.impact_target || typeof formData.impact_target !== 'string' || !formData.impact_target.trim()) {
@@ -666,6 +666,7 @@ ${response.content}
         .update({
           name: formData.name.trim(),
           description: formData.description.trim(),
+          status: formData.status,
           impact_target: formData.impact_target.trim(),
           impact_metric: formData.impact_metric.trim(),
           start_date: formData.start_date,
@@ -680,12 +681,13 @@ ${response.content}
       setProject({ 
         ...project, 
         ...formData,
-        budget: budgetValue
+        budget: budgetValue,
       });
       setIsEditingProject(false);
       setFormData({
         name: '',
         description: '',
+        status: 'planning',
         impact_target: '',
         impact_metric: '',
         start_date: '',
@@ -705,6 +707,7 @@ ${response.content}
     setFormData({
       name: '',
       description: '',
+      status: 'planning',
       impact_target: '',
       impact_metric: '',
       start_date: '',
@@ -885,75 +888,97 @@ ${response.content}
                   <form onSubmit={(e) => {
                     e.preventDefault();
                     handleSaveProject();
-                  }}>
-                    <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                        Project Name
-                      </label>
-                      <input
-                        type="text"
-                        id="name"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                          formErrors.name ? 'border-red-300' : ''
-                        }`}
-                      />
-                      {formErrors.name && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
-                      )}
-                    </div>
+                  }} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                          Project Name
+                        </label>
+                        <input
+                          type="text"
+                          id="name"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.name ? 'border-red-300' : ''
+                          }`}
+                        />
+                        {formErrors.name && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                        )}
+                      </div>
 
-                    <div>
-                      <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                        Description
-                      </label>
-                      <textarea
-                        id="description"
-                        value={formData.description}
-                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        rows={3}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                      />
-                    </div>
+                      <div>
+                        <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+                          Status
+                        </label>
+                        <select
+                          id="status"
+                          value={formData.status}
+                          onChange={(e) => setFormData({ ...formData, status: e.target.value as Project['status'] })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.status ? 'border-red-300' : ''
+                          }`}
+                        >
+                          <option value="planning">Planning</option>
+                          <option value="active">Active</option>
+                          <option value="completed">Completed</option>
+                          <option value="on_hold">On Hold</option>
+                        </select>
+                        {formErrors.status && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.status}</p>
+                        )}
+                      </div>
 
-                    <div>
-                      <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
-                        Impact Target
-                      </label>
-                      <input
-                        type="text"
-                        id="impact_target"
-                        value={formData.impact_target}
-                        onChange={(e) => setFormData({ ...formData, impact_target: e.target.value })}
-                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                          formErrors.impact_target ? 'border-red-300' : ''
-                        }`}
-                      />
-                      {formErrors.impact_target && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_target}</p>
-                      )}
-                    </div>
+                      <div className="md:col-span-2">
+                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                          Description
+                        </label>
+                        <textarea
+                          id="description"
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                          rows={3}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                        />
+                      </div>
 
-                    <div>
-                      <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
-                        Impact Metric
-                      </label>
-                      <input
-                        type="text"
-                        id="impact_metric"
-                        value={formData.impact_metric}
-                        onChange={(e) => setFormData({ ...formData, impact_metric: e.target.value })}
-                        className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                          formErrors.impact_metric ? 'border-red-300' : ''
-                        }`}
-                      />
-                      {formErrors.impact_metric && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.impact_metric}</p>
-                      )}
-                    </div>
+                      <div>
+                        <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
+                          Impact Target
+                        </label>
+                        <input
+                          type="text"
+                          id="impact_target"
+                          value={formData.impact_target}
+                          onChange={(e) => setFormData({ ...formData, impact_target: e.target.value })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.impact_target ? 'border-red-300' : ''
+                          }`}
+                        />
+                        {formErrors.impact_target && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.impact_target}</p>
+                        )}
+                      </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
+                          Impact Metric
+                        </label>
+                        <input
+                          type="text"
+                          id="impact_metric"
+                          value={formData.impact_metric}
+                          onChange={(e) => setFormData({ ...formData, impact_metric: e.target.value })}
+                          className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                            formErrors.impact_metric ? 'border-red-300' : ''
+                          }`}
+                        />
+                        {formErrors.impact_metric && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.impact_metric}</p>
+                        )}
+                      </div>
+
                       <div>
                         <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
                           Start Date
@@ -989,44 +1014,44 @@ ${response.content}
                           <p className="mt-1 text-sm text-red-600">{formErrors.end_date}</p>
                         )}
                       </div>
-                    </div>
 
-                    <div>
-                      <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                        Budget
-                      </label>
-                      <div className="mt-1 relative rounded-md shadow-sm">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">$</span>
+                      <div>
+                        <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
+                          Budget
+                        </label>
+                        <div className="mt-1 relative rounded-md shadow-sm">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span className="text-gray-500 sm:text-sm">$</span>
+                          </div>
+                          <input
+                            type="number"
+                            id="budget"
+                            value={formData.budget}
+                            onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
+                            min="0"
+                            step="0.01"
+                            className={`block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
+                              formErrors.budget ? 'border-red-300' : ''
+                            }`}
+                          />
                         </div>
-                        <input
-                          type="number"
-                          id="budget"
-                          value={formData.budget}
-                          onChange={(e) => setFormData({ ...formData, budget: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="0.01"
-                          className={`block w-full pl-7 rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm ${
-                            formErrors.budget ? 'border-red-300' : ''
-                          }`}
-                        />
+                        {formErrors.budget && (
+                          <p className="mt-1 text-sm text-red-600">{formErrors.budget}</p>
+                        )}
                       </div>
-                      {formErrors.budget && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.budget}</p>
-                      )}
                     </div>
 
-                    <div className="flex justify-end space-x-3 mt-6">
+                    <div className="flex justify-end gap-3">
                       <button
                         type="button"
                         onClick={handleCancelEdit}
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                        className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
                       >
                         Save Changes
                       </button>

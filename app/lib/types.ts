@@ -116,7 +116,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  status: string;
+  status: 'planning' | 'active' | 'completed' | 'on_hold';
   budget: number;
   start_date: string;
   end_date: string;

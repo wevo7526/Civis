@@ -28,10 +28,10 @@ interface FormData {
   impact_metric: string;
   team_size: string;
   team_roles: string;
-  grant_status: Grant['status'];
+  grant_status: 'draft' | 'submitted' | 'awarded' | 'rejected';
   grant_amount: string;
   grant_deadline: string;
-  campaign_type: FundraisingCampaign['type'];
+  campaign_type: 'annual' | 'capital' | 'emergency' | 'program';
   campaign_goal: string;
   campaign_deadline: string;
 }
@@ -48,10 +48,10 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
     impact_metric: project?.impact_metric || '',
     team_size: project?.team_size?.toString() || '',
     team_roles: project?.team_roles?.join(', ') || '',
-    grant_status: project?.grant?.status || 'draft',
+    grant_status: (project?.grant?.status as 'draft' | 'submitted' | 'awarded' | 'rejected') || 'draft',
     grant_amount: project?.grant?.amount?.toString() || '',
     grant_deadline: project?.grant?.deadline || '',
-    campaign_type: project?.campaign?.type || 'program',
+    campaign_type: (project?.campaign?.type as 'annual' | 'capital' | 'emergency' | 'program') || 'program',
     campaign_goal: project?.campaign?.goal?.toString() || '',
     campaign_deadline: project?.campaign?.end_date || '',
   });
@@ -95,7 +95,7 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
     try {
       // Convert project status to campaign status
       const campaignStatus: FundraisingCampaign['status'] = formData.status === 'planning' ? 'planned' :
-                                                          formData.status === 'on-hold' ? 'cancelled' :
+                                                          formData.status === 'on_hold' ? 'cancelled' :
                                                           formData.status === 'active' ? 'active' :
                                                           'completed';
 
@@ -111,6 +111,12 @@ export default function ProjectForm({ project, onSubmit, onCancel }: ProjectForm
         team_size: Number(formData.team_size),
         team_roles: formData.team_roles.split(',').map(role => role.trim()),
         impact_current: 0,
+        timeline: `${formData.start_date} to ${formData.end_date}`,
+        goals: [
+          `Achieve ${formData.impact_target} by ${formData.end_date}`,
+          `Maintain budget within ${formData.budget}`,
+          `Complete project milestones on schedule`
+        ],
         grant: {
           title: formData.name,
           organization: '',
