@@ -13,7 +13,7 @@ import { Dialog } from '@headlessui/react';
 
 interface Event {
   id: string;
-  name: string;
+  title: string;
   description: string;
   date: string;
   location: string;
@@ -30,7 +30,7 @@ interface Event {
 }
 
 interface EventFormData {
-  name: string;
+  title: string;
   description: string;
   date: string;
   location: string;
@@ -43,7 +43,7 @@ interface EventFormData {
 }
 
 const initialFormData: EventFormData = {
-  name: '',
+  title: '',
   description: '',
   date: new Date().toISOString().split('T')[0],
   location: '',
@@ -74,7 +74,7 @@ export default function Events() {
   useEffect(() => {
     if (eventToEdit) {
       setFormData({
-        name: eventToEdit.name,
+        title: eventToEdit.title,
         description: eventToEdit.description,
         date: eventToEdit.date,
         location: eventToEdit.location,
@@ -251,7 +251,7 @@ export default function Events() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
@@ -267,7 +267,7 @@ export default function Events() {
             {events.map((event) => (
               <tr key={event.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{event.name}</div>
+                  <div className="text-sm font-medium text-gray-900">{event.title}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-500">{event.type}</div>
@@ -355,15 +355,15 @@ export default function Events() {
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                    Name
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700">
+                    Title
                   </label>
                   <input
                     type="text"
-                    id="name"
+                    id="title"
                     required
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    value={formData.title}
+                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -544,7 +544,7 @@ export default function Events() {
             
             <div className="p-6">
               <p className="text-sm text-gray-500">
-                Are you sure you want to delete {eventToDelete?.name}? This action cannot be undone.
+                Are you sure you want to delete {eventToDelete?.title}? This action cannot be undone.
               </p>
             </div>
             

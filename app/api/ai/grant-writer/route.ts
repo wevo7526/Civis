@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { handleError, requireAuth, validateInput } from '@/lib/error-handling';
-import { AIResponse } from '@/lib/types';
+import { handleError, requireAuth, validateInput } from '../../../lib/error-handling';
 
 // Base system prompt for all agents
 const BASE_SYSTEM_PROMPT = `You are an expert grant writer and fundraising strategist for nonprofit organizations. Your role is to help organizations create compelling grant proposals by focusing on:
@@ -280,20 +279,27 @@ Be responsive to the custom requirements while maintaining quality.`,
 
 export async function POST(request: Request) {
   try {
-    // Check authentication
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = requireAuth(session);
-
     const body = await request.json();
     
     // Validate input
     validateInput(body, {
-      action: (value) => typeof value === 'string',
-      data: (value) => typeof value === 'object',
+      action: (value: unknown) => typeof value === 'string',
+      data: (value: unknown) => typeof value === 'object',
     });
 
     const { action, data } = body;
+
+    if (!action) {
+      return NextResponse.json(
+        { error: 'Action is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check authentication
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { session } } = await supabase.auth.getSession();
+    requireAuth(session);
 
     // Handle section-specific generation
     if (action.startsWith('generate_')) {
@@ -387,12 +393,9 @@ Review the content focusing on:
       }
     }
   } catch (error) {
-    console.error('Error in grant writer API:', error);
+    console.error('Error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
-      },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }

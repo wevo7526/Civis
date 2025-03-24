@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Event, Donor, Project } from '@/lib/types';
+import { Event, Donor, Project } from '@/app/lib/types';
 import { Card } from '@/components/ui/card';
 import {
   BarChart,
@@ -170,7 +170,7 @@ export default function AnalyticsContent() {
       totalVolunteers,
       totalHours,
       averageCapacity,
-      activeEvents: events.filter(e => e.status === 'active').length,
+      activeEvents: events.filter(e => e.status === 'planned').length,
       totalBudget,
       totalRaised,
       overallROI,
@@ -254,7 +254,7 @@ export default function AnalyticsContent() {
   const calculateDonorSegments = (donors: Donor[]) => {
     // Amount-based segments
     const amountSegments = donors.reduce((acc, donor) => {
-      const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+      const amount = donor.total_given;
       if (amount >= 1000) acc.large++;
       else if (amount >= 500) acc.medium++;
       else acc.small++;
@@ -263,18 +263,19 @@ export default function AnalyticsContent() {
 
     // Frequency-based segments
     const frequencySegments = donors.reduce((acc, donor) => {
-      if (!donor.last_donation) acc.oneTime++;
-      else if (new Date(donor.last_donation) > subMonths(new Date(), 3)) acc.recent++;
-      else if (new Date(donor.last_donation) > subMonths(new Date(), 12)) acc.regular++;
+      if (!donor.last_gift_date) acc.oneTime++;
+      else if (new Date(donor.last_gift_date) > subMonths(new Date(), 3)) acc.recent++;
+      else if (new Date(donor.last_gift_date) > subMonths(new Date(), 12)) acc.regular++;
       else acc.lapsed++;
       return acc;
     }, { oneTime: 0, recent: 0, regular: 0, lapsed: 0 });
 
     // Engagement-based segments
     const engagementSegments = donors.reduce((acc, donor) => {
-      if (!donor.last_contact) acc.inactive++;
-      else if (new Date(donor.last_contact) > subMonths(new Date(), 1)) acc.highlyEngaged++;
-      else if (new Date(donor.last_contact) > subMonths(new Date(), 3)) acc.engaged++;
+      const lastGiftDate = new Date(donor.last_gift_date);
+      if (!donor.last_gift_date) acc.inactive++;
+      else if (lastGiftDate > subMonths(new Date(), 1)) acc.highlyEngaged++;
+      else if (lastGiftDate > subMonths(new Date(), 3)) acc.engaged++;
       else acc.lowEngagement++;
       return acc;
     }, { inactive: 0, lowEngagement: 0, engaged: 0, highlyEngaged: 0 });
@@ -312,20 +313,18 @@ export default function AnalyticsContent() {
   };
 
   const calculateAverageDonation = (donors: Donor[]) => {
-    const validDonations = donors.filter(donor => {
-      const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
-      return !isNaN(amount) && amount > 0;
-    });
+    const validDonations = donors.filter(donor => donor.last_gift_amount > 0);
     if (validDonations.length === 0) return 0;
-    return validDonations.reduce((sum, donor) => {
-      const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
-      return sum + amount;
-    }, 0) / validDonations.length;
+    return validDonations.reduce((sum, donor) => sum + donor.last_gift_amount, 0) / validDonations.length;
   };
 
   const calculateDonorRetention = (donors: Donor[]) => {
     if (donors.length === 0) return 0;
-    const repeatDonors = donors.filter(donor => donor.last_donation && donor.last_contact);
+    const repeatDonors = donors.filter(donor => {
+      const lastGiftDate = new Date(donor.last_gift_date);
+      const threeMonthsAgo = subMonths(new Date(), 3);
+      return lastGiftDate > threeMonthsAgo;
+    });
     return (repeatDonors.length / donors.length) * 100;
   };
 
@@ -361,12 +360,11 @@ export default function AnalyticsContent() {
     if (donors.length === 0) return 0;
     
     const totalValue = donors.reduce((sum, donor) => {
-      const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
       const yearsActive = donor.created_at ? 
         (new Date().getTime() - new Date(donor.created_at).getTime()) / (1000 * 60 * 60 * 24 * 365) : 0;
       
       // Calculate annual value (total amount / years active, minimum 1 year)
-      const annualValue = amount / Math.max(1, yearsActive);
+      const annualValue = donor.total_given / Math.max(1, yearsActive);
       return sum + annualValue;
     }, 0);
 
@@ -775,11 +773,9 @@ export default function AnalyticsContent() {
                 const roi = budget > 0 ? ((amountRaised - budget) / budget) * 100 : 0;
                 return (
                   <tr key={event.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{event.name}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={event.type === 'fundraiser' ? 'default' : 'secondary'}>
-                        {event.type}
-                      </Badge>
+                      <div className="font-medium">{event.name}</div>
+                      <div className="text-sm text-muted-foreground">{event.type}</div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {formatDistanceToNow(new Date(event.date), { addSuffix: true })}
@@ -797,7 +793,7 @@ export default function AnalyticsContent() {
                       {Math.round(roi)}%
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={event.status === 'active' ? 'default' : 'secondary'}>
+                      <Badge variant={event.status === 'planned' ? 'default' : 'secondary'}>
                         {event.status}
                       </Badge>
                     </td>

@@ -1,38 +1,25 @@
+import { Session } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 
-export async function requireAuth() {
-  const supabase = createRouteHandlerClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error('Unauthorized');
+export function requireAuth(session: Session | null): Session['user'] {
+  if (!session?.user) {
+    throw new Error('Authentication required');
   }
-
-  return user;
+  return session.user;
 }
 
-export function validateInput(data: any, requiredFields: string[]) {
-  const missingFields = requiredFields.filter(field => !data[field]);
-  
-  if (missingFields.length > 0) {
-    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+export function validateInput(data: any, validators: Record<string, (value: any) => boolean>): void {
+  for (const [key, validator] of Object.entries(validators)) {
+    if (!validator(data[key])) {
+      throw new Error(`Invalid input for ${key}`);
+    }
   }
 }
 
-export function handleError(error: any) {
+export function handleError(error: unknown): NextResponse {
   console.error('Error:', error);
-  
-  if (error instanceof Error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 400 }
-    );
-  }
-
   return NextResponse.json(
-    { error: 'Internal server error' },
+    { error: error instanceof Error ? error.message : 'Internal server error' },
     { status: 500 }
   );
 } 

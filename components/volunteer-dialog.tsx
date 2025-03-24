@@ -5,12 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import type { Volunteer } from '@/lib/types';
+import type { Volunteer } from '@/app/lib/types';
 
 interface VolunteerDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: Omit<Volunteer, 'id' | 'created_at'>) => void;
+  onSubmit: (data: Omit<Volunteer, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => void;
   volunteer?: Volunteer | null;
 }
 
@@ -20,7 +20,7 @@ export function VolunteerDialog({ isOpen, onClose, onSubmit, volunteer }: Volunt
     last_name: '',
     email: '',
     phone: '',
-    status: 'pending',
+    status: 'pending' as Volunteer['status'],
     skills: [] as string[],
     interests: [] as string[],
     availability: {
@@ -118,6 +118,7 @@ export function VolunteerDialog({ isOpen, onClose, onSubmit, volunteer }: Volunt
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  required
                 />
               </div>
 
@@ -126,8 +127,9 @@ export function VolunteerDialog({ isOpen, onClose, onSubmit, volunteer }: Volunt
                 <select
                   id="status"
                   value={formData.status}
-                  onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as Volunteer['status'] }))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                  required
                 >
                   <option value="pending">Pending</option>
                   <option value="active">Active</option>
@@ -137,59 +139,62 @@ export function VolunteerDialog({ isOpen, onClose, onSubmit, volunteer }: Volunt
 
               <div>
                 <Label htmlFor="skills">Skills (comma-separated)</Label>
-                <Textarea
+                <Input
                   id="skills"
                   value={formData.skills.join(', ')}
                   onChange={(e) => handleSkillsChange(e.target.value)}
-                  placeholder="e.g. teaching, mentoring, web development"
+                  required
                 />
               </div>
 
               <div>
                 <Label htmlFor="interests">Interests (comma-separated)</Label>
-                <Textarea
+                <Input
                   id="interests"
                   value={formData.interests.join(', ')}
                   onChange={(e) => handleInterestsChange(e.target.value)}
-                  placeholder="e.g. education, environment, healthcare"
+                  required
                 />
               </div>
 
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900">Availability</h3>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="weekdays">Weekdays</Label>
-                  <Switch
-                    id="weekdays"
-                    checked={formData.availability.weekdays}
-                    onCheckedChange={(checked) => setFormData(prev => ({
-                      ...prev,
-                      availability: { ...prev.availability, weekdays: checked }
-                    }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="weekends">Weekends</Label>
-                  <Switch
-                    id="weekends"
-                    checked={formData.availability.weekends}
-                    onCheckedChange={(checked) => setFormData(prev => ({
-                      ...prev,
-                      availability: { ...prev.availability, weekends: checked }
-                    }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="hours">Preferred Hours</Label>
-                  <Input
-                    id="hours"
-                    value={formData.availability.hours}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      availability: { ...prev.availability, hours: e.target.value }
-                    }))}
-                    placeholder="e.g. 9 AM - 5 PM"
-                  />
+              <div>
+                <Label>Availability</Label>
+                <div className="mt-2 space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="weekdays"
+                      checked={formData.availability.weekdays}
+                      onCheckedChange={(checked) => setFormData(prev => ({
+                        ...prev,
+                        availability: { ...prev.availability, weekdays: checked }
+                      }))}
+                    />
+                    <Label htmlFor="weekdays">Available on Weekdays</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="weekends"
+                      checked={formData.availability.weekends}
+                      onCheckedChange={(checked) => setFormData(prev => ({
+                        ...prev,
+                        availability: { ...prev.availability, weekends: checked }
+                      }))}
+                    />
+                    <Label htmlFor="weekends">Available on Weekends</Label>
+                  </div>
+                  <div>
+                    <Label htmlFor="hours">Preferred Hours</Label>
+                    <Input
+                      id="hours"
+                      value={formData.availability.hours}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        availability: { ...prev.availability, hours: e.target.value }
+                      }))}
+                      placeholder="e.g., 9 AM - 5 PM"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 

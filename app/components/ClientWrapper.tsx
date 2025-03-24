@@ -7,5 +7,10 @@ const AIAssistant = dynamic(() => import('./AIAssistant'), {
 });
 
 export default function ClientWrapper() {
-  return <AIAssistant />;
+  const handleGenerateResponse = (response: string) => {
+    // Handle the AI response here
+    console.log('AI Response:', response);
+  };
+
+  return <AIAssistant onGenerateResponse={handleGenerateResponse} />;
 } 

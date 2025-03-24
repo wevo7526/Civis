@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { SparklesIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
-import { aiService } from '../lib/aiService';
+import { aiService } from '@/lib/aiService';
+import { Donor, DonorAnalysisData } from '@/lib/types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -10,7 +11,7 @@ interface Message {
 }
 
 interface AIInsightsSidebarProps {
-  donorData: any[];
+  donorData: Donor[];
   onClose: () => void;
 }
 
@@ -29,6 +30,24 @@ export default function AIInsightsSidebar({ donorData, onClose }: AIInsightsSide
     ]);
   }, []);
 
+  const transformToDonorAnalysisData = (donor: Donor): DonorAnalysisData => {
+    return {
+      id: donor.id,
+      name: donor.name,
+      email: donor.email,
+      donation_history: [{
+        date: donor.donation_date || new Date().toISOString(),
+        amount: donor.amount,
+        campaign: 'General Donation'
+      }],
+      engagement_metrics: {
+        last_interaction: donor.last_contact || new Date().toISOString(),
+        total_donations: donor.amount,
+        average_donation: donor.amount
+      }
+    };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || loading) return;
@@ -45,8 +64,9 @@ export default function AIInsightsSidebar({ donorData, onClose }: AIInsightsSide
         response = "I notice there's no donor data available at the moment. Please add some donor information to get started with the analysis.";
       } else {
         // Generate AI response based on the user's query
-        const aiResponse = await aiService.analyzeDonorEngagement(donorData);
-        response = aiResponse.message;
+        const donorAnalysisData = transformToDonorAnalysisData(donorData[0]);
+        const aiResponse = await aiService.analyzeDonorEngagement(donorAnalysisData);
+        response = aiResponse.content;
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);

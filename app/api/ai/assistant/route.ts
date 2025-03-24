@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { handleError, requireAuth, validateInput } from '@/lib/error-handling';
+import { requireAuth, validateInput } from '../../../lib/error-handling';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -37,20 +37,20 @@ Consider the user's current page and context when providing responses.`;
 
 export async function POST(request: Request) {
   try {
-    // Check authentication
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = requireAuth(session);
-
     const body = await request.json() as RequestBody;
     
     // Validate input
     validateInput(body, {
-      messages: (value) => Array.isArray(value) && value.length > 0,
-      context: (value) => typeof value === 'object' || value === undefined,
+      messages: (value: unknown) => Array.isArray(value) && value.length > 0,
+      context: (value: unknown) => typeof value === 'object' || value === undefined,
     });
 
     const { messages, context } = body;
+
+    // Check authentication
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = requireAuth(session);
 
     // Convert messages to Anthropic format
     const anthropicMessages = messages.map((msg: Message) => ({
@@ -85,6 +85,10 @@ export async function POST(request: Request) {
       message: response.content,
     });
   } catch (error) {
-    return handleError(error);
+    console.error('Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    );
   }
 } 

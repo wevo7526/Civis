@@ -19,6 +19,7 @@ import {
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
 import type { Project, GrantDocument, GrantSection } from '@/app/lib/types';
+import type { AIResponse as GrantWriterAIResponse } from '@/app/lib/grantWriterService';
 import { aiService } from '@/lib/aiService';
 import { grantWriterService } from '@/app/lib/grantWriterService';
 import SavedItemCard from '../../../components/SavedItemCard';
@@ -36,7 +37,7 @@ interface EditorItem {
   content: string;
   type: 'grant' | 'insights' | 'fundraising';
   project_id: string;
-  status: string;
+  status: 'draft' | 'in_review' | 'approved' | 'rejected';
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -233,26 +234,34 @@ export default function ProjectDetails() {
 
       const response = await grantWriterService.generateSection(sectionType, project, customPrompt);
       
-      if (response.success && currentGrantDocument) {
-        const newSection: GrantSection = {
-          id: crypto.randomUUID(),
-          title: sectionType === 'custom' ? 'Custom Section' : sectionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-          content: response.content,
-          status: 'draft',
-          last_updated: new Date().toISOString(),
-        };
-
-        const updatedDocument: GrantDocument = {
-          ...currentGrantDocument,
-          sections: [...currentGrantDocument.sections, newSection],
-          updated_at: new Date().toISOString(),
-        };
-
-        setCurrentGrantDocument(updatedDocument);
-        setProgressMessage('Section generated successfully! Click Save to store your changes.');
-      } else {
-        throw new Error(response.error || 'Failed to generate section');
+      if (!response || !response.success || !response.content) {
+        throw new Error('Invalid response from AI service');
       }
+
+      const content = Array.isArray(response.content) 
+        ? response.content[0]?.text || ''
+        : response.content;
+
+      const newSection: GrantSection = {
+        id: crypto.randomUUID(),
+        title: sectionType === 'custom' ? 'Custom Section' : sectionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+        content,
+        status: 'draft',
+        last_updated: new Date().toISOString(),
+      };
+
+      if (!currentGrantDocument) {
+        throw new Error('No current grant document');
+      }
+
+      const updatedDocument: GrantDocument = {
+        ...currentGrantDocument,
+        sections: [...currentGrantDocument.sections, newSection],
+        updated_at: new Date().toISOString(),
+      };
+
+      setCurrentGrantDocument(updatedDocument);
+      setProgressMessage('Section generated successfully! Click Save to store your changes.');
     } catch (err) {
       console.error('Error generating section:', err);
       setError('Failed to generate section');
@@ -309,26 +318,33 @@ export default function ProjectDetails() {
           throw new Error('Invalid editor type');
       }
 
-      if (response.success) {
-        const newEditorItem: EditorItem = {
-          id: editorItem?.id || crypto.randomUUID(),
-          title: editorItem?.title || `${project.name || 'Project'} ${editorType === 'grant' ? 'Grant Proposal' : 'Project Insights'}`,
-          content: response.content,
-          type: editorType,
-          project_id: project.id,
-          status: 'draft',
-          user_id: (await supabase.auth.getUser()).data.user?.id || '',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        setEditorItem(newEditorItem);
-        setShowEditor(true);
-        setIsEditing(true);
-        setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : 'Project insights'} generated successfully! Click Save to store your changes.`);
-      } else {
-        throw new Error(response.error || 'Failed to generate content');
+      if (!response || !response.success || !response.content) {
+        throw new Error('Invalid response from AI service');
       }
+
+      const content = Array.isArray(response.content) 
+        ? response.content[0]?.text || ''
+        : response.content;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const newItem: EditorItem = {
+        id: editorItem?.id || crypto.randomUUID(),
+        title: editorItem?.title || `${project.name || 'Project'} ${editorType === 'grant' ? 'Grant Proposal' : 'Project Insights'}`,
+        content,
+        type: editorType,
+        project_id: project.id,
+        status: 'draft',
+        user_id: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setEditorItem(newItem);
+      setShowEditor(true);
+      setIsEditing(true);
+      setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : 'Project insights'} generated successfully! Click Save to store your changes.`);
     } catch (err) {
       console.error('Error generating content:', err);
       setError('Failed to generate content');

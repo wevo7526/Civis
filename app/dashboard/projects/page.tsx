@@ -210,12 +210,14 @@ export default function Projects() {
               <div className="flex items-center">
                 <CalendarIcon className="h-4 w-4 mr-1" />
                 <span>
-                  {new Date(project.start_date).toLocaleDateString()} - {new Date(project.end_date).toLocaleDateString()}
+                  {project.start_date ? new Date(project.start_date).toLocaleDateString() : 'No start date'} - {project.end_date ? new Date(project.end_date).toLocaleDateString() : 'No end date'}
                 </span>
               </div>
               <div className="flex items-center">
                 <ChartBarIcon className="h-4 w-4 mr-1" />
-                <span>${project.budget.toLocaleString()}</span>
+                <span>
+                  Budget: ${project.budget?.toLocaleString() || '0'}
+                </span>
               </div>
             </div>
           </div>

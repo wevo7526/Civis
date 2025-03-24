@@ -9,22 +9,25 @@ import {
   CalendarIcon,
   SparklesIcon
 } from '@heroicons/react/24/outline';
-import { Donor, Project, Event } from '@/lib/types';
+import { Project, Event } from '@/app/lib/types';
+import { Donor } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
+
+interface Insights {
+  projectInsights: string;
+  eventInsights: string;
+  fundraisingInsights: string;
+  donorInsights: string;
+}
 
 export default function AIInsights() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [insights, setInsights] = useState<{
-    donorInsights: string | null;
-    projectInsights: string | null;
-    eventInsights: string | null;
-    fundraisingInsights: string | null;
-  }>({
-    donorInsights: null,
-    projectInsights: null,
-    eventInsights: null,
-    fundraisingInsights: null,
+  const [insights, setInsights] = useState<Insights>({
+    projectInsights: '',
+    eventInsights: '',
+    fundraisingInsights: '',
+    donorInsights: ''
   });
   const router = useRouter();
   const supabase = createClientComponentClient();
@@ -51,18 +54,17 @@ export default function AIInsights() {
       const events = eventsResponse.data as Event[];
 
       // Generate insights for each section using aiService
-      const [donorInsights, projectInsights, eventInsights, fundraisingInsights] = await Promise.all([
-        aiService.analyzeDonors(donors),
+      const [projectInsights, eventInsights, fundraisingInsights] = await Promise.all([
         aiService.analyzeProjects(projects),
         aiService.analyzeEvents(events),
-        aiService.analyzeFundraising(donors, projects, events),
+        aiService.analyzeFundraising({ donors, projects, events })
       ]);
 
       setInsights({
-        donorInsights,
-        projectInsights,
-        eventInsights,
-        fundraisingInsights,
+        projectInsights: projectInsights.content,
+        eventInsights: eventInsights.content,
+        fundraisingInsights: fundraisingInsights.content,
+        donorInsights: ''
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate insights');

@@ -25,13 +25,13 @@ export const createDonorService = (supabase: SupabaseClient) => {
       console.log('Raw donor data:', JSON.stringify(donor, null, 2));
       
       // Validate required fields
-      if (!donor.name || !donor.email || !donor.donation_date || !donor.user_id || !donor.amount) {
+      if (!donor.name || !donor.email || !donor.last_gift_date || !donor.user_id || !donor.last_gift_amount) {
         console.error('Missing required fields:', {
           name: !!donor.name,
           email: !!donor.email,
-          donation_date: !!donor.donation_date,
+          last_gift_date: !!donor.last_gift_date,
           user_id: !!donor.user_id,
-          amount: !!donor.amount
+          last_gift_amount: !!donor.last_gift_amount
         });
         return null;
       }
@@ -41,11 +41,15 @@ export const createDonorService = (supabase: SupabaseClient) => {
         name: donor.name.trim(),
         email: donor.email.trim(),
         phone: donor.phone?.trim() || null,
-        donation_date: donor.donation_date,
+        type: donor.type || 'individual',
         status: donor.status || 'active',
-        notes: donor.notes?.trim() || null,
+        giving_history: donor.giving_history || [],
+        total_given: donor.total_given || 0,
+        last_gift_date: donor.last_gift_date,
+        last_gift_amount: Number(donor.last_gift_amount),
+        preferred_communication: donor.preferred_communication || 'email',
+        notes: donor.notes?.trim() || '',
         user_id: donor.user_id,
-        amount: Number(donor.amount), // Ensure amount is a number
       };
 
       console.log('Cleaned donor data:', JSON.stringify(cleanDonor, null, 2));
@@ -99,9 +103,9 @@ export const createDonorService = (supabase: SupabaseClient) => {
       const cleanDonor = {
         ...donor,
         phone: donor.phone?.trim() || null,
-        notes: donor.notes?.trim() || null,
-        donation_date: donor.donation_date,
-        amount: donor.amount ? Number(donor.amount) : undefined, // Ensure amount is a number if present
+        notes: donor.notes?.trim() || '',
+        last_gift_date: donor.last_gift_date,
+        last_gift_amount: donor.last_gift_amount ? Number(donor.last_gift_amount) : undefined,
         updated_at: new Date().toISOString(),
       };
 

@@ -1,72 +1,27 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { FundraisingStrategy } from '@/app/lib/types';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { FundraisingCampaign } from '@/app/lib/types';
 
 export async function POST(request: Request) {
   try {
-    const { strategy } = await request.json() as { strategy: FundraisingStrategy };
+    const { campaign } = await request.json() as { campaign: FundraisingCampaign };
 
-    // Create a prompt for analyzing the strategy and generating insights
-    const prompt = `Analyze the following fundraising strategy and provide updated insights and recommendations based on its current progress and status.
-
-Strategy Details:
-- Organization: ${strategy.organization_name}
-- Type: ${strategy.organization_type}
-- Target Amount: $${strategy.target_amount}
-- Current Progress: ${strategy.progress}%
-- Status: ${strategy.status}
-- Timeframe: ${strategy.timeframe}
-- Current Donors: ${strategy.current_donors}
-
-Mission:
-${strategy.mission}
-
-Key Programs:
-${strategy.key_programs}
-
-Previous Fundraising Experience:
-${strategy.previous_fundraising}
-
-Current Strategy:
-${strategy.strategy_content}
-
-Based on this information, please provide:
-1. 3 key insights about the current fundraising progress and potential
-2. 5 actionable recommendations for improving or maintaining momentum
-
-Format the response as JSON with two arrays: "insights" and "recommendations".`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert fundraising strategist who provides data-driven insights and actionable recommendations based on current progress and context."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
+    // Return mock insights for now
+    const insights = {
+      insights: [
+        `Current fundraising progress is at ${(campaign.current_amount / campaign.goal * 100).toFixed(1)}% of the target goal`,
+        `Campaign is in ${campaign.status} status with ${campaign.target_audience} as target audience`,
+        `Time remaining: ${new Date(campaign.end_date).getTime() - new Date().getTime() > 0 ? 'Active' : 'Completed'}`
       ],
-      temperature: 0.7,
-      max_tokens: 1000,
-    });
+      recommendations: [
+        'Consider reaching out to new potential donors in your target audience',
+        'Review and optimize your campaign strategy based on current progress',
+        'Engage with existing donors to maintain momentum',
+        'Update campaign materials to reflect current progress',
+        'Plan follow-up activities based on campaign status'
+      ]
+    };
 
-    const content = completion.choices[0].message.content;
-    if (!content) {
-      throw new Error('Failed to generate insights content');
-    }
-
-    const { insights, recommendations } = JSON.parse(content);
-
-    return NextResponse.json({
-      insights,
-      recommendations,
-    });
+    return NextResponse.json(insights);
   } catch (error) {
     console.error('Error generating insights:', error);
     return NextResponse.json(

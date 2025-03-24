@@ -3,21 +3,22 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { ChartBarIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import { Project } from '@/app/lib/types';
+import { Project, WritingItem } from '@/app/lib/types';
 import DocumentEditor from '@/app/components/DocumentEditor';
 import SavedItemCard from '@/app/components/SavedItemCard';
 import { aiService } from '@/app/lib/aiService';
+import { toast } from 'react-hot-toast';
 
 interface ProjectFundraisingStrategyProps {
   project: Project;
 }
 
 export default function ProjectFundraisingStrategy({ project }: ProjectFundraisingStrategyProps) {
-  const [savedItems, setSavedItems] = useState<any[]>([]);
+  const [savedItems, setSavedItems] = useState<WritingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
-  const [editorItem, setEditorItem] = useState<any | null>(null);
+  const [editorItem, setEditorItem] = useState<WritingItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loadingStates, setLoadingStates] = useState({
     fundraisingStrategy: false
@@ -47,135 +48,79 @@ export default function ProjectFundraisingStrategy({ project }: ProjectFundraisi
     }
   };
 
-  const handleOpenEditor = (item?: any) => {
-    setEditorItem(item);
-    setShowEditor(true);
+  const handleOpenEditor = (item?: WritingItem) => {
+    setEditorItem(item || null);
     setIsEditing(!!item);
+    setShowEditor(true);
   };
 
   const handleGenerateContent = async (prompt: string) => {
     try {
       setLoadingStates(prev => ({ ...prev, fundraisingStrategy: true }));
       setProgressMessage('Generating fundraising strategy...');
-      setError(null);
 
       const response = await aiService.generateFundraisingStrategy(project);
-      
-      if (response.success) {
-        // Structure the fundraising strategy content
-        const structuredContent = `# ${project.name || 'Project'} Fundraising Strategy
-
-## Funding Goals
-- Target Amount: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget).toLocaleString() : project.budget.toLocaleString()) : 'TBD'}
-- Timeline: 12 months
-- Key Milestones:
-  - Month 1-3: Initial donor outreach
-  - Month 4-6: Major fundraising events
-  - Month 7-9: Corporate partnerships
-  - Month 10-12: Final push and campaign closure
-
-## Donor Strategy
-### Target Donors
-- Individual Donors: 60%
-- Corporate Sponsors: 30%
-- Grant Funding: 10%
-
-### Engagement Plan
-${response.content}
-
-## Budget Allocation
-| Category | Percentage | Description |
-|----------|------------|-------------|
-| Marketing | 15% | Digital and print materials |
-| Planning | 25% | Fundraising events and donor meetings |
-| Staff Time | 40% | Fundraising team activities |
-| Technology | 20% | CRM, donation platform, analytics |
-
-### ROI Projections
-- Expected Return: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget) * 1.2 : project.budget * 1.2).toLocaleString() : 'TBD'}
-- Cost per Dollar Raised: $0.20
-- Timeline to Break Even: 6 months`;
-
-        response.content = structuredContent;
+      if (!response.success) {
+        throw new Error(response.message ?? 'Failed to generate fundraising strategy');
       }
 
-      const newEditorItem = {
-        id: editorItem?.id || crypto.randomUUID(),
-        title: editorItem?.title || `${project.name || 'Project'} Fundraising Strategy`,
+      handleOpenEditor();
+      setEditorItem({
+        id: '',
+        title: 'New Fundraising Strategy',
         content: response.content,
-        type: 'fundraising'
-      };
-
-      setEditorItem(newEditorItem);
-      setShowEditor(true);
-      setIsEditing(true);
-      setProgressMessage('Fundraising strategy generated successfully! Click Save to store your changes.');
+        type: 'fundraising',
+        project_id: project.id,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
     } catch (err) {
-      console.error('Error generating fundraising strategy:', err);
-      setError('Failed to generate fundraising strategy');
-      setProgressMessage(null);
+      setError(err instanceof Error ? err.message : 'Failed to generate fundraising strategy');
+      toast.error('Failed to generate fundraising strategy');
     } finally {
       setLoadingStates(prev => ({ ...prev, fundraisingStrategy: false }));
+      setProgressMessage(null);
     }
   };
 
   const handleSaveContent = async (title: string, content: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      const item: Omit<WritingItem, 'id' | 'created_at' | 'updated_at'> = {
+        title,
+        content,
+        type: 'fundraising',
+        project_id: project.id,
+        status: 'draft'
+      };
 
-      let savedItem;
-      if (editorItem?.id) {
-        // Update existing writing item
-        const { data, error } = await supabase
+      if (isEditing && editorItem?.id) {
+        const { error } = await supabase
           .from('writing_items')
           .update({
             title,
             content,
-            updated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           })
-          .eq('id', editorItem.id)
-          .select()
-          .single();
+          .eq('id', editorItem.id);
 
         if (error) throw error;
-        savedItem = data;
       } else {
-        // Create new writing item
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('writing_items')
-          .insert([
-            {
-              id: crypto.randomUUID(),
-              title: title || 'Untitled Document',
-              content,
-              type: 'fundraising',
-              project_id: project.id,
-              status: 'draft',
-              user_id: user.id,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ])
-          .select()
-          .single();
+          .insert([item]);
 
         if (error) throw error;
-        savedItem = data;
       }
 
-      // Update the savedItems state
-      setSavedItems(prev => [
-        savedItem,
-        ...prev.filter(item => item.id !== savedItem.id),
-      ]);
-
-      // Update editor state
-      setEditorItem(savedItem);
-      setIsEditing(true);
+      await fetchSavedItems();
+      setShowEditor(false);
+      setEditorItem(null);
+      setIsEditing(false);
+      toast.success(isEditing ? 'Strategy updated successfully' : 'Strategy saved successfully');
     } catch (err) {
-      console.error('Error saving document:', err);
-      setError('Failed to save document');
+      setError(err instanceof Error ? err.message : 'Failed to save fundraising strategy');
+      toast.error('Failed to save fundraising strategy');
     }
   };
 
@@ -187,11 +132,32 @@ ${response.content}
         .eq('id', itemId);
 
       if (error) throw error;
-
-      setSavedItems(prev => prev.filter(item => item.id !== itemId));
+      await fetchSavedItems();
+      toast.success('Strategy deleted successfully');
     } catch (err) {
-      console.error('Error deleting item:', err);
-      setError('Failed to delete item');
+      setError(err instanceof Error ? err.message : 'Failed to delete fundraising strategy');
+      toast.error('Failed to delete fundraising strategy');
+    }
+  };
+
+  const handleDuplicateStrategy = async (strategy: WritingItem) => {
+    try {
+      const { error } = await supabase
+        .from('writing_items')
+        .insert([{
+          title: `${strategy.title} (Copy)`,
+          content: strategy.content,
+          type: 'fundraising',
+          project_id: project.id,
+          status: 'draft'
+        }]);
+
+      if (error) throw error;
+      await fetchSavedItems();
+      toast.success('Strategy duplicated successfully');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to duplicate fundraising strategy');
+      toast.error('Failed to duplicate fundraising strategy');
     }
   };
 
@@ -234,6 +200,7 @@ ${response.content}
               item={strategy}
               onEdit={() => handleOpenEditor(strategy)}
               onDelete={handleDeleteItem}
+              onDuplicate={() => handleDuplicateStrategy(strategy)}
             />
           ))}
         </div>

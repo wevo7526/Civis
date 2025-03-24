@@ -17,6 +17,20 @@ interface ImpactMetricsProps {
   events: Event[];
 }
 
+interface EventMetrics {
+  title: string;
+  totalHours: number;
+  volunteerCount: number;
+  capacityUtilization: number;
+  hoursPerVolunteer: number;
+  budget: number;
+  amountRaised: number;
+  fundraisingGoal: number;
+  roi: number;
+  goalProgress: number;
+  status: Event['status'];
+}
+
 export function ImpactMetrics({ events }: ImpactMetricsProps) {
   if (!events || events.length === 0) {
     return (
@@ -29,7 +43,7 @@ export function ImpactMetrics({ events }: ImpactMetricsProps) {
   }
 
   // Calculate metrics for each event
-  const eventsWithMetrics = events.map(event => {
+  const eventsWithMetrics: EventMetrics[] = events.map(event => {
     const totalHours = event.volunteer_hours 
       ? Object.values(event.volunteer_hours).reduce((sum, hours) => sum + hours, 0)
       : 0;
@@ -38,6 +52,7 @@ export function ImpactMetrics({ events }: ImpactMetricsProps) {
     const capacityUtilization = event.max_volunteers 
       ? (volunteerCount / event.max_volunteers) * 100 
       : 0;
+    const hoursPerVolunteer = volunteerCount > 0 ? totalHours / volunteerCount : 0;
 
     // Calculate financial metrics
     const budget = event.budget || 0;
@@ -47,43 +62,34 @@ export function ImpactMetrics({ events }: ImpactMetricsProps) {
     const goalProgress = fundraisingGoal > 0 ? (amountRaised / fundraisingGoal) * 100 : 0;
 
     return {
-      ...event,
+      title: event.name,
       totalHours,
       volunteerCount,
       capacityUtilization,
-      hoursPerVolunteer: volunteerCount > 0 ? totalHours / volunteerCount : 0,
+      hoursPerVolunteer,
       budget,
       amountRaised,
       fundraisingGoal,
       roi,
-      goalProgress
+      goalProgress,
+      status: event.status
     };
   });
 
-  // Calculate overall metrics
-  const totalVolunteers = events.reduce((sum, event) => sum + (event.volunteer_ids?.length || 0), 0);
-  const totalHours = events.reduce((sum, event) => {
-    if (!event.volunteer_hours) return sum;
-    return sum + Object.values(event.volunteer_hours).reduce((hoursSum, hours) => hoursSum + hours, 0);
-  }, 0);
-  const averageCapacity = events.reduce((sum, event) => {
-    if (!event.max_volunteers || !event.volunteer_ids) return sum;
-    return sum + ((event.volunteer_ids.length / event.max_volunteers) * 100);
-  }, 0) / events.length;
-
-  // Calculate financial metrics
-  const totalBudget = events.reduce((sum, event) => sum + (event.budget || 0), 0);
-  const totalRaised = events.reduce((sum, event) => sum + (event.amount_raised || 0), 0);
-  const totalGoal = events.reduce((sum, event) => sum + (event.fundraising_goal || 0), 0);
-  const overallROI = totalBudget > 0 ? ((totalRaised - totalBudget) / totalBudget) * 100 : 0;
-  const overallProgress = totalGoal > 0 ? (totalRaised / totalGoal) * 100 : 0;
+  // Calculate aggregate metrics
+  const totalVolunteers = eventsWithMetrics.reduce((sum, event) => sum + event.volunteerCount, 0);
+  const totalHours = eventsWithMetrics.reduce((sum, event) => sum + event.totalHours, 0);
+  const totalBudget = eventsWithMetrics.reduce((sum, event) => sum + event.budget, 0);
+  const totalRaised = eventsWithMetrics.reduce((sum, event) => sum + event.amountRaised, 0);
+  const averageROI = eventsWithMetrics.reduce((sum, event) => sum + event.roi, 0) / eventsWithMetrics.length;
 
   // Prepare chart data
   const chartData = eventsWithMetrics.map(event => ({
-    name: event.name || 'Untitled Event',
+    name: event.title || 'Untitled Event',
     'Volunteer Count': event.volunteerCount,
     'Total Hours': event.totalHours,
     'Capacity %': Math.round(event.capacityUtilization),
+    'Hours/Volunteer': event.hoursPerVolunteer,
     'Budget': event.budget,
     'Amount Raised': event.amountRaised,
     'ROI %': Math.round(event.roi),
@@ -91,185 +97,94 @@ export function ImpactMetrics({ events }: ImpactMetricsProps) {
   }));
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-purple-50 rounded-full">
-              <UserGroupIcon className="h-6 w-6 text-purple-600" />
-            </div>
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <UserGroupIcon className="h-5 w-5 text-blue-500" />
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
-              <p className="text-2xl font-bold text-gray-900">{totalVolunteers}</p>
+              <p className="text-sm text-gray-500">Total Volunteers</p>
+              <p className="text-2xl font-semibold">{totalVolunteers}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 rounded-full">
-              <ClockIcon className="h-6 w-6 text-blue-600" />
-            </div>
+
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <ClockIcon className="h-5 w-5 text-green-500" />
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Hours</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(totalHours)}</p>
+              <p className="text-sm text-gray-500">Total Hours</p>
+              <p className="text-2xl font-semibold">{Math.round(totalHours)}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-green-50 rounded-full">
-              <ChartBarIcon className="h-6 w-6 text-green-600" />
-            </div>
+
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <BanknotesIcon className="h-5 w-5 text-yellow-500" />
             <div>
-              <p className="text-sm font-medium text-gray-500">Average Capacity</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(averageCapacity)}%</p>
+              <p className="text-sm text-gray-500">Total Raised</p>
+              <p className="text-2xl font-semibold">${totalRaised.toLocaleString()}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-yellow-50 rounded-full">
-              <CalendarIcon className="h-6 w-6 text-yellow-600" />
-            </div>
+
+        <Card className="p-4">
+          <div className="flex items-center space-x-2">
+            <ArrowTrendingUpIcon className="h-5 w-5 text-purple-500" />
             <div>
-              <p className="text-sm font-medium text-gray-500">Active Events</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {events.filter(e => e.status === 'active').length}
-              </p>
+              <p className="text-sm text-gray-500">Average ROI</p>
+              <p className="text-2xl font-semibold">{Math.round(averageROI)}%</p>
             </div>
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-indigo-50 rounded-full">
-              <BanknotesIcon className="h-6 w-6 text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Budget</p>
-              <p className="text-2xl font-bold text-gray-900">${totalBudget.toLocaleString()}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-emerald-50 rounded-full">
-              <CurrencyDollarIcon className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Raised</p>
-              <p className="text-2xl font-bold text-gray-900">${totalRaised.toLocaleString()}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-rose-50 rounded-full">
-              <ChartBarIcon className="h-6 w-6 text-rose-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Overall ROI</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(overallROI)}%</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-amber-50 rounded-full">
-              <ArrowTrendingUpIcon className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Goal Progress</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(overallProgress)}%</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <Card className="p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Event Performance</h3>
-        <div className="h-[400px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="name" 
-                tick={{ fill: '#6b7280' }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
-              />
-              <YAxis 
-                tick={{ fill: '#6b7280' }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickLine={{ stroke: '#e5e7eb' }}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'white', 
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '0.5rem',
-                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                }}
-                labelStyle={{ color: '#374151' }}
-                itemStyle={{ color: '#6b7280' }}
-              />
-              <Legend />
-              <Bar dataKey="Volunteer Count" fill="#8b5cf6" name="Volunteers" />
-              <Bar dataKey="Total Hours" fill="#10b981" name="Hours" />
-              <Bar dataKey="Capacity %" fill="#f59e0b" name="Capacity %" />
-              <Bar dataKey="ROI %" fill="#f97316" name="ROI %" />
-              <Bar dataKey="Goal Progress %" fill="#059669" name="Goal Progress %" />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Event Status Distribution */}
+      <Card className="p-4">
+        <h3 className="text-lg font-semibold mb-4">Event Status Distribution</h3>
+        <div className="flex flex-wrap gap-2">
+          {['planned', 'active', 'completed', 'cancelled'].map(status => {
+            const count = eventsWithMetrics.filter(event => event.status === status).length;
+            const percentage = (count / eventsWithMetrics.length) * 100;
+            
+            return (
+              <div key={status} className="flex items-center space-x-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  status === 'active' ? 'bg-blue-500' :
+                  status === 'planned' ? 'bg-green-500' :
+                  status === 'completed' ? 'bg-gray-500' :
+                  'bg-red-500'
+                }`} />
+                <span className="text-sm text-gray-600 capitalize">{status}</span>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
-      <Card className="p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Event Details</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Event</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Volunteers</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Hours</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Capacity</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Budget</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Raised</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">ROI</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Progress</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {eventsWithMetrics.map(event => (
-                <tr key={event.id} className="hover:bg-gray-50 transition-colors duration-150">
-                  <td className="px-4 py-3 text-sm text-gray-900">{event.name || 'Untitled Event'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{event.volunteerCount}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{Math.round(event.totalHours)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{Math.round(event.capacityUtilization)}%</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">${event.budget.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">${event.amountRaised.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{Math.round(event.roi)}%</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{Math.round(event.goalProgress)}%</td>
-                  <td className="px-4 py-3">
-                    <Badge 
-                      variant="outline" 
-                      className={`${
-                        event.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' :
-                        event.status === 'completed' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                        'bg-gray-50 text-gray-700 border-gray-200'
-                      } border-0`}
-                    >
-                      {event.status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Impact Chart */}
+      <Card className="p-4">
+        <h3 className="text-lg font-semibold mb-4">Event Impact Overview</h3>
+        <div className="h-[400px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="Volunteer Count" fill="#3B82F6" />
+              <Bar dataKey="Total Hours" fill="#10B981" />
+              <Bar dataKey="Capacity %" fill="#F59E0B" />
+              <Bar dataKey="Hours/Volunteer" fill="#8B5CF6" />
+              <Bar dataKey="Budget" fill="#EF4444" />
+              <Bar dataKey="Amount Raised" fill="#22C55E" />
+              <Bar dataKey="ROI %" fill="#EC4899" />
+              <Bar dataKey="Goal Progress %" fill="#6366F1" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </Card>
     </div>

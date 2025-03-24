@@ -18,6 +18,17 @@ interface EmbeddingResponse {
   embeddings: number[][];
 }
 
+interface CohereEmbedResponse {
+  embeddings: {
+    [key: string]: number[];
+  };
+  meta: {
+    api_version: {
+      version: string;
+    };
+  };
+}
+
 export class VectorStore {
   private supabase;
   private cohere;
@@ -97,7 +108,9 @@ export class VectorStore {
         throw new Error('Invalid response from Cohere API');
       }
 
-      return response.embeddings;
+      // Convert the response embeddings to the expected format
+      const embeddings = response.embeddings as unknown as { [key: string]: number[] };
+      return Object.values(embeddings);
     } catch (error) {
       console.error('Error getting embeddings:', error);
       throw error;

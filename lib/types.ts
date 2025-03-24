@@ -1,103 +1,29 @@
 export interface Project {
-  id?: string;
-  name?: string;
-  description?: string;
-  goals?: string[];
-  budget?: number;
-  timeline?: string;
-  impact_target?: string;
-  impact_metric?: string;
-  team_size?: number;
-  team_roles?: string[];
-  status?: 'planning' | 'active' | 'completed' | 'on_hold';
-  start_date?: string;
-  end_date?: string;
-  created_at?: string;
-  updated_at?: string;
-  organization_id?: string;
-  grant_id?: string;
-  grant_amount?: number;
+  id: string;
+  name: string;
+  description: string;
+  mission: string;
+  goals: string[];
+  target_audience: string;
+  location: string;
+  timeline: string;
+  budget: number;
+  status: 'planning' | 'active' | 'completed' | 'on_hold';
+  start_date: string;
+  end_date: string;
+  impact_target: string;
+  impact_metric: string;
+  team_size: number;
+  team_roles: string[];
   grant_status?: 'pending' | 'approved' | 'rejected';
+  grant_amount?: number;
   grant_deadline?: string;
-  grant_requirements?: string[];
-  grant_reporting_schedule?: string[];
-  grant_reporting_metrics?: string[];
-  grant_reporting_dates?: string[];
-  grant_reporting_status?: 'on_track' | 'at_risk' | 'behind';
-  grant_reporting_notes?: string[];
-  grant_reporting_attachments?: string[];
-  grant_reporting_submissions?: {
-    date: string;
-    type: string;
-    content: string;
-    status: 'draft' | 'submitted' | 'approved' | 'rejected';
-    feedback?: string;
-  }[];
-  grant_reporting_requirements?: {
-    type: string;
-    due_date: string;
-    status: 'pending' | 'submitted' | 'approved' | 'rejected';
-    content?: string;
-    feedback?: string;
-  }[];
-  grant_reporting_history?: {
-    date: string;
-    type: string;
-    content: string;
-    status: 'draft' | 'submitted' | 'approved' | 'rejected';
-    feedback?: string;
-  }[];
-  grant_reporting_attachments_history?: {
-    date: string;
-    type: string;
-    url: string;
-    name: string;
-    size: number;
-  }[];
-  grant_reporting_comments?: {
-    date: string;
-    user: string;
-    content: string;
-    type: 'internal' | 'external';
-  }[];
-  grant_reporting_reminders?: {
-    date: string;
-    type: string;
-    content: string;
-    status: 'pending' | 'sent' | 'acknowledged';
-  }[];
-  grant_reporting_notifications?: {
-    date: string;
-    type: string;
-    content: string;
-    status: 'pending' | 'sent' | 'acknowledged';
-  }[];
-  grant_reporting_audit_trail?: {
-    date: string;
-    user: string;
-    action: string;
-    details: string;
-  }[];
-  grant_reporting_settings?: {
-    notifications_enabled: boolean;
-    reminder_frequency: string;
-    reporting_template: string;
-    custom_fields: string[];
-  };
-  grant_reporting_analytics?: {
-    submission_rate: number;
-    approval_rate: number;
-    average_response_time: number;
-    compliance_score: number;
-  };
-  grant_reporting_summary?: {
-    total_submissions: number;
-    approved_submissions: number;
-    pending_submissions: number;
-    rejected_submissions: number;
-    next_due_date: string;
-    overall_status: 'on_track' | 'at_risk' | 'behind';
-  };
+  campaign_type?: 'annual' | 'capital' | 'emergency' | 'program';
+  campaign_goal?: number;
+  campaign_deadline?: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
 }
 
 export interface GrantProposal {
@@ -181,12 +107,14 @@ export type AIRequest =
 export interface AIResponse {
   success: boolean;
   content: string;
+  message?: string;
   data?: {
     analyzedItems?: number;
     timestamp?: string;
     estimatedAmount?: number;
     timeline?: string[];
     recommendations?: string[];
+    [key: string]: any;
   };
   error?: string;
 }
@@ -275,12 +203,28 @@ export interface Donor {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  type: 'individual' | 'corporate' | 'foundation' | 'government';
+  status: 'active' | 'inactive';
   amount: number;
+  giving_history: Array<{
+    date: string;
+    amount: number;
+    campaign_id: string;
+    campaign_name: string;
+  }>;
+  total_given: number;
+  last_gift_date: string;
+  last_gift_amount: number;
+  preferred_communication: 'email' | 'phone' | 'mail' | 'any';
+  notes: string;
   last_donation?: string;
   donation_date?: string;
   last_contact?: string;
-  created_at: string;
   engagement?: number;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
 }
 
 export interface Grant {
@@ -321,11 +265,16 @@ export interface FundraisingCampaign {
   id: string;
   name: string;
   description: string;
+  type: 'annual' | 'capital' | 'emergency' | 'program';
   goal: number;
-  raised: number;
+  current_amount: number;
   start_date: string;
   end_date: string;
-  status: 'active' | 'completed' | 'planned';
+  status: 'planned' | 'active' | 'completed' | 'cancelled';
+  target_audience: string;
+  campaign_strategy: string;
+  success_metrics: string;
   created_at: string;
   updated_at: string;
+  user_id: string;
 } 

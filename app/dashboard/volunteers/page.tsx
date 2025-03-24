@@ -43,39 +43,17 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Papa from 'papaparse';
 import { Card } from '@/components/ui/card';
-
-interface VolunteerActivity {
-  id: string;
-  title: string;
-  description: string;
-  location: string;
-  startTime: string;
-  endTime: string;
-  status: 'open' | 'filled' | 'completed' | 'cancelled';
-}
-
-interface Volunteer {
-  id: string;
-  name: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string | null;
-  status: 'active' | 'inactive' | 'pending';
-  skills: string[];
-  activities: VolunteerActivity[];
-  lastActivity: string | null;
-  totalActivities: number;
-  total_hours: number;
-  created_at: string;
-}
+import { VolunteerDialog } from '@/components/volunteer-dialog';
+import type { Volunteer } from '@/app/lib/types';
 
 export default function VolunteersPage() {
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<Volunteer['status'] | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | Volunteer['status']>('all');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedVolunteer, setSelectedVolunteer] = useState<Volunteer | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
@@ -114,20 +92,9 @@ export default function VolunteersPage() {
         return;
       }
 
-      // Fetch volunteers directly
       const { data: volunteers, error: volunteersError } = await supabase
         .from('volunteers')
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email,
-          phone,
-          status,
-          skills,
-          total_hours,
-          created_at
-        `)
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -138,28 +105,11 @@ export default function VolunteersPage() {
         return;
       }
 
-      // Transform the data
-      const volunteerData: Volunteer[] = (volunteers || []).map(volunteer => ({
-        id: volunteer.id,
-        name: `${volunteer.first_name} ${volunteer.last_name}`,
-        first_name: volunteer.first_name,
-        last_name: volunteer.last_name,
-        email: volunteer.email,
-        phone: volunteer.phone,
-        status: volunteer.status,
-        skills: volunteer.skills || [],
-        activities: [], // We'll fetch activities separately if needed
-        lastActivity: null,
-        totalActivities: 0,
-        total_hours: volunteer.total_hours || 0,
-        created_at: volunteer.created_at
-      }));
-
-      setVolunteers(volunteerData);
+      setVolunteers(volunteers || []);
       setError(null);
     } catch (err) {
-      console.error('Error in fetchVolunteers:', err);
-      setError('An unexpected error occurred. Please try again.');
+      console.error('Error:', err);
+      setError('An unexpected error occurred');
       setVolunteers([]);
     } finally {
       setLoading(false);
@@ -185,68 +135,68 @@ export default function VolunteersPage() {
     });
   };
 
-  const handleAddVolunteer = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
+  const handleAddVolunteer = async (data: Omit<Volunteer, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
-      // Create a new volunteer record
-      const { data: volunteer, error: volunteerError } = await supabase
+      const { data: newVolunteer, error } = await supabase
         .from('volunteers')
-        .insert({
+        .insert([{
+          ...data,
           user_id: user.id,
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          email: formData.email,
-          phone: formData.phone || null,
-          status: 'pending',
-          skills: formData.skills.split(',').map(s => s.trim()).filter(Boolean),
-          interests: [],
-          availability: {
-            weekdays: false,
-            weekends: false,
-            hours: '9-5'
-          },
-          total_hours: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        }])
         .select()
         .single();
 
-      if (volunteerError) throw volunteerError;
+      if (error) throw error;
 
-      // Create a new volunteer activity
-      const { data: activity, error: activityError } = await supabase
-        .from('volunteer_activities')
-        .insert({
-          organizer_id: user.id,
-          title: 'New Volunteer Registration',
-          description: 'Initial volunteer registration',
-          location: 'Online',
-          start_time: new Date().toISOString(),
-          end_time: new Date().toISOString(),
-          max_participants: 1,
-          participant_ids: [volunteer.id],
-          status: 'completed',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      if (activityError) throw activityError;
-
-      handleDialogClose();
-      await fetchVolunteers();
+      setVolunteers(prev => [newVolunteer, ...prev]);
+      setIsDialogOpen(false);
+      setSelectedVolunteer(null);
     } catch (err) {
       console.error('Error adding volunteer:', err);
-      setError(err instanceof Error ? err.message : 'Failed to add volunteer');
-    } finally {
-      setLoading(false);
+      setError('Failed to add volunteer');
+    }
+  };
+
+  const handleUpdateVolunteer = async (data: Omit<Volunteer, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
+    if (!selectedVolunteer) return;
+
+    try {
+      const { error } = await supabase
+        .from('volunteers')
+        .update(data)
+        .eq('id', selectedVolunteer.id);
+
+      if (error) throw error;
+
+      setVolunteers(prev => prev.map(v => 
+        v.id === selectedVolunteer.id ? { ...v, ...data } : v
+      ));
+      setIsDialogOpen(false);
+      setSelectedVolunteer(null);
+    } catch (err) {
+      console.error('Error updating volunteer:', err);
+      setError('Failed to update volunteer');
+    }
+  };
+
+  const handleDeleteVolunteer = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this volunteer?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('volunteers')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setVolunteers(prev => prev.filter(v => v.id !== id));
+    } catch (err) {
+      console.error('Error deleting volunteer:', err);
+      setError('Failed to delete volunteer');
     }
   };
 
@@ -372,481 +322,122 @@ export default function VolunteersPage() {
     }
   };
 
-  const handleDeleteVolunteer = async (id: string) => {
-    try {
-      setLoading(true);
-      const { error } = await supabase
-        .from('volunteers')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      setVolunteers(prev => prev.filter(v => v.id !== id));
-      setDeleteVolunteerId(null);
-      setSuccessMessage('Volunteer deleted successfully');
-    } catch (err) {
-      console.error('Error deleting volunteer:', err);
-      setError('Failed to delete volunteer');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading && !volunteers.length) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+  if (loading) {
+    return <div>Loading...</div>;
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Volunteer Management</h1>
-          <p className="mt-2 text-gray-600">
-            Track and manage volunteer activities and engagement
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-purple-50 rounded-full">
-              <UserPlusIcon className="h-6 w-6 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
-              <p className="text-2xl font-bold text-gray-900">{volunteers.length}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 rounded-full">
-              <UserPlusIcon className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Active Volunteers</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {volunteers.filter(v => v.status === 'active').length}
-              </p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-green-50 rounded-full">
-              <UserPlusIcon className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Hours</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {volunteers.reduce((sum, v) => sum + v.total_hours, 0)}
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search volunteers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-[300px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-            />
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="border-gray-200 hover:bg-gray-50">
-                <FunnelIcon className="h-5 w-5 mr-2" />
-                {statusFilter === 'all' ? 'All Statuses' : statusFilter}
-                <ChevronUpDownIcon className="h-5 w-5 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="border border-gray-100">
-              <DropdownMenuItem onClick={() => setStatusFilter('all')}>
-                All Statuses
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('active')}>
-                Active
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('pending')}>
-                Pending
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setStatusFilter('inactive')}>
-                Inactive
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="flex gap-3">
-          <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="border-gray-200 hover:bg-gray-50">
-                <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
-                Import
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl bg-white border border-gray-100 shadow-lg">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-semibold text-gray-900">Import Volunteers</DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  Import multiple volunteers at once using a CSV file.
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900">1. Download Template</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Start by downloading our CSV template with the correct format.
-                  </p>
-                  <Button
-                    onClick={downloadTemplate}
-                    variant="outline"
-                    className="mt-2 border-gray-200 hover:bg-gray-50"
-                  >
-                    <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
-                    Download Template
-                  </Button>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900">2. Upload File</h3>
-                  <label className="mt-2 block">
-                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-gray-400 transition-colors cursor-pointer">
-                      <div className="space-y-1 text-center">
-                        <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
-                        <div className="flex text-sm text-gray-600">
-                          <label className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500">
-                            <span>Upload a file</span>
-                            <input
-                              type="file"
-                              accept=".csv"
-                              className="sr-only"
-                              onChange={handleFileUpload}
-                            />
-                          </label>
-                          <p className="pl-1">or drag and drop</p>
-                        </div>
-                        <p className="text-xs text-gray-500">CSV file up to 10MB</p>
-                      </div>
-                    </div>
-                  </label>
-                </div>
-
-                {importPreview.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900">3. Review</h3>
-                    <div className="mt-2 max-h-60 overflow-auto border border-gray-100 rounded-lg">
-                      <table className="min-w-full divide-y divide-gray-100">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Name</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Email</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Skills</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-100">
-                          {importPreview.map((row, index) => (
-                            <tr key={index}>
-                              <td className="px-4 py-2 text-sm text-gray-900">{row.first_name} {row.last_name}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900">{row.email}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900">{row.skills}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsImportOpen(false)}
-                    className="w-full border-gray-200 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleImport}
-                    disabled={loading || !importPreview.length}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    {loading ? 'Importing...' : 'Import Volunteers'}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-            <DialogTrigger asChild>
-              <Button 
-                className="bg-purple-600 hover:bg-purple-700"
-                onClick={() => setIsAddOpen(true)}
-              >
-                <UserPlusIcon className="h-5 w-5 mr-2" />
-                Add Volunteer
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-white border border-gray-100 shadow-lg">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-semibold text-gray-900">Add New Volunteer</DialogTitle>
-                <DialogDescription className="text-gray-600">
-                  Enter the volunteer's information below.
-                </DialogDescription>
-              </DialogHeader>
-
-              <form onSubmit={handleAddVolunteer} className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-sm font-medium text-gray-700">First Name</Label>
-                    <Input 
-                      id="firstName" 
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      required 
-                      className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-sm font-medium text-gray-700">Last Name</Label>
-                    <Input 
-                      id="lastName" 
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      required 
-                      className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email</Label>
-                  <Input 
-                    id="email" 
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    type="email" 
-                    required 
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-sm font-medium text-gray-700">Phone</Label>
-                  <Input 
-                    id="phone" 
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    type="tel" 
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="skills" className="text-sm font-medium text-gray-700">Skills (comma-separated)</Label>
-                  <Input
-                    id="skills"
-                    name="skills"
-                    value={formData.skills}
-                    onChange={handleInputChange}
-                    placeholder="e.g., teaching, first aid, cooking"
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddOpen(false)}
-                    className="w-full border-gray-200 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
-                  >
-                    {loading ? 'Adding...' : 'Add Volunteer'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Volunteers</h1>
+        <button
+          onClick={() => {
+            setSelectedVolunteer(null);
+            setIsDialogOpen(true);
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Add Volunteer
+        </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-md">
           {error}
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-gray-50">
-              <TableHead className="text-sm font-medium text-gray-500">Name</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Email</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Phone</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Status</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Skills</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Hours</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Joined</TableHead>
-              <TableHead className="text-sm font-medium text-gray-500">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredVolunteers.map((volunteer) => (
-              <TableRow key={volunteer.id} className="hover:bg-gray-50">
-                <TableCell className="font-medium">
-                  <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center mr-3">
-                      <span className="text-sm font-medium text-purple-600">
-                        {volunteer.first_name[0]}{volunteer.last_name[0]}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {volunteer.first_name} {volunteer.last_name}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {volunteer.skills.length} skills
-                      </div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-gray-600">{volunteer.email}</TableCell>
-                <TableCell className="text-sm text-gray-600">{volunteer.phone || '-'}</TableCell>
-                <TableCell>
-                  <Badge className={getStatusColor(volunteer.status)}>
-                    {volunteer.status.charAt(0).toUpperCase() + volunteer.status.slice(1)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {volunteer.skills.slice(0, 3).map((skill, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {skill}
-                      </Badge>
-                    ))}
-                    {volunteer.skills.length > 3 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{volunteer.skills.length - 3} more
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-gray-600">{volunteer.total_hours}</TableCell>
-                <TableCell className="text-sm text-gray-600">
-                  {new Date(volunteer.created_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                        </svg>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setFormData({
-                            firstName: volunteer.first_name,
-                            lastName: volunteer.last_name,
-                            email: volunteer.email,
-                            phone: volunteer.phone || '',
-                            skills: volunteer.skills.join(', ')
-                          });
-                          setIsAddOpen(true);
-                        }}
-                      >
-                        <PencilIcon className="h-4 w-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setDeleteVolunteerId(volunteer.id)}
-                        className="text-red-600 focus:text-red-600"
-                      >
-                        <TrashIcon className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-            {filteredVolunteers.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                  {loading ? (
-                    <div className="flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
-                    </div>
-                  ) : (
-                    'No volunteers found'
-                  )}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      <div className="mb-6 flex space-x-4">
+        <input
+          type="text"
+          placeholder="Search volunteers..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="pending">Pending</option>
+        </select>
       </div>
 
-      <Dialog open={!!deleteVolunteerId} onOpenChange={(open) => !open && setDeleteVolunteerId(null)}>
-        <DialogContent className="bg-white border border-gray-100 shadow-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-gray-900">Delete Volunteer</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Are you sure you want to delete this volunteer? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end space-x-3 mt-6">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteVolunteerId(null)}
-              className="border-gray-200 hover:bg-gray-50"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => deleteVolunteerId && handleDeleteVolunteer(deleteVolunteerId)}
-              disabled={loading}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {loading ? 'Deleting...' : 'Delete'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredVolunteers.map(volunteer => (
+          <div
+            key={volunteer.id}
+            className="bg-white rounded-lg shadow-md p-6"
+          >
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {volunteer.first_name} {volunteer.last_name}
+                </h3>
+                <p className="text-sm text-gray-500">{volunteer.email}</p>
+              </div>
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(volunteer.status)}`}>
+                {volunteer.status}
+              </span>
+            </div>
 
-      {successMessage && (
-        <div className="fixed top-4 right-4 bg-green-50 border border-green-200 rounded-lg p-4 shadow-lg z-50">
-          <p className="text-sm text-green-600">{successMessage}</p>
-        </div>
-      )}
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Skills</h4>
+              <div className="flex flex-wrap gap-2">
+                {volunteer.skills.map(skill => (
+                  <span
+                    key={skill}
+                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Availability</h4>
+              <div className="text-sm text-gray-600">
+                <p>Weekdays: {volunteer.availability.weekdays ? 'Yes' : 'No'}</p>
+                <p>Weekends: {volunteer.availability.weekends ? 'Yes' : 'No'}</p>
+                <p>Hours: {volunteer.availability.hours}</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  setSelectedVolunteer(volunteer);
+                  setIsDialogOpen(true);
+                }}
+                className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => handleDeleteVolunteer(volunteer.id)}
+                className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <VolunteerDialog
+        isOpen={isDialogOpen}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setSelectedVolunteer(null);
+        }}
+        onSubmit={selectedVolunteer ? handleUpdateVolunteer : handleAddVolunteer}
+        volunteer={selectedVolunteer}
+      />
     </div>
   );
 } 

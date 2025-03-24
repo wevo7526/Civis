@@ -1,12 +1,17 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Project, GrantDocument, GrantSection } from './types';
+import Anthropic from '@anthropic-ai/sdk';
 
 const supabase = createClientComponentClient();
 
 export interface AIResponse {
   success: boolean;
-  content: string;
-  error?: string;
+  message?: string;
+  content: Array<{
+    type: 'text';
+    text: string;
+  }>;
+  data?: Record<string, any>;
 }
 
 export const grantWriterService = {
@@ -34,15 +39,17 @@ export const grantWriterService = {
       const data = await response.json();
       return {
         success: data.success,
+        message: data.message || 'Section generated successfully',
         content: data.content,
-        error: data.error,
+        data: data.data || {},
       };
     } catch (error) {
       console.error('Error generating section:', error);
       return {
         success: false,
-        content: '',
-        error: error instanceof Error ? error.message : 'Failed to generate content',
+        message: error instanceof Error ? error.message : 'Failed to generate content',
+        content: [],
+        data: {},
       };
     }
   },

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { PaperClipIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
+import { AIResponse } from '@/lib/types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -116,7 +117,7 @@ export default function ChatInterface() {
 
       console.log('Response status:', response.status);
       console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-      const data = await response.json();
+      const data = await response.json() as AIResponse;
       console.log('Response data:', JSON.stringify(data, null, 2));
 
       if (!response.ok) {
@@ -134,7 +135,7 @@ export default function ChatInterface() {
 
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.message,
+        content: data.content || data.message || 'No response available.',
         timestamp: new Date(),
       };
 

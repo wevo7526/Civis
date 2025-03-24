@@ -51,7 +51,7 @@ export default function DonorCard({
           </button>
           <button
             onClick={() => onDelete(donor.id)}
-            className="p-2 text-gray-400 hover:text-red-500"
+            className="p-2 text-gray-400 hover:text-gray-500"
           >
             <TrashIcon className="h-5 w-5" />
           </button>
@@ -60,40 +60,38 @@ export default function DonorCard({
 
       <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
-          <p className="text-sm font-medium text-gray-500">Status</p>
+          <p className="text-sm font-medium text-gray-500">Total Given</p>        
+          <p className="mt-1 text-sm text-gray-900">${donor.total_given.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-500">Last Gift</p>
           <p className="mt-1 text-sm text-gray-900">
+            {new Date(donor.last_gift_date).toLocaleDateString()}
+          </p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-500">Last Gift Amount</p>
+          <p className="mt-1 text-sm text-gray-900">${donor.last_gift_amount.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-500">Type</p>
+          <p className="mt-1 text-sm text-gray-900 capitalize">{donor.type}</p>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-500">Status</p>
+          <p className="mt-1">
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-              donor.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+              donor.status === 'active' 
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
             }`}>
               {donor.status}
             </span>
           </p>
         </div>
         <div>
-          <p className="text-sm font-medium text-gray-500">Donation Amount</p>
-          <p className="mt-1 text-sm text-gray-900">${donor.amount.toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Last Donation</p>
-          <p className="mt-1 text-sm text-gray-900">
-            {donor.last_donation ? new Date(donor.last_donation).toLocaleDateString() : 'Never'}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Engagement</p>
-          <p className="mt-1 text-sm text-gray-900">{donor.engagement || 0}%</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Last Contact</p>
-          <p className="mt-1 text-sm text-gray-900">
-            {donor.last_contact ? new Date(donor.last_contact).toLocaleDateString() : 'Never'}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Donation Date</p>
-          <p className="mt-1 text-sm text-gray-900">
-            {new Date(donor.donation_date).toLocaleDateString()}
-          </p>
+          <p className="text-sm font-medium text-gray-500">Preferred Contact</p>
+          <p className="mt-1 text-sm text-gray-900 capitalize">{donor.preferred_communication}</p>
         </div>
       </div>
 

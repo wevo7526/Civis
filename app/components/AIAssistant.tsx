@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { SparklesIcon, XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { Dialog } from '@headlessui/react';
-import { aiService } from '@/app/lib/aiService';
+import { aiService } from '@/lib/aiService';
+import { AIResponse } from '@/lib/types';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -20,7 +21,7 @@ export default function AIAssistant({ onGenerateResponse }: AIAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [prompt, setPrompt] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -50,18 +51,22 @@ export default function AIAssistant({ onGenerateResponse }: AIAssistantProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || loading) return;
 
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
 
     try {
-      const response = await aiService.chat(prompt);
-      onGenerateResponse(response.content);
+      const response: AIResponse = await aiService.chat(prompt);
+      if (response.success && response.content) {
+        onGenerateResponse(response.content);
+      } else {
+        setError(response.error || 'Failed to get response');
+      }
     } catch (error) {
       setError('An error occurred while processing your request.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -131,14 +136,14 @@ export default function AIAssistant({ onGenerateResponse }: AIAssistantProps) {
                   rows={3}
                   className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                   placeholder="Ask about nonprofit management..."
-                  disabled={isLoading}
+                  disabled={loading}
                 />
                 <button
                   type="submit"
-                  disabled={isLoading || !prompt.trim()}
+                  disabled={loading || !prompt.trim()}
                   className="p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 >
-                  {isLoading ? (
+                  {loading ? (
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
                   ) : (
                     <PaperAirplaneIcon className="h-5 w-5" />

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
+import { FundraisingStrategy } from '@/app/lib/types';
 import {
   BarChart,
   Bar,
@@ -47,36 +48,14 @@ interface TimelineData {
   cumulativeRevenue: number;
 }
 
-interface FundraisingStrategy {
+interface SavedStrategy extends FundraisingStrategy {
   id: string;
-  name: string;
-  description: string;
-  targetAmount: number;
-  duration: number;
-  successProbability: number;
-  costToImplement: number;
-  expectedROI: number;
-  donorSegments: {
-    segment: string;
-    percentage: number;
-    averageGift: number;
-  }[];
-  timelineData: TimelineData[];
-  riskFactors: {
-    factor: string;
-    impact: 'high' | 'medium' | 'low';
-    mitigation: string;
-  }[];
+  created_at: string;
 }
 
 interface Project {
   id: string;
   name: string;
-}
-
-interface SavedStrategy extends FundraisingStrategy {
-  id: string;
-  created_at: string;
 }
 
 const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#f97316', '#059669'];
@@ -110,15 +89,20 @@ export default function FundraisingPage() {
         id: strategy.id,
         name: strategy.name,
         description: strategy.description,
-        targetAmount: strategy.target_amount,
-        duration: strategy.duration,
-        successProbability: strategy.success_probability,
-        costToImplement: strategy.cost_to_implement,
-        expectedROI: strategy.expected_roi,
-        donorSegments: strategy.donor_segments,
-        timelineData: strategy.timeline_data,
-        riskFactors: strategy.risk_factors,
-        created_at: strategy.created_at
+        target_amount: strategy.target_amount,
+        current_amount: strategy.current_amount,
+        start_date: strategy.start_date,
+        end_date: strategy.end_date,
+        status: strategy.status,
+        type: strategy.type,
+        progress: strategy.progress,
+        user_id: strategy.user_id,
+        created_at: strategy.created_at,
+        updated_at: strategy.updated_at,
+        notes: strategy.notes,
+        metrics: strategy.metrics,
+        insights: strategy.insights,
+        recommendations: strategy.recommendations
       }));
 
       setSavedStrategies(mappedStrategies);
@@ -176,14 +160,17 @@ export default function FundraisingPage() {
         .insert({
           name: strategy.name,
           description: strategy.description,
-          target_amount: strategy.targetAmount,
-          duration: strategy.duration,
-          success_probability: strategy.successProbability,
-          cost_to_implement: strategy.costToImplement,
-          expected_roi: strategy.expectedROI,
-          donor_segments: strategy.donorSegments,
-          timeline_data: strategy.timelineData,
-          risk_factors: strategy.riskFactors,
+          target_amount: strategy.target_amount,
+          current_amount: strategy.current_amount,
+          start_date: strategy.start_date,
+          end_date: strategy.end_date,
+          status: strategy.status,
+          type: strategy.type,
+          progress: strategy.progress,
+          notes: strategy.notes,
+          metrics: strategy.metrics,
+          insights: strategy.insights,
+          recommendations: strategy.recommendations,
           prompt: prompt,
           created_by: (await supabase.auth.getUser()).data.user?.id
         });
@@ -344,34 +331,37 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
         </div>
         <div className="flex items-center space-x-2">
           <span className="text-sm text-gray-500">Success Rate:</span>
-          <span className="text-sm font-semibold text-green-600">{strategy.successProbability}%</span>
+          <span className="text-sm font-semibold text-green-600">{strategy.progress}%</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="text-sm font-medium text-gray-500">Target Amount</h4>
-          <p className="text-2xl font-bold text-gray-900">${strategy.targetAmount.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">${strategy.target_amount.toLocaleString()}</p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-gray-500">Expected ROI</h4>
-          <p className="text-2xl font-bold text-gray-900">{strategy.expectedROI}%</p>
+          <h4 className="text-sm font-medium text-gray-500">Current Amount</h4>
+          <p className="text-2xl font-bold text-gray-900">${strategy.current_amount.toLocaleString()}</p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-gray-500">Duration</h4>
-          <p className="text-2xl font-bold text-gray-900">{strategy.duration} months</p>
+          <h4 className="text-sm font-medium text-gray-500">Start Date</h4>
+          <p className="text-2xl font-bold text-gray-900">{new Date(strategy.start_date).toLocaleDateString()}</p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-gray-500">Cost to Implement</h4>
-          <p className="text-2xl font-bold text-gray-900">${strategy.costToImplement.toLocaleString()}</p>
+          <h4 className="text-sm font-medium text-gray-500">End Date</h4>
+          <p className="text-2xl font-bold text-gray-900">{new Date(strategy.end_date).toLocaleDateString()}</p>
         </div>
       </div>
 
       <div className="mb-6">
-        <h4 className="text-lg font-medium text-gray-900 mb-4">Revenue Timeline</h4>
+        <h4 className="text-lg font-medium text-gray-900 mb-4">Progress</h4>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={strategy.timelineData}>
+            <AreaChart data={[
+              { date: strategy.start_date, amount: 0 },
+              { date: strategy.end_date, amount: strategy.target_amount }
+            ]}>
               <defs>
                 <linearGradient id={`color${strategy.id}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
@@ -379,7 +369,7 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
+              <XAxis dataKey="date" />
               <YAxis />
               <Tooltip 
                 formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
@@ -387,7 +377,7 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
               />
               <Area
                 type="monotone"
-                dataKey="cumulativeRevenue"
+                dataKey="amount"
                 stroke="#8884d8"
                 fillOpacity={1}
                 fill={`url(#color${strategy.id})`}
@@ -397,55 +387,72 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h4 className="text-lg font-medium text-gray-900 mb-4">Donor Segments</h4>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={strategy.donorSegments}
-                  dataKey="percentage"
-                  nameKey="segment"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
-                />
-                <Tooltip 
-                  formatter={(value: number, name: string) => [
-                    `${value}%`,
-                    `${name} ($${strategy.donorSegments.find(s => s.segment === name)?.averageGift.toLocaleString()})`
-                  ]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+      <div className="space-y-2">
+        {strategy.metrics?.donor_count && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Donor Count</span>
+            <span className="text-sm font-medium">{strategy.metrics.donor_count}</span>
           </div>
-        </div>
-
-        <div>
-          <h4 className="text-lg font-medium text-gray-900 mb-4">Risk Factors</h4>
-          <div className="space-y-4">
-            {strategy.riskFactors.map((risk, index) => (
-              <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium text-gray-900">{risk.factor}</p>
-                    <p className="text-sm text-gray-600 mt-1">{risk.mitigation}</p>
-                  </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    risk.impact === 'high' ? 'bg-red-100 text-red-800' :
-                    risk.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
-                    {risk.impact}
-                  </span>
-                </div>
-              </div>
-            ))}
+        )}
+        {strategy.metrics?.average_donation && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Average Donation</span>
+            <span className="text-sm font-medium">${strategy.metrics.average_donation.toLocaleString()}</span>
           </div>
-        </div>
+        )}
+        {strategy.metrics?.conversion_rate && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Conversion Rate</span>
+            <span className="text-sm font-medium">{strategy.metrics.conversion_rate}%</span>
+          </div>
+        )}
+        {strategy.metrics?.engagement_rate && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-500">Engagement Rate</span>
+            <span className="text-sm font-medium">{strategy.metrics.engagement_rate}%</span>
+          </div>
+        )}
       </div>
+
+      {/* Donor Segments */}
+      {strategy.insights?.performance_analysis && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-900">Performance Analysis</h4>
+          <p className="text-sm text-gray-500">{strategy.insights.performance_analysis}</p>
+        </div>
+      )}
+
+      {/* Recommendations */}
+      {strategy.recommendations?.short_term && strategy.recommendations.short_term.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-900">Short-term Recommendations</h4>
+          <ul className="list-disc list-inside space-y-1">
+            {strategy.recommendations.short_term.map((s: string) => (
+              <li key={s} className="text-sm text-gray-500">{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Risk Assessment */}
+      {strategy.insights?.risk_assessment && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-900">Risk Assessment</h4>
+          <p className="text-sm text-gray-500">{strategy.insights.risk_assessment}</p>
+        </div>
+      )}
+
+      {/* Priority Actions */}
+      {strategy.recommendations?.priority_actions && strategy.recommendations.priority_actions.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-gray-900">Priority Actions</h4>
+          <ul className="list-disc list-inside space-y-1">
+            {strategy.recommendations.priority_actions.map((action: string, index: number) => (
+              <li key={index} className="text-sm text-gray-500">{action}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Save Button */}
       {onSave && !isSaved && (

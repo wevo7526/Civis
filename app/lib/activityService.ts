@@ -1,23 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-
-interface Activity {
-  id: string;
-  user_id: string;
-  type: string;
-  title: string;
-  description: string;
-  metadata?: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-}
-
-interface CreateActivityParams {
-  user_id: string;
-  type: string;
-  title: string;
-  description: string;
-  metadata?: Record<string, any>;
-}
+import { Activity, CreateActivityParams } from './types';
 
 export const createActivityService = (supabase: SupabaseClient) => {
   const createActivity = async (params: CreateActivityParams): Promise<Activity | null> => {

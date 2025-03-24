@@ -22,14 +22,22 @@ export const createEventService = (supabase: SupabaseClient) => {
 
   const addEvent = async (event: Omit<Event, 'id' | 'created_at' | 'updated_at'>): Promise<Event | null> => {
     try {
-      // Clean up the event data
       const cleanEvent = {
         ...event,
-        title: event.title.trim(),
+        name: event.name.trim(),
         description: event.description.trim(),
         location: event.location.trim(),
+        date: event.date,
+        type: event.type,
+        status: event.status,
         budget: Number(event.budget),
         target_attendees: Number(event.target_attendees),
+        user_id: event.user_id,
+        volunteer_hours: event.volunteer_hours || {},
+        volunteer_ids: event.volunteer_ids || [],
+        max_volunteers: event.max_volunteers,
+        amount_raised: event.amount_raised || 0,
+        fundraising_goal: event.fundraising_goal,
         actual_attendees: event.actual_attendees ? Number(event.actual_attendees) : null,
         total_revenue: event.total_revenue ? Number(event.total_revenue) : null,
         total_expenses: event.total_expenses ? Number(event.total_expenses) : null,
@@ -62,7 +70,7 @@ export const createEventService = (supabase: SupabaseClient) => {
       // Clean up the event data
       const cleanEvent = {
         ...event,
-        title: event.title?.trim(),
+        name: event.name?.trim(),
         description: event.description?.trim(),
         location: event.location?.trim(),
         budget: event.budget ? Number(event.budget) : undefined,

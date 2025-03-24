@@ -1,13 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
-import { Donor, Grant, Volunteer, Event, Program, CommunityStakeholder, FundraisingCampaign, Project } from './types';
-
-interface AIResponse {
-  message: string;
-  success: boolean;
-  content: string;
-  data: any;
-  error?: string;
-}
+import { 
+  Donor, 
+  Grant, 
+  Volunteer, 
+  Event, 
+  Program, 
+  CommunityStakeholder, 
+  FundraisingCampaign, 
+  Project,
+  AIResponse 
+} from '@/lib/types';
 
 export const aiService = {
   async chat(message: string, context: string[] = []): Promise<AIResponse> {
@@ -15,10 +17,7 @@ export const aiService = {
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          context,
-        }),
+        body: JSON.stringify({ message, context }),
       });
 
       if (!response.ok) {
@@ -27,23 +26,24 @@ export const aiService = {
 
       const data = await response.json();
       return {
-        message: data.message || 'No response available',
         success: true,
-        content: data.content || '',
+        content: data.content || data.message || 'No response available',
+        message: data.message,
         data: data.data || {},
       };
     } catch (error) {
-      console.error('Error in AI chat:', error);
+      console.error('Error getting AI response:', error);
       return {
-        message: 'Failed to get response. Please try again.',
         success: false,
-        content: 'I apologize, but I encountered an error. Please try again.',
+        content: 'I apologize, but I encountered an error while processing your request.',
+        message: 'Failed to get AI response. Please try again.',
         data: {},
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   },
 
-  async analyzeDonorEngagement(donorData: any[]): Promise<AIResponse> {
+  async analyzeDonorEngagement(donorData: Donor[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai/analyze-donors', {
         method: 'POST',
@@ -73,7 +73,7 @@ export const aiService = {
     }
   },
 
-  async analyzeProjects(projectData: any[]): Promise<AIResponse> {
+  async analyzeProjects(projectData: Project[]): Promise<AIResponse> {
     try {
       const response = await fetch('/api/ai/analyze-projects', {
         method: 'POST',
@@ -87,18 +87,81 @@ export const aiService = {
 
       const data = await response.json();
       return {
-        message: data.message || 'No analysis available',
         success: true,
-        content: data.content || '',
+        content: data.content || data.message || 'No analysis available',
+        message: data.message,
         data: data.data || {},
       };
     } catch (error) {
       console.error('Error analyzing projects:', error);
       return {
-        message: 'Failed to analyze projects. Please try again.',
         success: false,
         content: 'I apologize, but I encountered an error while analyzing projects.',
+        message: 'Failed to analyze projects. Please try again.',
         data: {},
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  },
+
+  async analyzeEvents(eventData: Event[]): Promise<AIResponse> {
+    try {
+      const response = await fetch('/api/ai/analyze-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventData }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze events');
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        content: data.content || data.message || 'No analysis available',
+        message: data.message,
+        data: data.data || {},
+      };
+    } catch (error) {
+      console.error('Error analyzing events:', error);
+      return {
+        success: false,
+        content: 'I apologize, but I encountered an error while analyzing events.',
+        message: 'Failed to analyze events. Please try again.',
+        data: {},
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  },
+
+  async analyzeFundraising(data: { donors: Donor[]; projects: Project[]; events: Event[] }): Promise<AIResponse> {
+    try {
+      const response = await fetch('/api/ai/analyze-fundraising', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze fundraising');
+      }
+
+      const responseData = await response.json();
+      return {
+        success: true,
+        content: responseData.content || responseData.message || 'No analysis available',
+        message: responseData.message,
+        data: responseData.data || {},
+      };
+    } catch (error) {
+      console.error('Error analyzing fundraising:', error);
+      return {
+        success: false,
+        content: 'I apologize, but I encountered an error while analyzing fundraising data.',
+        message: 'Failed to analyze fundraising. Please try again.',
+        data: {},
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   },

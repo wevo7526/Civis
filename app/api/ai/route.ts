@@ -10,12 +10,8 @@ import {
   CommunityStakeholder, 
   FundraisingCampaign, 
   Project, 
-  VolunteerActivity,
-  AIRequest, 
-  DonorAnalysisData, 
-  ProjectAnalysisData, 
-  EventAnalysisData 
-} from '@/lib/types';
+  VolunteerActivity
+} from '@/app/lib/types';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
@@ -460,24 +456,24 @@ Please provide:
       case 'generateOutreachMessage': {
         const donor = data as Donor;
         const currentDate = new Date().toISOString();
-        const lastDonationDate = (donor.last_donation || donor.donation_date || currentDate) as string;
-        const lastContactDate = (donor.last_contact || donor.created_at || currentDate) as string;
+        const lastDonationDate = donor.last_gift_date || currentDate;
+        const lastContactDate = donor.created_at || currentDate;
         const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
         const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
         
         prompt = `Generate a personalized email message for a donor with the following details:
 - Name: ${donor.name}
-- Last Donation Amount: $${donor.amount}
+- Last Donation Amount: $${donor.last_gift_amount}
 - Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
-- Engagement Score: ${donor.engagement || 0}%
+- Total Given: $${donor.total_given}
+- Preferred Communication: ${donor.preferred_communication}
 - Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
 
 The message should:
 1. Be warm and personal
 2. Acknowledge their past support
-3. Highlight the impact of their contributions
-4. Include a specific ask or call to action
-5. Maintain a professional yet friendly tone`;
+3. Share a brief impact story
+4. Include a gentle call to action`;
         break;
       }
 
@@ -661,28 +657,24 @@ Please format the response in a clear, structured manner with bullet points for 
       case 'generateDonorMessage': {
         const donor = data as Donor;
         const currentDate = new Date().toISOString();
-        const lastDonationDate = (donor.last_donation || donor.donation_date || currentDate) as string;
-        const lastContactDate = (donor.last_contact || donor.created_at || currentDate) as string;
+        const lastDonationDate = donor.last_gift_date || currentDate;
+        const lastContactDate = donor.created_at || currentDate;
         const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
         const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
         
         prompt = `Generate a personalized email message for a donor with the following details:
 - Name: ${donor.name}
-- Last Donation Amount: $${donor.amount}
+- Last Donation Amount: $${donor.last_gift_amount}
 - Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
-- Engagement Score: ${donor.engagement || 0}%
+- Total Given: $${donor.total_given}
+- Preferred Communication: ${donor.preferred_communication}
 - Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
 
 The message should:
 1. Be warm and personal
 2. Acknowledge their past support
 3. Share a brief impact story
-4. Include a gentle call to action
-5. Be concise (2-3 paragraphs)
-6. Be professional but friendly
-7. Match their engagement level (high/medium/low)
-
-Format the message as a complete email body, including a greeting and sign-off.`;
+4. Include a gentle call to action`;
         break;
       }
 
