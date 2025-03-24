@@ -49,38 +49,6 @@ async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIRespon
 }
 
 export const aiService = {
-  // Chat
-  async chat(message: string, context: string[] = []): Promise<AIResponse> {
-    try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get AI response');
-      }
-
-      const data = await response.json();
-      return {
-        success: true,
-        content: data.content || data.message || 'No response available',
-        message: data.message,
-        data: data.data || {},
-      };
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      return {
-        success: false,
-        content: 'I apologize, but I encountered an error while processing your request.',
-        message: 'Failed to get AI response. Please try again.',
-        data: {},
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    }
-  },
-
   // Donor Analysis
   async analyzeDonors(donors: Donor[]): Promise<AIResponse> {
     return makeAIRequest('analyze_donors', donors);

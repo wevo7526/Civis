@@ -12,6 +12,7 @@ import {
   ExclamationTriangleIcon,
   PencilIcon,
   TrashIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,23 @@ import Papa from 'papaparse';
 import { Card } from '@/components/ui/card';
 import { VolunteerDialog } from '@/components/volunteer-dialog';
 import type { Volunteer } from '@/app/lib/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { DialogFooter } from '@/components/ui/dialog';
+
+interface ImportPreviewRow {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  skills?: string;
+  interests?: string;
+}
 
 export default function VolunteersPage() {
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
@@ -54,17 +72,8 @@ export default function VolunteersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | Volunteer['status']>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedVolunteer, setSelectedVolunteer] = useState<Volunteer | null>(null);
-  const [isAddOpen, setIsAddOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [importPreview, setImportPreview] = useState<any[]>([]);
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    skills: ''
-  });
-  const [deleteVolunteerId, setDeleteVolunteerId] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreviewRow[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -116,23 +125,10 @@ export default function VolunteersPage() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
   const handleDialogClose = () => {
-    setIsAddOpen(false);
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      skills: ''
-    });
+    setIsDialogOpen(false);
+    setSelectedVolunteer(null);
+    setSuccessMessage(null);
   };
 
   const handleAddVolunteer = async (data: Omit<Volunteer, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
@@ -145,6 +141,7 @@ export default function VolunteersPage() {
         .insert([{
           ...data,
           user_id: user.id,
+          total_hours: 0,
         }])
         .select()
         .single();
@@ -152,11 +149,11 @@ export default function VolunteersPage() {
       if (error) throw error;
 
       setVolunteers(prev => [newVolunteer, ...prev]);
-      setIsDialogOpen(false);
-      setSelectedVolunteer(null);
+      handleDialogClose();
+      setSuccessMessage('Volunteer added successfully');
     } catch (err) {
       console.error('Error adding volunteer:', err);
-      setError('Failed to add volunteer');
+      setError('Failed to add volunteer. Please try again.');
     }
   };
 
@@ -166,7 +163,10 @@ export default function VolunteersPage() {
     try {
       const { error } = await supabase
         .from('volunteers')
-        .update(data)
+        .update({
+          ...data,
+          total_hours: selectedVolunteer.total_hours,
+        })
         .eq('id', selectedVolunteer.id);
 
       if (error) throw error;
@@ -174,17 +174,15 @@ export default function VolunteersPage() {
       setVolunteers(prev => prev.map(v => 
         v.id === selectedVolunteer.id ? { ...v, ...data } : v
       ));
-      setIsDialogOpen(false);
-      setSelectedVolunteer(null);
+      handleDialogClose();
+      setSuccessMessage('Volunteer updated successfully');
     } catch (err) {
       console.error('Error updating volunteer:', err);
-      setError('Failed to update volunteer');
+      setError('Failed to update volunteer. Please try again.');
     }
   };
 
   const handleDeleteVolunteer = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this volunteer?')) return;
-
     try {
       const { error } = await supabase
         .from('volunteers')
@@ -194,250 +192,372 @@ export default function VolunteersPage() {
       if (error) throw error;
 
       setVolunteers(prev => prev.filter(v => v.id !== id));
+      setSuccessMessage('Volunteer deleted successfully');
     } catch (err) {
       console.error('Error deleting volunteer:', err);
-      setError('Failed to delete volunteer');
+      setError('Failed to delete volunteer. Please try again.');
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     Papa.parse(file, {
       header: true,
-      skipEmptyLines: true,
       complete: (results) => {
-        setImportPreview(results.data);
-        setError(null);
+        const preview = results.data.slice(0, 5) as ImportPreviewRow[];
+        setImportPreview(preview);
       },
       error: (error) => {
-        setError('Failed to parse CSV file: ' + error.message);
-        setImportPreview([]);
+        console.error('Error parsing CSV:', error);
+        setError('Failed to parse CSV file. Please check the format.');
       }
     });
   };
 
   const handleImport = async () => {
-    if (!importPreview.length) {
-      setError('No volunteers to import');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
+    if (!importPreview.length) return;
 
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) throw new Error('User not authenticated');
 
-      const volunteers = importPreview.map(row => ({
-        user_id: user.id,
+      const volunteersToImport = importPreview.map(row => ({
         first_name: row.first_name,
         last_name: row.last_name,
         email: row.email,
         phone: row.phone || '',
         status: 'pending' as const,
-        skills: (row.skills || '').split(',').map((s: string) => s.trim()),
-        interests: (row.interests || '').split(',').map((s: string) => s.trim()),
+        skills: row.skills ? row.skills.split(',').map(s => s.trim()) : [],
+        interests: row.interests ? row.interests.split(',').map(i => i.trim()) : [],
         availability: {
           weekdays: false,
           weekends: false,
-          hours: '9-5'
+          hours: ''
         },
         total_hours: 0,
-        updated_at: new Date().toISOString()
+        user_id: user.id
       }));
 
-      const { error: insertError } = await supabase
+      const { error } = await supabase
         .from('volunteers')
-        .insert(volunteers);
+        .insert(volunteersToImport);
 
-      if (insertError) throw insertError;
+      if (error) throw error;
 
+      await fetchVolunteers();
       setIsImportOpen(false);
       setImportPreview([]);
-      fetchVolunteers();
+      setSuccessMessage('Volunteers imported successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import volunteers');
+      console.error('Error importing volunteers:', err);
+      setError('Failed to import volunteers. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const downloadTemplate = () => {
-    const headers = [
-      'first_name',
-      'last_name',
-      'email',
-      'phone',
-      'skills',
-      'interests'
+    const template = [
+      {
+        first_name: 'John',
+        last_name: 'Doe',
+        email: 'john@example.com',
+        phone: '123-456-7890',
+        skills: 'teaching, event planning',
+        interests: 'education, community service'
+      }
     ];
 
-    const example = {
-      first_name: 'John',
-      last_name: 'Doe',
-      email: 'john@example.com',
-      phone: '123-456-7890',
-      skills: 'teaching, first aid, cooking',
-      interests: 'education, healthcare'
-    };
-
-    const csv = Papa.unparse({
-      fields: headers,
-      data: [example]
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'volunteers_template.csv';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+    const csv = Papa.unparse(template);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'volunteer_template.csv';
+    link.click();
   };
-
-  const filteredVolunteers = volunteers.filter(volunteer => {
-    const matchesSearch = searchQuery === '' || 
-      `${volunteer.first_name} ${volunteer.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      volunteer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      volunteer.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesStatus = statusFilter === 'all' || volunteer.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
 
   const getStatusColor = (status: Volunteer['status']) => {
     switch (status) {
       case 'active':
         return 'bg-green-100 text-green-800';
       case 'inactive':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-red-100 text-red-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  const filteredVolunteers = volunteers.filter(volunteer => {
+    const matchesSearch = 
+      volunteer.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      volunteer.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      volunteer.email.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || volunteer.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Volunteers</h1>
-        <button
-          onClick={() => {
-            setSelectedVolunteer(null);
-            setIsDialogOpen(true);
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        >
-          Add Volunteer
-        </button>
+    <div className="container mx-auto py-8 space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Volunteers</h1>
+          <p className="text-sm text-gray-500 mt-2">
+            Manage your volunteers and their information
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button 
+            onClick={() => setIsImportOpen(true)} 
+            variant="outline" 
+            className="border-gray-200 hover:bg-gray-50 text-gray-700"
+          >
+            <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
+            Import
+          </Button>
+          <Button 
+            onClick={() => {
+              setSelectedVolunteer(null);
+              setIsDialogOpen(true);
+            }} 
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <UserPlusIcon className="h-5 w-5 mr-2" />
+            Add Volunteer
+          </Button>
+        </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-md">
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg flex items-center">
+          <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
           {error}
         </div>
       )}
 
-      <div className="mb-6 flex space-x-4">
-        <input
-          type="text"
-          placeholder="Search volunteers..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="pending">Pending</option>
-        </select>
-      </div>
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center">
+          <CheckCircleIcon className="h-5 w-5 mr-2" />
+          {successMessage}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredVolunteers.map(volunteer => (
-          <div
-            key={volunteer.id}
-            className="bg-white rounded-lg shadow-md p-6"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {volunteer.first_name} {volunteer.last_name}
-                </h3>
-                <p className="text-sm text-gray-500">{volunteer.email}</p>
-              </div>
-              <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(volunteer.status)}`}>
-                {volunteer.status}
-              </span>
-            </div>
-
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Skills</h4>
-              <div className="flex flex-wrap gap-2">
-                {volunteer.skills.map(skill => (
-                  <span
-                    key={skill}
-                    className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                  >
-                    {skill}
-                  </span>
-                ))}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 bg-gray-50">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Search volunteers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 border-gray-200 focus:border-primary focus:ring-primary"
+                />
               </div>
             </div>
-
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Availability</h4>
-              <div className="text-sm text-gray-600">
-                <p>Weekdays: {volunteer.availability.weekdays ? 'Yes' : 'No'}</p>
-                <p>Weekends: {volunteer.availability.weekends ? 'Yes' : 'No'}</p>
-                <p>Hours: {volunteer.availability.hours}</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => {
-                  setSelectedVolunteer(volunteer);
-                  setIsDialogOpen(true);
-                }}
-                className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800"
+            <div className="w-full sm:w-48">
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => setStatusFilter(value as 'all' | Volunteer['status'])}
               >
-                Edit
-              </button>
-              <button
-                onClick={() => handleDeleteVolunteer(volunteer.id)}
-                className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
-              >
-                Delete
-              </button>
+                <SelectTrigger className="border-gray-200 focus:border-primary focus:ring-primary">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        ))}
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+          </div>
+        ) : filteredVolunteers.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            <p className="text-lg font-medium">No volunteers found</p>
+            <p className="text-sm mt-1">
+              {searchQuery || statusFilter !== 'all' 
+                ? 'Try adjusting your search or filters.' 
+                : 'Add your first volunteer to get started!'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="text-gray-700 font-medium">Name</TableHead>
+                  <TableHead className="text-gray-700 font-medium">Email</TableHead>
+                  <TableHead className="text-gray-700 font-medium">Phone</TableHead>
+                  <TableHead className="text-gray-700 font-medium">Status</TableHead>
+                  <TableHead className="text-gray-700 font-medium">Skills</TableHead>
+                  <TableHead className="text-gray-700 font-medium">Hours</TableHead>
+                  <TableHead className="w-[100px] text-gray-700 font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredVolunteers.map((volunteer) => (
+                  <TableRow key={volunteer.id} className="hover:bg-gray-50 transition-colors">
+                    <TableCell className="font-medium text-gray-900">
+                      {volunteer.first_name} {volunteer.last_name}
+                    </TableCell>
+                    <TableCell className="text-gray-600">{volunteer.email}</TableCell>
+                    <TableCell className="text-gray-600">{volunteer.phone}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(volunteer.status)}>
+                        {volunteer.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {volunteer.skills.slice(0, 2).map((skill, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs bg-purple-50 text-purple-700">
+                            {skill}
+                          </Badge>
+                        ))}
+                        {volunteer.skills.length > 2 && (
+                          <Badge variant="secondary" className="text-xs bg-purple-50 text-purple-700">
+                            +{volunteer.skills.length - 2} more
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-gray-600">{volunteer.total_hours}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedVolunteer(volunteer);
+                            setIsDialogOpen(true);
+                          }}
+                          className="h-8 w-8 p-0 hover:bg-gray-100"
+                        >
+                          <PencilIcon className="h-4 w-4 text-gray-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteVolunteer(volunteer.id)}
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
       <VolunteerDialog
         isOpen={isDialogOpen}
-        onClose={() => {
-          setIsDialogOpen(false);
-          setSelectedVolunteer(null);
-        }}
+        onClose={handleDialogClose}
         onSubmit={selectedVolunteer ? handleUpdateVolunteer : handleAddVolunteer}
         volunteer={selectedVolunteer}
       />
+
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white shadow-xl rounded-lg">
+          <DialogHeader className="border-b pb-4 sticky top-0 bg-white z-10">
+            <DialogTitle className="text-2xl font-semibold text-gray-900">Import Volunteers</DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Upload a CSV file with volunteer information. The file should include first_name, last_name, and email columns.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="csvFile" className="text-gray-700 font-medium">CSV File</Label>
+                <div className="relative">
+                  <Input
+                    id="csvFile"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileUpload}
+                    className="file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-medium
+                      file:bg-purple-50 file:text-purple-700
+                      hover:file:bg-purple-100
+                      bg-white border-gray-200
+                      focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={downloadTemplate} 
+                className="border-gray-200 hover:bg-gray-50 text-gray-700"
+              >
+                <DocumentTextIcon className="h-5 w-5 mr-2" />
+                Download Template
+              </Button>
+            </div>
+
+            {importPreview.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-gray-700 font-medium">Preview ({importPreview.length} volunteers)</Label>
+                <div className="max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="text-gray-700 font-medium">Name</TableHead>
+                        <TableHead className="text-gray-700 font-medium">Email</TableHead>
+                        <TableHead className="text-gray-700 font-medium">Phone</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.map((row, index) => (
+                        <TableRow key={index} className="hover:bg-gray-50 transition-colors">
+                          <TableCell className="text-gray-600">{row.first_name} {row.last_name}</TableCell>
+                          <TableCell className="text-gray-600">{row.email}</TableCell>
+                          <TableCell className="text-gray-600">{row.phone || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="border-t pt-4 sticky bottom-0 bg-white z-10">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsImportOpen(false)} 
+                className="border-gray-200 hover:bg-gray-50 text-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleImport} 
+                disabled={!importPreview.length || loading} 
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                Import
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

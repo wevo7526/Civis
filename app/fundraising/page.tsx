@@ -342,7 +342,9 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="text-sm font-medium text-gray-500">Current Amount</h4>
-          <p className="text-2xl font-bold text-gray-900">${strategy.current_amount.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            ${(strategy.current_amount || 0).toLocaleString()}
+          </p>
         </div>
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="text-sm font-medium text-gray-500">Start Date</h4>

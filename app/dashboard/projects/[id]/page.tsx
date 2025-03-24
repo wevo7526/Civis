@@ -147,44 +147,40 @@ export default function ProjectDetails() {
   };
 
   const fetchSavedItems = async () => {
-    if (!project) return;
-
     try {
-      // Fetch grant documents
-      const { data: grantDocs, error: grantError } = await supabase
-        .from('grant_documents')
+      const { data: savedData, error: savedError } = await supabase
+        .from('saved_items')
         .select('*')
-        .eq('project_id', project.id)
-        .order('created_at', { ascending: false });
+        .eq('project_id', params.id)
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
 
-      if (grantError) throw grantError;
-
-      // Fetch insights
-      const { data: insights, error: insightsError } = await supabase
-        .from('project_content')
-        .select('*')
-        .eq('project_id', project.id)
-        .eq('type', 'insights')
-        .order('created_at', { ascending: false });
-
-      if (insightsError) throw insightsError;
-
-      // Add type property to each item
-      const grantsWithType = (grantDocs || []).map(doc => ({ ...doc, type: 'grant' }));
-      const insightsWithType = (insights || []).map(insight => ({ ...insight, type: 'insights' }));
-
-      setSavedItems({
-        grants: grantsWithType,
-        insights: insightsWithType,
-      });
-
-      // Set the current grant document if it exists
-      if (grantDocs && grantDocs.length > 0) {
-        setCurrentGrantDocument(grantDocs[0]);
+      if (savedError) {
+        // If the table doesn't exist, initialize with empty arrays
+        if (savedError.message.includes('relation "public.saved_items" does not exist')) {
+          setSavedItems({
+            grants: [],
+            insights: []
+          });
+          return;
+        }
+        throw new Error(savedError.message);
       }
+
+      // Transform the data to match the SavedItems interface
+      const transformedData: SavedItems = {
+        grants: savedData?.filter(item => item.type === 'grant') || [],
+        insights: savedData?.filter(item => item.type === 'insights') || []
+      };
+
+      setSavedItems(transformedData);
     } catch (err) {
-      console.error('Error fetching saved items:', err);
+      console.error('Error fetching saved items:', err instanceof Error ? err.message : 'Unknown error');
       setError('Failed to fetch saved items');
+      // Initialize with empty arrays on error
+      setSavedItems({
+        grants: [],
+        insights: []
+      });
     }
   };
 
@@ -617,53 +613,52 @@ export default function ProjectDetails() {
 
   // Update the calculateMetrics function
   const calculateMetrics = async () => {
-    if (!project) return;
-
     try {
-      // Calculate timeline progress
-      if (project.start_date && project.end_date) {
-        const start = new Date(project.start_date);
-        const end = new Date(project.end_date);
-        const now = new Date();
-        const total = end.getTime() - start.getTime();
-        const elapsed = now.getTime() - start.getTime();
-        const timelineProgress = Math.min(Math.max((elapsed / total) * 100, 0), 100);
-        setMetrics(prev => ({ ...prev, timelineProgress }));
-      }
-
-      // Calculate grant success rate
-      const { data: grantDocs, error: grantError } = await supabase
+      // Fetch grant documents
+      const { data: grantData, error: grantError } = await supabase
         .from('grant_documents')
-        .select('id, project_id, status')
-        .eq('project_id', project.id);
+        .select('*')
+        .eq('project_id', params.id);
 
       if (grantError) {
-        console.error('Error fetching grant documents:', grantError);
-        return;
+        // If the table doesn't exist, initialize with default metrics
+        if (grantError.message.includes('relation "public.grant_documents" does not exist')) {
+          setMetrics(prev => ({
+            ...prev,
+            timelineProgress: 0,
+            grantSuccess: 0,
+            fundraisingProgress: 0,
+            riskScore: 0
+          }));
+          return;
+        }
+        throw new Error(grantError.message);
       }
 
-      if (grantDocs && grantDocs.length > 0) {
-        const successfulGrants = grantDocs.filter(doc => doc.status === 'approved').length;
-        const totalGrants = grantDocs.length;
-        const grantSuccess = (successfulGrants / totalGrants) * 100;
-        setMetrics(prev => ({ ...prev, grantSuccess }));
-      }
+      // Calculate metrics based on grant data
+      const totalGrants = grantData?.length || 0;
+      const totalAmount = grantData?.reduce((sum, grant) => sum + (grant.amount || 0), 0) || 0;
+      const averageAmount = totalGrants > 0 ? totalAmount / totalGrants : 0;
+      const successRate = totalGrants > 0 ? (grantData?.filter(g => g.status === 'approved').length / totalGrants) * 100 : 0;
 
-      // Calculate fundraising progress (placeholder)
-      setMetrics(prev => ({ ...prev, fundraisingProgress: 0 }));
-
-      // Calculate risk score
-      const riskFactors = {
-        timelineOverrun: metrics.timelineProgress > 100 ? 1 : 0,
-        budgetOverrun: 0, // Placeholder
-        lowGrantSuccess: metrics.grantSuccess < 50 ? 1 : 0,
-        lowFundraising: metrics.fundraisingProgress < 50 ? 1 : 0
-      };
-
-      const riskScore = Object.values(riskFactors).reduce((sum, factor) => sum + factor, 0) * 25;
-      setMetrics(prev => ({ ...prev, riskScore }));
-    } catch (error) {
-      console.error('Error calculating metrics:', error);
+      setMetrics(prev => ({
+        ...prev,
+        timelineProgress: 0,
+        grantSuccess: successRate,
+        fundraisingProgress: 0,
+        riskScore: 0
+      }));
+    } catch (err) {
+      console.error('Error calculating metrics:', err instanceof Error ? err.message : 'Unknown error');
+      setError('Failed to calculate project metrics');
+      // Initialize with default metrics on error
+      setMetrics(prev => ({
+        ...prev,
+        timelineProgress: 0,
+        grantSuccess: 0,
+        fundraisingProgress: 0,
+        riskScore: 0
+      }));
     }
   };
 
