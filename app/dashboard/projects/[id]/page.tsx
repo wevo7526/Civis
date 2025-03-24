@@ -27,7 +27,6 @@ import DocumentEditor from '../../../components/DocumentEditor';
 
 interface SavedItems {
   grants: any[];
-  fundraising: any[];
   insights: any[];
 }
 
@@ -35,8 +34,15 @@ interface EditorItem {
   id: string;
   title: string;
   content: string;
-  type: 'grant' | 'fundraising' | 'insights';
+  type: 'grant' | 'insights' | 'fundraising';
+  project_id: string;
+  status: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
 }
+
+type EditorType = 'grant' | 'insights' | 'fundraising';
 
 interface ProjectMetrics {
   progress: number;
@@ -69,22 +75,19 @@ export default function ProjectDetails() {
   const [activeTab, setActiveTab] = useState('overview');
   const [loadingStates, setLoadingStates] = useState<{
     grantProposal: boolean;
-    fundraisingStrategy: boolean;
     insights: boolean;
   }>({
     grantProposal: false,
-    fundraisingStrategy: false,
     insights: false,
   });
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [savedItems, setSavedItems] = useState<SavedItems>({
     grants: [],
-    fundraising: [],
     insights: [],
   });
   const [showEditor, setShowEditor] = useState(false);
-  const [editorType, setEditorType] = useState<'grant' | 'fundraising' | 'insights' | null>(null);
+  const [editorType, setEditorType] = useState<EditorType | null>(null);
   const [editorItem, setEditorItem] = useState<EditorItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [currentGrantDocument, setCurrentGrantDocument] = useState<GrantDocument | null>(null);
@@ -155,16 +158,6 @@ export default function ProjectDetails() {
 
       if (grantError) throw grantError;
 
-      // Fetch fundraising strategies
-      const { data: fundraisingItems, error: fundraisingError } = await supabase
-        .from('writing_items')
-        .select('*')
-        .eq('project_id', project.id)
-        .eq('type', 'fundraising')
-        .order('created_at', { ascending: false });
-
-      if (fundraisingError) throw fundraisingError;
-
       // Fetch insights
       const { data: insights, error: insightsError } = await supabase
         .from('project_content')
@@ -177,12 +170,10 @@ export default function ProjectDetails() {
 
       // Add type property to each item
       const grantsWithType = (grantDocs || []).map(doc => ({ ...doc, type: 'grant' }));
-      const fundraisingWithType = (fundraisingItems || []).map(item => ({ ...item, type: 'fundraising' }));
       const insightsWithType = (insights || []).map(insight => ({ ...insight, type: 'insights' }));
 
       setSavedItems({
         grants: grantsWithType,
-        fundraising: fundraisingWithType,
         insights: insightsWithType,
       });
 
@@ -298,61 +289,18 @@ export default function ProjectDetails() {
     if (!editorType || !project) return;
 
     try {
-      setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : editorType === 'fundraising' ? 'fundraisingStrategy' : 'insights']: true }));
-      setProgressMessage(`Generating ${editorType === 'grant' ? 'grant proposal' : editorType === 'fundraising' ? 'fundraising strategy' : 'project insights'}...`);
+      setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : 'insights']: true }));
+      setProgressMessage(`Generating ${editorType === 'grant' ? 'grant proposal' : 'project insights'}...`);
       setError(null);
 
       let response;
       switch (editorType) {
         case 'grant':
-          const projectWithStatus = {
+          const projectWithStatus: Project = {
             ...project,
             status: project.status || 'planning' // Provide a default status if not set
           };
           response = await grantWriterService.generateSection('executive_summary', projectWithStatus);
-          break;
-        case 'fundraising':
-          response = await aiService.analyzeFundraising({ donors: [], projects: [project], events: [] });
-          if (response.success) {
-            // Structure the fundraising strategy content
-            const structuredContent = `# ${project.name || 'Project'} Fundraising Strategy
-
-## Funding Goals
-- Target Amount: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget).toLocaleString() : project.budget.toLocaleString()) : 'TBD'}
-- Timeline: 12 months
-- Key Milestones:
-  - Month 1-3: Initial donor outreach
-  - Month 4-6: Major fundraising events
-  - Month 7-9: Corporate partnerships
-  - Month 10-12: Final push and campaign closure
-
-## Donor Strategy
-### Target Donors
-- Individual Donors: 60%
-- Corporate Sponsors: 30%
-- Grant Funding: 10%
-
-### Engagement Plan
-${response.content}
-
-## Budget Allocation
-| Category | Percentage | Description |
-|----------|------------|-------------|
-| Marketing | 15% | Digital and print materials |
-| Planning | 25% | Fundraising events and donor meetings |
-| Staff Time | 40% | Fundraising team activities |
-| Technology | 20% | CRM, donation platform, analytics |
-
-### ROI Projections
-- Expected Return: $${project.budget ? (typeof project.budget === 'string' ? parseFloat(project.budget) * 1.2 : project.budget * 1.2).toLocaleString() : 'TBD'}
-- Cost per Dollar Raised: $0.20
-- Timeline to Break Even: 6 months`;
-
-            response = {
-              ...response,
-              content: structuredContent
-            };
-          }
           break;
         case 'insights':
           response = await aiService.analyzeProjects([project]);
@@ -360,32 +308,33 @@ ${response.content}
         default:
           throw new Error('Invalid editor type');
       }
-      
+
       if (response.success) {
-        // Create a new editor item with the generated content
-        const newEditorItem = {
+        const newEditorItem: EditorItem = {
           id: editorItem?.id || crypto.randomUUID(),
-          title: editorItem?.title || `${project.name || 'Project'} ${editorType === 'grant' ? 'Grant Proposal' : editorType === 'fundraising' ? 'Fundraising Strategy' : 'Project Insights'}`,
+          title: editorItem?.title || `${project.name || 'Project'} ${editorType === 'grant' ? 'Grant Proposal' : 'Project Insights'}`,
           content: response.content,
-          type: editorType
+          type: editorType,
+          project_id: project.id,
+          status: 'draft',
+          user_id: (await supabase.auth.getUser()).data.user?.id || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
 
-        // Update the editor item state
         setEditorItem(newEditorItem);
-
-        // Keep the editor open and in editing mode
         setShowEditor(true);
         setIsEditing(true);
-        setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : editorType === 'fundraising' ? 'Fundraising strategy' : 'Project insights'} generated successfully! Click Save to store your changes.`);
+        setProgressMessage(`${editorType === 'grant' ? 'Grant proposal' : 'Project insights'} generated successfully! Click Save to store your changes.`);
       } else {
         throw new Error(response.error || 'Failed to generate content');
       }
     } catch (err) {
-      console.error(`Error generating ${editorType}:`, err);
-      setError(`Failed to generate ${editorType}`);
+      console.error('Error generating content:', err);
+      setError('Failed to generate content');
       setProgressMessage(null);
     } finally {
-      setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : editorType === 'fundraising' ? 'fundraisingStrategy' : 'insights']: false }));
+      setLoadingStates(prev => ({ ...prev, [editorType === 'grant' ? 'grantProposal' : 'insights']: false }));
     }
   };
 
@@ -393,45 +342,20 @@ ${response.content}
     if (!editorType || !project) return;
 
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-      if (!user) throw new Error('User not found');
-
-      // Check if user has permission to access this project
-      const { data: projectAccess, error: accessError } = await supabase
-        .from('project_members')
-        .select('*')
-        .eq('project_id', project.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (accessError) throw accessError;
-      if (!projectAccess) throw new Error('You do not have permission to edit this project');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
 
       let savedItem;
-      const newItem = {
-        id: editorItem?.id || crypto.randomUUID(),
-        title: title || 'Untitled Document',
-        content,
-        type: editorType,
-        project_id: project.id,
-        status: 'draft',
-        user_id: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
       if (editorItem?.id) {
         // Update existing item
         const { data, error } = await supabase
-          .from(editorType === 'insights' ? 'project_content' : 'writing_items')
+          .from(editorType === 'insights' ? 'project_content' : 'grant_documents')
           .update({
             title,
             content,
             updated_at: new Date().toISOString(),
           })
           .eq('id', editorItem.id)
-          .eq('user_id', user.id) // Ensure user can only update their own items
           .select()
           .single();
 
@@ -439,44 +363,56 @@ ${response.content}
         savedItem = data;
       } else {
         // Create new item
+        const newItem = {
+          id: crypto.randomUUID(),
+          title: title || 'Untitled Document',
+          content,
+          type: editorType,
+          project_id: project.id,
+          status: 'draft',
+          user_id: user.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
         const { data, error } = await supabase
-          .from(editorType === 'insights' ? 'project_content' : 'writing_items')
+          .from(editorType === 'insights' ? 'project_content' : 'grant_documents')
           .insert([newItem])
           .select()
           .single();
 
-        if (error) {
-          console.error('Error saving document:', error);
-          throw error;
-        }
+        if (error) throw error;
         savedItem = data;
       }
 
-      // Update the savedItems state with the new item
+      // Update the savedItems state
       setSavedItems(prev => ({
         ...prev,
-        [editorType === 'insights' ? 'insights' : editorType === 'grant' ? 'grants' : 'fundraising']: [
+        [editorType === 'insights' ? 'insights' : 'grants']: [
           savedItem,
-          ...prev[editorType === 'insights' ? 'insights' : editorType === 'grant' ? 'grants' : 'fundraising'].filter(
+          ...prev[editorType === 'insights' ? 'insights' : 'grants'].filter(
             item => item.id !== savedItem.id
           ),
         ],
       }));
 
-      // Update editor state but don't close it
+      // Update editor state
       setEditorItem(savedItem);
       setIsEditing(true);
-      setSuccessMessage('Document saved successfully!');
+      setShowEditor(false);
+      setEditorType(null);
+      setSuccessMessage('Content saved successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      console.error('Error saving document:', err instanceof Error ? err.message : 'Unknown error occurred');
-      setError(err instanceof Error ? err.message : 'Failed to save document');
+      console.error('Error saving document:', err);
+      setError('Failed to save document');
     }
   };
 
   const handleDeleteItem = async (itemId: string) => {
     try {
       // Find the item in savedItems to determine its type
-      const item = [...savedItems.grants, ...savedItems.fundraising, ...savedItems.insights]
+      const item = [...savedItems.grants, ...savedItems.insights]
         .find(item => item.id === itemId);
 
       if (!item) {
@@ -512,7 +448,7 @@ ${response.content}
       } else {
         // Handle other types of items
         const { error } = await supabase
-          .from(item.type === 'insights' ? 'project_content' : 'writing_items')
+          .from(item.type === 'insights' ? 'project_content' : 'grant_documents')
           .delete()
           .eq('id', itemId);
 
@@ -521,8 +457,8 @@ ${response.content}
         // Update the UI state
         setSavedItems(prev => ({
           ...prev,
-          [item.type === 'insights' ? 'insights' : 'fundraising']: 
-            prev[item.type === 'insights' ? 'insights' : 'fundraising'].filter(
+          [item.type === 'insights' ? 'insights' : 'grants']: 
+            prev[item.type === 'insights' ? 'insights' : 'grants'].filter(
               savedItem => savedItem.id !== itemId
             ),
         }));
@@ -882,13 +818,6 @@ ${response.content}
           >
             Grants
           </button>
-          <a
-            href={`/fundraising?project=${project.id}`}
-            className="inline-flex items-center text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm"
-          >
-            <ChartBarIcon className="h-5 w-5 mr-2" />
-            Fundraising
-          </a>
         </nav>
       </div>
 
@@ -1239,7 +1168,7 @@ ${response.content}
           type={editorType || 'grant'}
           projectName={project?.name || ''}
           onGenerate={handleGenerateContent}
-          isGenerating={loadingStates.grantProposal || loadingStates.fundraisingStrategy || loadingStates.insights}
+          isGenerating={loadingStates.grantProposal || loadingStates.insights}
           progressMessage={progressMessage}
           isEditing={isEditing}
         />

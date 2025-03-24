@@ -74,35 +74,56 @@ interface Project {
   name: string;
 }
 
+interface SavedStrategy extends FundraisingStrategy {
+  id: string;
+  created_at: string;
+}
+
 const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#f97316', '#059669'];
 
 export default function FundraisingPage() {
   const [strategies, setStrategies] = useState<FundraisingStrategy[]>([]);
+  const [savedStrategies, setSavedStrategies] = useState<SavedStrategy[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    fetchProjects();
+    fetchSavedStrategies();
   }, []);
 
-  const fetchProjects = async () => {
+  const fetchSavedStrategies = async () => {
     try {
       const { data, error } = await supabase
-        .from('projects')
-        .select('id, name')
+        .from('fundraising_strategies')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProjects(data || []);
+
+      // Map database fields to FundraisingStrategy format
+      const mappedStrategies = (data || []).map(strategy => ({
+        id: strategy.id,
+        name: strategy.name,
+        description: strategy.description,
+        targetAmount: strategy.target_amount,
+        duration: strategy.duration,
+        successProbability: strategy.success_probability,
+        costToImplement: strategy.cost_to_implement,
+        expectedROI: strategy.expected_roi,
+        donorSegments: strategy.donor_segments,
+        timelineData: strategy.timeline_data,
+        riskFactors: strategy.risk_factors,
+        created_at: strategy.created_at
+      }));
+
+      setSavedStrategies(mappedStrategies);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error fetching saved strategies:', error);
     }
   };
 
@@ -146,34 +167,15 @@ export default function FundraisingPage() {
   };
 
   const handleSaveStrategy = async (strategy: FundraisingStrategy) => {
-    if (!selectedProject) {
-      setError('Please select a project first');
-      return;
-    }
-
     try {
       setSaving(true);
       setError(null);
 
-      // Save to project_content
-      const { error: contentError } = await supabase
-        .from('project_content')
+      const { error: saveError } = await supabase
+        .from('fundraising_strategies')
         .insert({
-          project_id: selectedProject,
-          type: 'fundraisingStrategy',
-          content: JSON.stringify({
-            name: strategy.name,
-            description: strategy.description,
-            targetAmount: strategy.targetAmount,
-            duration: strategy.duration,
-            successProbability: strategy.successProbability,
-            costToImplement: strategy.costToImplement,
-            expectedROI: strategy.expectedROI,
-            donorSegments: strategy.donorSegments,
-            timelineData: strategy.timelineData,
-            riskFactors: strategy.riskFactors
-          }),
-          prompt: prompt,
+          name: strategy.name,
+          description: strategy.description,
           target_amount: strategy.targetAmount,
           duration: strategy.duration,
           success_probability: strategy.successProbability,
@@ -181,16 +183,21 @@ export default function FundraisingPage() {
           expected_roi: strategy.expectedROI,
           donor_segments: strategy.donorSegments,
           timeline_data: strategy.timelineData,
-          risk_factors: strategy.riskFactors
+          risk_factors: strategy.riskFactors,
+          prompt: prompt,
+          created_by: (await supabase.auth.getUser()).data.user?.id
         });
 
-      if (contentError) {
-        console.error('Error saving to project_content:', contentError);
-        throw new Error('Failed to save strategy to project');
+      if (saveError) {
+        console.error('Error saving strategy:', saveError);
+        throw new Error('Failed to save strategy');
       }
 
+      // Refresh saved strategies
+      await fetchSavedStrategies();
+
       // Show success message
-      const successMessage = `Strategy "${strategy.name}" saved successfully to project`;
+      const successMessage = `Strategy "${strategy.name}" saved successfully`;
       setError(successMessage);
 
       // Clear the error message after 3 seconds
@@ -213,31 +220,9 @@ export default function FundraisingPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Fundraising Strategy Analysis</h1>
-            <p className="mt-2 text-gray-600">Compare and analyze different fundraising strategies</p>
+            <p className="mt-2 text-gray-600">Generate and save fundraising strategies</p>
           </div>
         </div>
-
-        {/* Project Selection */}
-        <Card className="p-6">
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <FolderIcon className="h-5 w-5 text-purple-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Select Project</h2>
-            </div>
-            <select
-              value={selectedProject}
-              onChange={(e) => setSelectedProject(e.target.value)}
-              className="w-full p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            >
-              <option value="">Select a project...</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </Card>
 
         {/* Strategy Generation */}
         <Card className="p-6">
@@ -281,147 +266,43 @@ export default function FundraisingPage() {
           </div>
         </Card>
 
-        {/* Strategy Comparison */}
+        {/* Generated Strategies */}
         {strategies.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {strategies.map((strategy) => (
-              <div key={strategy.id} className="bg-white rounded-lg shadow-lg p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-gray-900">{strategy.name}</h3>
-                    <p className="text-gray-600 mt-1">{strategy.description}</p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-500">Success Rate:</span>
-                    <span className="text-sm font-semibold text-green-600">{strategy.successProbability}%</span>
-                  </div>
-                </div>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Generated Strategies</h2>
+              <p className="text-sm text-gray-500">Review and save the strategies you like</p>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {strategies.map((strategy) => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  onSave={handleSaveStrategy}
+                  saving={saving}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-500">Target Amount</h4>
-                    <p className="text-2xl font-bold text-gray-900">${strategy.targetAmount.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-500">Expected ROI</h4>
-                    <p className="text-2xl font-bold text-gray-900">{strategy.expectedROI}%</p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-500">Duration</h4>
-                    <p className="text-2xl font-bold text-gray-900">{strategy.duration} months</p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-500">Cost to Implement</h4>
-                    <p className="text-2xl font-bold text-gray-900">${strategy.costToImplement.toLocaleString()}</p>
-                  </div>
-                </div>
-
-                <div className="mb-6">
-                  <h4 className="text-lg font-medium text-gray-900 mb-4">Revenue Timeline</h4>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={strategy.timelineData}>
-                        <defs>
-                          <linearGradient id={`color${strategy.id}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
-                          formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
-                          labelFormatter={(label) => label}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="cumulativeRevenue"
-                          stroke="#8884d8"
-                          fillOpacity={1}
-                          fill={`url(#color${strategy.id})`}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-4">Donor Segments</h4>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={strategy.donorSegments}
-                            dataKey="percentage"
-                            nameKey="segment"
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          />
-                          <Tooltip 
-                            formatter={(value: number, name: string) => [
-                              `${value}%`,
-                              `${name} ($${strategy.donorSegments.find(s => s.segment === name)?.averageGift.toLocaleString()})`
-                            ]}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-4">Risk Factors</h4>
-                    <div className="space-y-4">
-                      {strategy.riskFactors.map((risk, index) => (
-                        <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium text-gray-900">{risk.factor}</p>
-                              <p className="text-sm text-gray-600 mt-1">{risk.mitigation}</p>
-                            </div>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              risk.impact === 'high' ? 'bg-red-100 text-red-800' :
-                              risk.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-green-100 text-green-800'
-                            }`}>
-                              {risk.impact}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Add Save Button */}
-                <div className="mt-6">
-                  <button
-                    onClick={() => handleSaveStrategy(strategy)}
-                    disabled={saving || !selectedProject}
-                    className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
-                      saving || !selectedProject
-                        ? 'bg-purple-400 cursor-not-allowed'
-                        : 'bg-purple-600 hover:bg-purple-700'
-                    } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200`}
-                  >
-                    {saving ? (
-                      <>
-                        <ArrowTrendingUpIcon className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <FolderIcon className="h-4 w-4 mr-2" />
-                        Save to Project
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
+        {/* Saved Strategies */}
+        {savedStrategies.length > 0 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Saved Strategies</h2>
+              <p className="text-sm text-gray-500">Your saved fundraising strategies</p>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {savedStrategies.map((strategy) => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  isSaved={true}
+                  created_at={strategy.created_at}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -436,6 +317,162 @@ export default function FundraisingPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+interface StrategyCardProps {
+  strategy: FundraisingStrategy;
+  onSave?: (strategy: FundraisingStrategy) => Promise<void>;
+  saving?: boolean;
+  isSaved?: boolean;
+  created_at?: string;
+}
+
+function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: StrategyCardProps) {
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-6">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900">{strategy.name}</h3>
+          <p className="text-gray-600 mt-1">{strategy.description}</p>
+          {created_at && (
+            <p className="text-sm text-gray-500 mt-1">
+              Created {new Date(created_at).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-500">Success Rate:</span>
+          <span className="text-sm font-semibold text-green-600">{strategy.successProbability}%</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-500">Target Amount</h4>
+          <p className="text-2xl font-bold text-gray-900">${strategy.targetAmount.toLocaleString()}</p>
+        </div>
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-500">Expected ROI</h4>
+          <p className="text-2xl font-bold text-gray-900">{strategy.expectedROI}%</p>
+        </div>
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-500">Duration</h4>
+          <p className="text-2xl font-bold text-gray-900">{strategy.duration} months</p>
+        </div>
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-500">Cost to Implement</h4>
+          <p className="text-2xl font-bold text-gray-900">${strategy.costToImplement.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h4 className="text-lg font-medium text-gray-900 mb-4">Revenue Timeline</h4>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={strategy.timelineData}>
+              <defs>
+                <linearGradient id={`color${strategy.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip 
+                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                labelFormatter={(label) => label}
+              />
+              <Area
+                type="monotone"
+                dataKey="cumulativeRevenue"
+                stroke="#8884d8"
+                fillOpacity={1}
+                fill={`url(#color${strategy.id})`}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Donor Segments</h4>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={strategy.donorSegments}
+                  dataKey="percentage"
+                  nameKey="segment"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                />
+                <Tooltip 
+                  formatter={(value: number, name: string) => [
+                    `${value}%`,
+                    `${name} ($${strategy.donorSegments.find(s => s.segment === name)?.averageGift.toLocaleString()})`
+                  ]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Risk Factors</h4>
+          <div className="space-y-4">
+            {strategy.riskFactors.map((risk, index) => (
+              <div key={index} className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-medium text-gray-900">{risk.factor}</p>
+                    <p className="text-sm text-gray-600 mt-1">{risk.mitigation}</p>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                    risk.impact === 'high' ? 'bg-red-100 text-red-800' :
+                    risk.impact === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-green-100 text-green-800'
+                  }`}>
+                    {risk.impact}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Save Button */}
+      {onSave && !isSaved && (
+        <div className="mt-6">
+          <button
+            onClick={() => onSave(strategy)}
+            disabled={saving}
+            className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
+              saving
+                ? 'bg-purple-400 cursor-not-allowed'
+                : 'bg-purple-600 hover:bg-purple-700'
+            } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200`}
+          >
+            {saving ? (
+              <>
+                <ArrowTrendingUpIcon className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <FolderIcon className="h-4 w-4 mr-2" />
+                Save Strategy
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 } 
