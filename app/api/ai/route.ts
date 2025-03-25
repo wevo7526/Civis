@@ -31,6 +31,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -40,47 +41,76 @@ const supabase = createClient(
 const RATE_LIMIT_WINDOW = 60; // 1 minute in seconds
 const MAX_REQUESTS = 30; // Maximum requests per window
 
-async function checkRateLimit(userId: string): Promise<boolean> {
+async function checkRateLimit(ip: string): Promise<boolean> {
   try {
-    const { data: requests, error } = await supabase
-      .from('ai_rate_limits')
-      .select('count, last_request')
-      .eq('user_id', userId)
+    const now = Math.floor(Date.now() / 1000);
+    const windowStart = now - RATE_LIMIT_WINDOW;
+
+    // Get current rate limit record
+    const { data: rateLimit, error: fetchError } = await supabase
+      .from('rate_limits')
+      .select('*')
+      .eq('ip', ip)
       .single();
 
-    if (error) {
-      console.error('Rate limit check error:', error);
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+      console.error('Rate limit check error:', fetchError);
       return true; // Allow request if rate limit check fails
     }
 
-    const now = new Date();
-    const lastRequest = requests?.last_request ? new Date(requests.last_request) : null;
-    const timeDiff = lastRequest ? (now.getTime() - lastRequest.getTime()) / 1000 : RATE_LIMIT_WINDOW;
-
-    if (!lastRequest || timeDiff >= RATE_LIMIT_WINDOW) {
-      // Reset counter if window has passed
-      await supabase
-        .from('ai_rate_limits')
-        .upsert({
-          user_id: userId,
+    if (!rateLimit) {
+      // Create new rate limit record
+      const { error: insertError } = await supabase
+        .from('rate_limits')
+        .insert({
+          ip,
           count: 1,
-          last_request: now.toISOString(),
+          timestamp: now
         });
+
+      if (insertError) {
+        console.error('Rate limit insert error:', insertError);
+        return true;
+      }
       return true;
     }
 
-    if (requests.count >= MAX_REQUESTS) {
+    // Check if window has passed
+    if (now - rateLimit.timestamp >= RATE_LIMIT_WINDOW) {
+      // Reset counter
+      const { error: updateError } = await supabase
+        .from('rate_limits')
+        .update({
+          count: 1,
+          timestamp: now
+        })
+        .eq('ip', ip);
+
+      if (updateError) {
+        console.error('Rate limit reset error:', updateError);
+        return true;
+      }
+      return true;
+    }
+
+    // Check if limit exceeded
+    if (rateLimit.count >= MAX_REQUESTS) {
       return false;
     }
 
     // Increment counter
-    await supabase
-      .from('ai_rate_limits')
+    const { error: incrementError } = await supabase
+      .from('rate_limits')
       .update({
-        count: requests.count + 1,
-        last_request: now.toISOString(),
+        count: rateLimit.count + 1,
+        timestamp: now
       })
-      .eq('user_id', userId);
+      .eq('ip', ip);
+
+    if (incrementError) {
+      console.error('Rate limit increment error:', incrementError);
+      return true;
+    }
 
     return true;
   } catch (error) {
@@ -166,6 +196,16 @@ Always provide clear, actionable advice and maintain a professional, supportive 
 const validateData = (action: string, data: unknown): { isValid: boolean; message?: string } => {
   // Handle specialized agent requests
   switch (action) {
+    case 'chat':
+      if (!data || typeof data !== 'object') {
+        return { isValid: false, message: 'Data is required' };
+      }
+      const chatData = data as { message: string };
+      if (!chatData.message || typeof chatData.message !== 'string') {
+        return { isValid: false, message: 'Message is required' };
+      }
+      break;
+
     case 'analyze_donors':
     case 'analyzeDonorEngagement':
     case 'generateOutreachMessage':
@@ -252,30 +292,22 @@ const validateData = (action: string, data: unknown): { isValid: boolean; messag
 
 export async function POST(request: Request) {
   try {
-    // Authentication
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    const { data: { session } } = await supabase.auth.getSession();
+    // Get request body first
+    const body = await request.json();
+    const { action, data } = body;
 
-    if (!session) {
-      return NextResponse.json(
-        { success: false, message: 'Please sign in to use this feature' },
-        { status: 401 }
-      );
-    }
+    // Get client IP
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const ip = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
 
-    // Rate limiting
-    const rateLimitAllowed = await checkRateLimit(session.user.id);
-    if (!rateLimitAllowed) {
+    // Check rate limit
+    const isAllowed = await checkRateLimit(ip);
+    if (!isAllowed) {
       return NextResponse.json(
-        { success: false, message: 'Too many requests. Please try again later.' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
-
-    // Parse request body
-    const body = await request.json();
-    const { action, data, context } = body;
 
     // Handle specialized agent requests
     if (!action) {
@@ -306,6 +338,11 @@ export async function POST(request: Request) {
     let response;
 
     switch (action) {
+      case 'chat':
+        const chatData = data as { message: string };
+        prompt = chatData.message;
+        break;
+
       case 'analyze_donors':
         prompt = `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
 
@@ -688,7 +725,7 @@ The message should:
     try {
       response = await anthropic.messages.create({
         model: 'claude-3-opus-20240229',
-        max_tokens: 2000, // Increased for longer grant proposals
+        max_tokens: 2000,
         messages: [
           {
             role: 'user',
@@ -708,15 +745,22 @@ The message should:
         .filter(line => line.length > 0)
         .join('\n\n');
 
-      // Store the interaction in Supabase
-      await supabase.from('ai_interactions').insert({
-        user_id: session.user.id,
-        action,
-        prompt,
-        response: formattedResponse,
-        context: context || {},
-        created_at: new Date().toISOString(),
-      });
+      // Get user session after processing the request
+      const cookieStore = cookies();
+      const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // Store the interaction in Supabase if we have a session
+      if (session?.user?.id) {
+        await supabase.from('ai_interactions').insert({
+          user_id: session.user.id,
+          action,
+          prompt,
+          response: formattedResponse,
+          context: {},
+          created_at: new Date().toISOString(),
+        });
+      }
 
       return NextResponse.json({
         success: true,

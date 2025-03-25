@@ -287,4 +287,40 @@ export interface CreateActivityParams {
   title: string;
   description: string;
   metadata?: Record<string, any>;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+export interface AIResponse {
+  success: boolean;
+  content: Array<{
+    type: 'text';
+    text: string;
+  }>;
+  data?: {
+    timestamp: string;
+    rateLimit?: {
+      limit: number;
+      remaining: number;
+      reset: number;
+    };
+  };
+  message?: string;
+}
+
+export interface ChatState {
+  messages: ChatMessage[];
+  isLoading: boolean;
+  error: string | null;
+}
+
+export interface ChatConfig {
+  maxMessages?: number;
+  maxTokens?: number;
+  temperature?: number;
+  model?: string;
 } 

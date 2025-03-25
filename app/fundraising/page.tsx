@@ -36,7 +36,8 @@ import {
   UserPlusIcon,
   ChartPieIcon,
   TagIcon,
-  FolderIcon
+  FolderIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -68,7 +69,7 @@ export default function FundraisingPage() {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [savingStrategyId, setSavingStrategyId] = useState<string | null>(null);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -141,7 +142,41 @@ export default function FundraisingPage() {
         throw new Error(data.error);
       }
 
-      setStrategies(data.strategies);
+      // Transform the API response into FundraisingStrategy format
+      const transformedStrategies = data.strategies.map((strategy: any) => ({
+        id: strategy.id,
+        name: strategy.name,
+        description: strategy.description,
+        target_amount: strategy.targetAmount,
+        current_amount: 0,
+        start_date: new Date().toISOString(),
+        end_date: new Date(Date.now() + strategy.duration * 30 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'draft',
+        type: 'individual', // Default type, can be updated based on strategy details
+        progress: 0,
+        user_id: '', // Will be set when saving
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        metrics: {
+          donor_count: strategy.donorSegments.reduce((acc: number, segment: any) => acc + segment.percentage, 0),
+          average_donation: strategy.donorSegments.reduce((acc: number, segment: any) => acc + segment.averageGift, 0) / strategy.donorSegments.length,
+          conversion_rate: strategy.successProbability,
+          engagement_rate: 0 // Can be calculated based on actual data
+        },
+        insights: {
+          performance_analysis: `Expected ROI: ${strategy.expectedROI}%`,
+          trend_analysis: 'Based on historical data and market conditions',
+          risk_assessment: strategy.riskFactors.map((risk: any) => `${risk.factor} (${risk.impact} impact)`).join(', '),
+          opportunity_analysis: 'Based on donor segments and market potential'
+        },
+        recommendations: {
+          short_term: strategy.riskFactors.map((risk: any) => risk.mitigation),
+          long_term: ['Develop donor relationships', 'Build sustainable funding streams'],
+          priority_actions: ['Set up tracking system', 'Begin donor outreach']
+        }
+      }));
+
+      setStrategies(transformedStrategies);
     } catch (error) {
       console.error('Error:', error);
       setError(error instanceof Error ? error.message : 'Failed to generate strategies');
@@ -152,32 +187,51 @@ export default function FundraisingPage() {
 
   const handleSaveStrategy = async (strategy: FundraisingStrategy) => {
     try {
-      setSaving(true);
+      setSavingStrategyId(strategy.id);
       setError(null);
 
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Please sign in to save strategies');
+      }
+
+      // Transform the strategy to match the database schema
       const { error: saveError } = await supabase
         .from('fundraising_strategies')
         .insert({
           name: strategy.name,
           description: strategy.description,
           target_amount: strategy.target_amount,
-          current_amount: strategy.current_amount,
-          start_date: strategy.start_date,
-          end_date: strategy.end_date,
-          status: strategy.status,
-          type: strategy.type,
-          progress: strategy.progress,
-          notes: strategy.notes,
-          metrics: strategy.metrics,
-          insights: strategy.insights,
-          recommendations: strategy.recommendations,
+          duration: Math.ceil((new Date(strategy.end_date).getTime() - new Date(strategy.start_date).getTime()) / (1000 * 60 * 60 * 24 * 30)), // Convert to months
+          success_probability: strategy.metrics?.conversion_rate || 0,
+          cost_to_implement: strategy.metrics?.average_donation || 0,
+          expected_roi: parseFloat(strategy.insights?.performance_analysis?.match(/\d+/)?.[0] || '0'),
+          donor_segments: {
+            segments: strategy.metrics?.donor_count ? [{
+              name: 'General',
+              percentage: strategy.metrics.donor_count,
+              averageGift: strategy.metrics.average_donation || 0
+            }] : []
+          },
+          timeline_data: {
+            start_date: strategy.start_date,
+            end_date: strategy.end_date,
+            target_amount: strategy.target_amount,
+            current_amount: strategy.current_amount || 0
+          },
+          risk_factors: strategy.insights?.risk_assessment ? [{
+            factor: strategy.insights.risk_assessment,
+            impact: 'medium',
+            mitigation: strategy.recommendations?.short_term?.[0] || 'No mitigation plan'
+          }] : [],
           prompt: prompt,
-          created_by: (await supabase.auth.getUser()).data.user?.id
+          created_by: user.id
         });
 
       if (saveError) {
         console.error('Error saving strategy:', saveError);
-        throw new Error('Failed to save strategy');
+        throw new Error(saveError.message || 'Failed to save strategy');
       }
 
       // Refresh saved strategies
@@ -196,7 +250,53 @@ export default function FundraisingPage() {
       console.error('Error saving strategy:', error);
       setError(error instanceof Error ? error.message : 'Failed to save strategy');
     } finally {
-      setSaving(false);
+      setSavingStrategyId(null);
+    }
+  };
+
+  const handleDeleteStrategy = async (strategyId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Please sign in to delete strategies');
+      }
+
+      // Delete the strategy using created_by instead of user_id
+      const { error: deleteError } = await supabase
+        .from('fundraising_strategies')
+        .delete()
+        .eq('id', strategyId)
+        .eq('created_by', user.id);
+
+      if (deleteError) {
+        console.error('Error deleting strategy:', deleteError);
+        if (deleteError.code === 'PGRST116') {
+          throw new Error('Strategy not found or you do not have permission to delete it');
+        }
+        throw new Error(deleteError.message || 'Failed to delete strategy');
+      }
+
+      // Refresh saved strategies
+      await fetchSavedStrategies();
+
+      // Show success message
+      const successMessage = 'Strategy deleted successfully';
+      setError(successMessage);
+
+      // Clear the error message after 3 seconds
+      setTimeout(() => {
+        setError(null);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error deleting strategy:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete strategy');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -266,7 +366,7 @@ export default function FundraisingPage() {
                   key={strategy.id}
                   strategy={strategy}
                   onSave={handleSaveStrategy}
-                  saving={saving}
+                  saving={savingStrategyId === strategy.id}
                 />
               ))}
             </div>
@@ -287,6 +387,8 @@ export default function FundraisingPage() {
                   strategy={strategy}
                   isSaved={true}
                   created_at={strategy.created_at}
+                  onDelete={handleDeleteStrategy}
+                  deleting={loading}
                 />
               ))}
             </div>
@@ -311,12 +413,14 @@ export default function FundraisingPage() {
 interface StrategyCardProps {
   strategy: FundraisingStrategy;
   onSave?: (strategy: FundraisingStrategy) => Promise<void>;
+  onDelete?: (strategyId: string) => Promise<void>;
   saving?: boolean;
+  deleting?: boolean;
   isSaved?: boolean;
   created_at?: string;
 }
 
-function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: StrategyCardProps) {
+function StrategyCard({ strategy, onSave, onDelete, saving, deleting, isSaved, created_at }: StrategyCardProps) {
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
       <div className="flex justify-between items-start mb-4">
@@ -456,13 +560,13 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
         </div>
       )}
 
-      {/* Save Button */}
-      {onSave && !isSaved && (
-        <div className="mt-6">
+      {/* Action Buttons */}
+      <div className="mt-6 flex gap-2">
+        {onSave && !isSaved && (
           <button
             onClick={() => onSave(strategy)}
             disabled={saving}
-            className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
+            className={`flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
               saving
                 ? 'bg-purple-400 cursor-not-allowed'
                 : 'bg-purple-600 hover:bg-purple-700'
@@ -480,8 +584,31 @@ function StrategyCard({ strategy, onSave, saving, isSaved, created_at }: Strateg
               </>
             )}
           </button>
-        </div>
-      )}
+        )}
+        {onDelete && (
+          <button
+            onClick={() => onDelete(strategy.id)}
+            disabled={deleting}
+            className={`flex-1 inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white ${
+              deleting
+                ? 'bg-red-400 cursor-not-allowed'
+                : 'bg-red-600 hover:bg-red-700'
+            } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200`}
+          >
+            {deleting ? (
+              <>
+                <ArrowTrendingUpIcon className="h-4 w-4 mr-2 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <TrashIcon className="h-4 w-4 mr-2" />
+                Delete Strategy
+              </>
+            )}
+          </button>
+        )}
+      </div>
     </div>
   );
 } 

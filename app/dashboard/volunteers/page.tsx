@@ -304,15 +304,10 @@ export default function VolunteersPage() {
   });
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Volunteers</h1>
-          <p className="text-sm text-gray-500 mt-2">
-            Manage your volunteers and their information
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">Volunteers</h1>
+        <div className="flex gap-3">
           <Button 
             onClick={() => setIsImportOpen(true)} 
             variant="outline" 
@@ -335,16 +330,14 @@ export default function VolunteersPage() {
       </div>
 
       {error && (
-        <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg flex items-center">
-          <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
-          {error}
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
 
       {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center">
-          <CheckCircleIcon className="h-5 w-5 mr-2" />
-          {successMessage}
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-sm text-green-600">{successMessage}</p>
         </div>
       )}
 
@@ -359,7 +352,7 @@ export default function VolunteersPage() {
                   placeholder="Search volunteers..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 border-gray-200 focus:border-primary focus:ring-primary"
+                  className="pl-10 border-gray-200 focus:border-purple-500 focus:ring-purple-500"
                 />
               </div>
             </div>
@@ -368,7 +361,7 @@ export default function VolunteersPage() {
                 value={statusFilter}
                 onValueChange={(value) => setStatusFilter(value as 'all' | Volunteer['status'])}
               >
-                <SelectTrigger className="border-gray-200 focus:border-primary focus:ring-primary">
+                <SelectTrigger className="border-gray-200 focus:border-purple-500 focus:ring-purple-500">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -397,32 +390,38 @@ export default function VolunteersPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-gray-50">
-                  <TableHead className="text-gray-700 font-medium">Name</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Email</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Phone</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Status</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Skills</TableHead>
-                  <TableHead className="text-gray-700 font-medium">Hours</TableHead>
-                  <TableHead className="w-[100px] text-gray-700 font-medium">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skills</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hours</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
                 {filteredVolunteers.map((volunteer) => (
-                  <TableRow key={volunteer.id} className="hover:bg-gray-50 transition-colors">
-                    <TableCell className="font-medium text-gray-900">
-                      {volunteer.first_name} {volunteer.last_name}
-                    </TableCell>
-                    <TableCell className="text-gray-600">{volunteer.email}</TableCell>
-                    <TableCell className="text-gray-600">{volunteer.phone}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(volunteer.status)}>
+                  <tr key={volunteer.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {volunteer.first_name} {volunteer.last_name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{volunteer.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{volunteer.phone}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(volunteer.status)}`}>
                         {volunteer.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1">
                         {volunteer.skills.slice(0, 2).map((skill, index) => (
                           <Badge key={index} variant="secondary" className="text-xs bg-purple-50 text-purple-700">
@@ -435,35 +434,31 @@ export default function VolunteersPage() {
                           </Badge>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-gray-600">{volunteer.total_hours}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedVolunteer(volunteer);
-                            setIsDialogOpen(true);
-                          }}
-                          className="h-8 w-8 p-0 hover:bg-gray-100"
-                        >
-                          <PencilIcon className="h-4 w-4 text-gray-600" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteVolunteer(volunteer.id)}
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{volunteer.total_hours}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                      <button
+                        onClick={() => {
+                          setSelectedVolunteer(volunteer);
+                          setIsDialogOpen(true);
+                        }}
+                        className="text-purple-600 hover:text-purple-900"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteVolunteer(volunteer.id)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -517,45 +512,52 @@ export default function VolunteersPage() {
               <div className="space-y-2">
                 <Label className="text-gray-700 font-medium">Preview ({importPreview.length} volunteers)</Label>
                 <div className="max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="text-gray-700 font-medium">Name</TableHead>
-                        <TableHead className="text-gray-700 font-medium">Email</TableHead>
-                        <TableHead className="text-gray-700 font-medium">Phone</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
                       {importPreview.map((row, index) => (
-                        <TableRow key={index} className="hover:bg-gray-50 transition-colors">
-                          <TableCell className="text-gray-600">{row.first_name} {row.last_name}</TableCell>
-                          <TableCell className="text-gray-600">{row.email}</TableCell>
-                          <TableCell className="text-gray-600">{row.phone || '-'}</TableCell>
-                        </TableRow>
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{row.first_name} {row.last_name}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{row.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-500">{row.phone || '-'}</div>
+                          </td>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
-
-            <DialogFooter className="border-t pt-4 sticky bottom-0 bg-white z-10">
-              <Button 
-                variant="outline" 
-                onClick={() => setIsImportOpen(false)} 
-                className="border-gray-200 hover:bg-gray-50 text-gray-700"
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleImport} 
-                disabled={!importPreview.length || loading} 
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                Import
-              </Button>
-            </DialogFooter>
           </div>
+          <DialogFooter className="border-t pt-4 sticky bottom-0 bg-white z-10">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsImportOpen(false)}
+              className="min-w-[100px] border-gray-200 hover:bg-gray-50"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleImport}
+              disabled={loading || importPreview.length === 0}
+              className="min-w-[100px] bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
+            >
+              {loading ? 'Importing...' : 'Import'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

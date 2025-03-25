@@ -85,6 +85,7 @@ export interface VolunteerHours {
 }
 
 export type AIRequest = 
+  | 'chat'
   | 'analyze_donors'
   | 'analyzeDonorEngagement'
   | 'generate_donor_report'
@@ -106,7 +107,7 @@ export type AIRequest =
 
 export interface AIResponse {
   success: boolean;
-  content: string;
+  content: string | Array<{ text: string }>;
   message?: string;
   data?: {
     analyzedItems?: number;
@@ -277,4 +278,10 @@ export interface FundraisingCampaign {
   created_at: string;
   updated_at: string;
   user_id: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 } 

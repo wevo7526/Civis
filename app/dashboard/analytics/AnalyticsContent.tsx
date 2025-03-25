@@ -68,9 +68,9 @@ interface AnalyticsData {
   };
   eventTypes: Array<{ type: string; count: number }>;
   donorSegments: {
-    amountSegments: Array<{ segment: string; count: number; value: number }>;
-    frequencySegments: Array<{ segment: string; count: number; value: number }>;
-    engagementSegments: Array<{ segment: string; count: number; value: number }>;
+    amountSegments: Array<{ name: string; value: number; count: number }>;
+    frequencySegments: Array<{ name: string; value: number; count: number }>;
+    engagementSegments: Array<{ name: string; value: number; count: number }>;
   };
 }
 
@@ -252,79 +252,137 @@ export default function AnalyticsContent() {
   };
 
   const calculateDonorSegments = (donors: Donor[]) => {
-    // Amount-based segments
-    const amountSegments = donors.reduce((acc, donor) => {
-      const amount = donor.total_given;
-      if (amount >= 1000) acc.large++;
-      else if (amount >= 500) acc.medium++;
-      else acc.small++;
-      return acc;
-    }, { small: 0, medium: 0, large: 0 });
+    if (!donors || donors.length === 0) {
+      return {
+        amountSegments: [
+          { name: 'No Donors', value: 0, count: 0 }
+        ],
+        frequencySegments: [
+          { name: 'No Donors', value: 0, count: 0 }
+        ],
+        engagementSegments: [
+          { name: 'No Donors', value: 0, count: 0 }
+        ]
+      };
+    }
 
-    // Frequency-based segments
+    // Amount-based segments with more meaningful tiers
+    const amountSegments = donors.reduce((acc, donor) => {
+      const amount = donor.total_given || 0;
+      if (amount >= 5000) acc.major++;
+      else if (amount >= 1000) acc.large++;
+      else if (amount >= 500) acc.medium++;
+      else if (amount >= 100) acc.small++;
+      else acc.micro++;
+      return acc;
+    }, { micro: 0, small: 0, medium: 0, large: 0, major: 0 });
+
+    // Frequency-based segments with better categorization
     const frequencySegments = donors.reduce((acc, donor) => {
       if (!donor.last_gift_date) acc.oneTime++;
-      else if (new Date(donor.last_gift_date) > subMonths(new Date(), 3)) acc.recent++;
-      else if (new Date(donor.last_gift_date) > subMonths(new Date(), 12)) acc.regular++;
-      else acc.lapsed++;
+      else {
+        const lastGiftDate = new Date(donor.last_gift_date);
+        const now = new Date();
+        const monthsSinceLastGift = (now.getFullYear() - lastGiftDate.getFullYear()) * 12 + 
+                                   (now.getMonth() - lastGiftDate.getMonth());
+        
+        if (monthsSinceLastGift <= 3) acc.recent++;
+        else if (monthsSinceLastGift <= 6) acc.quarterly++;
+        else if (monthsSinceLastGift <= 12) acc.annual++;
+        else acc.lapsed++;
+      }
       return acc;
-    }, { oneTime: 0, recent: 0, regular: 0, lapsed: 0 });
+    }, { oneTime: 0, recent: 0, quarterly: 0, annual: 0, lapsed: 0 });
 
-    // Engagement-based segments
+    // Engagement-based segments with more nuanced categories
     const engagementSegments = donors.reduce((acc, donor) => {
-      const lastGiftDate = new Date(donor.last_gift_date);
-      if (!donor.last_gift_date) acc.inactive++;
-      else if (lastGiftDate > subMonths(new Date(), 1)) acc.highlyEngaged++;
-      else if (lastGiftDate > subMonths(new Date(), 3)) acc.engaged++;
-      else acc.lowEngagement++;
-      return acc;
-    }, { inactive: 0, lowEngagement: 0, engaged: 0, highlyEngaged: 0 });
+      const lastGiftDate = donor.last_gift_date ? new Date(donor.last_gift_date) : null;
+      const totalGiven = donor.total_given || 0;
+      
+      // Check if this is a repeat donor by looking for other donations from the same email
+      const isRepeatDonor = donors.filter(d => d.email === donor.email).length > 1;
 
+      if (!lastGiftDate) {
+        acc.inactive++;
+      } else {
+        const now = new Date();
+        const monthsSinceLastGift = (now.getFullYear() - lastGiftDate.getFullYear()) * 12 + 
+                                   (now.getMonth() - lastGiftDate.getMonth());
+        
+        if (monthsSinceLastGift <= 1 && isRepeatDonor) acc.champions++;
+        else if (monthsSinceLastGift <= 3 && isRepeatDonor) acc.engaged++;
+        else if (monthsSinceLastGift <= 6) acc.regular++;
+        else if (monthsSinceLastGift <= 12) acc.occasional++;
+        else acc.atRisk++;
+      }
+      return acc;
+    }, { inactive: 0, atRisk: 0, occasional: 0, regular: 0, engaged: 0, champions: 0 });
+
+    // Convert to array format and ensure all values are numbers
     return {
       amountSegments: [
-        { segment: 'Small Donors', count: amountSegments.small, value: amountSegments.small * 100 },
-        { segment: 'Medium Donors', count: amountSegments.medium, value: amountSegments.medium * 500 },
-        { segment: 'Large Donors', count: amountSegments.large, value: amountSegments.large * 1000 }
-      ],
+        { name: 'Major ($5k+)', value: Number(amountSegments.major), count: Number(amountSegments.major) },
+        { name: 'Large ($1k-$5k)', value: Number(amountSegments.large), count: Number(amountSegments.large) },
+        { name: 'Medium ($500-$1k)', value: Number(amountSegments.medium), count: Number(amountSegments.medium) },
+        { name: 'Small ($100-$500)', value: Number(amountSegments.small), count: Number(amountSegments.small) },
+        { name: 'Micro (<$100)', value: Number(amountSegments.micro), count: Number(amountSegments.micro) }
+      ].filter(segment => segment.value > 0),
       frequencySegments: [
-        { segment: 'One-Time', count: frequencySegments.oneTime, value: frequencySegments.oneTime * 100 },
-        { segment: 'Recent', count: frequencySegments.recent, value: frequencySegments.recent * 200 },
-        { segment: 'Regular', count: frequencySegments.regular, value: frequencySegments.regular * 300 },
-        { segment: 'Lapsed', count: frequencySegments.lapsed, value: frequencySegments.lapsed * 50 }
-      ],
+        { name: 'Recent (≤3m)', value: Number(frequencySegments.recent), count: Number(frequencySegments.recent) },
+        { name: 'Quarterly (3-6m)', value: Number(frequencySegments.quarterly), count: Number(frequencySegments.quarterly) },
+        { name: 'Annual (6-12m)', value: Number(frequencySegments.annual), count: Number(frequencySegments.annual) },
+        { name: 'Lapsed (>12m)', value: Number(frequencySegments.lapsed), count: Number(frequencySegments.lapsed) },
+        { name: 'One-Time', value: Number(frequencySegments.oneTime), count: Number(frequencySegments.oneTime) }
+      ].filter(segment => segment.value > 0),
       engagementSegments: [
-        { segment: 'Inactive', count: engagementSegments.inactive, value: engagementSegments.inactive * 50 },
-        { segment: 'Low Engagement', count: engagementSegments.lowEngagement, value: engagementSegments.lowEngagement * 100 },
-        { segment: 'Engaged', count: engagementSegments.engaged, value: engagementSegments.engaged * 200 },
-        { segment: 'Highly Engaged', count: engagementSegments.highlyEngaged, value: engagementSegments.highlyEngaged * 300 }
-      ]
+        { name: 'Champions', value: Number(engagementSegments.champions), count: Number(engagementSegments.champions) },
+        { name: 'Engaged', value: Number(engagementSegments.engaged), count: Number(engagementSegments.engaged) },
+        { name: 'Regular', value: Number(engagementSegments.regular), count: Number(engagementSegments.regular) },
+        { name: 'Occasional', value: Number(engagementSegments.occasional), count: Number(engagementSegments.occasional) },
+        { name: 'At Risk', value: Number(engagementSegments.atRisk), count: Number(engagementSegments.atRisk) },
+        { name: 'Inactive', value: Number(engagementSegments.inactive), count: Number(engagementSegments.inactive) }
+      ].filter(segment => segment.value > 0)
     };
   };
 
   const calculateDonorGrowth = (donors: Donor[]) => {
     if (donors.length === 0) return 0;
+    
+    // Get the date range
     const sortedDonors = [...donors].sort((a, b) => 
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
-    const firstMonth = new Date(sortedDonors[0].created_at).getMonth();
-    const lastMonth = new Date(sortedDonors[sortedDonors.length - 1].created_at).getMonth();
-    const months = (lastMonth - firstMonth) + 1;
-    return months > 0 ? (donors.length / months) * 12 : donors.length;
+    const firstDate = new Date(sortedDonors[0].created_at);
+    const lastDate = new Date(sortedDonors[sortedDonors.length - 1].created_at);
+    
+    // Calculate months difference
+    const monthsDiff = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + 
+                      (lastDate.getMonth() - firstDate.getMonth()) + 1;
+    
+    // Calculate growth rate
+    const growthRate = monthsDiff > 0 ? 
+      ((donors.length / monthsDiff) * 12) / Math.max(1, donors.length - 1) * 100 : 0;
+    
+    return growthRate;
   };
 
   const calculateAverageDonation = (donors: Donor[]) => {
     const validDonations = donors.filter(donor => donor.last_gift_amount > 0);
     if (validDonations.length === 0) return 0;
-    return validDonations.reduce((sum, donor) => sum + donor.last_gift_amount, 0) / validDonations.length;
+    
+    const totalAmount = validDonations.reduce((sum, donor) => sum + donor.last_gift_amount, 0);
+    return totalAmount / validDonations.length;
   };
 
   const calculateDonorRetention = (donors: Donor[]) => {
     if (donors.length === 0) return 0;
+    
+    // Consider a donor retained if they have given more than once
     const repeatDonors = donors.filter(donor => {
-      const lastGiftDate = new Date(donor.last_gift_date);
-      const threeMonthsAgo = subMonths(new Date(), 3);
-      return lastGiftDate > threeMonthsAgo;
+      const donations = donors.filter(d => d.email === donor.email);
+      return donations.length > 1;
     });
+    
     return (repeatDonors.length / donors.length) * 100;
   };
 
@@ -385,7 +443,18 @@ export default function AnalyticsContent() {
     );
   }
 
-  const COLORS = ['#8b5cf6', '#10b981', '#f59e0b', '#f97316', '#059669'];
+  const COLORS = [
+    '#8b5cf6', // Purple
+    '#10b981', // Green
+    '#f59e0b', // Yellow
+    '#f97316', // Orange
+    '#059669', // Emerald
+    '#3b82f6', // Blue
+    '#ef4444', // Red
+    '#ec4899', // Pink
+    '#6366f1', // Indigo
+    '#14b8a6'  // Teal
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -428,8 +497,8 @@ export default function AnalyticsContent() {
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-purple-50 rounded-full">
@@ -495,117 +564,8 @@ export default function AnalyticsContent() {
         </Card>
       </div>
 
-      {/* Financial Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-indigo-50 rounded-full">
-              <BanknotesIcon className="h-6 w-6 text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Budget</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.totalBudget.toLocaleString()}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-emerald-50 rounded-full">
-              <CurrencyDollarIcon className="h-6 w-6 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Raised</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.totalRaised.toLocaleString()}</p>
-              <div className="flex items-center mt-1">
-                <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.overallROI.toFixed(1)}% ROI</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-rose-50 rounded-full">
-              <ChartBarIcon className="h-6 w-6 text-rose-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Average Donation</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.averageDonation.toLocaleString()}</p>
-              <div className="flex items-center mt-1">
-                <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.donorRetention.toFixed(1)}% retention</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-amber-50 rounded-full">
-              <ArrowTrendingUpIcon className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Donor Lifetime Value</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.donorLifetimeValue.toLocaleString()}</p>
-              <div className="flex items-center mt-1">
-                <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">per year</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Charts */}
+      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Trend */}
-        <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Revenue Trend</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.trends.monthlyRevenue}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: '#374151' }}
-                  itemStyle={{ color: '#6b7280' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#8b5cf6" 
-                  fillOpacity={1} 
-                  fill="url(#colorRevenue)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
         {/* Volunteer Growth */}
         <Card className="p-6 shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-6">Volunteer Growth</h3>
@@ -646,15 +606,15 @@ export default function AnalyticsContent() {
           </div>
         </Card>
 
-        {/* Donor Amount Segments */}
+        {/* Event Participation */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Amount Segments</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Event Participation</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.donorSegments.amountSegments}>
+              <LineChart data={data.trends.eventParticipation}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis 
-                  dataKey="segment" 
+                  dataKey="month" 
                   tick={{ fill: '#6b7280' }}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
@@ -674,30 +634,44 @@ export default function AnalyticsContent() {
                   labelStyle={{ color: '#374151' }}
                   itemStyle={{ color: '#6b7280' }}
                 />
-                <Bar dataKey="value" fill="#8b5cf6" />
-              </BarChart>
+                <Line 
+                  type="monotone" 
+                  dataKey="participation" 
+                  stroke="#8b5cf6" 
+                  strokeWidth={2}
+                  dot={{ fill: '#8b5cf6', strokeWidth: 2 }}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* Donor Frequency Segments */}
+        {/* Donor Segments */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Frequency Segments</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Segments</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.donorSegments.frequencySegments}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="segment" 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
+              <PieChart>
+                <Pie
+                  data={data.donorSegments.amountSegments}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ name, value }) => `${name}: ${value}`}
+                  labelLine={true}
+                  paddingAngle={2}
+                >
+                  {data.donorSegments.amountSegments.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={COLORS[index % COLORS.length]}
+                      stroke="#fff"
+                      strokeWidth={2}
+                    />
+                  ))}
+                </Pie>
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: 'white', 
@@ -707,30 +681,40 @@ export default function AnalyticsContent() {
                   }}
                   labelStyle={{ color: '#374151' }}
                   itemStyle={{ color: '#6b7280' }}
+                  formatter={(value: number) => [`${value} donors`, 'Count']}
                 />
-                <Bar dataKey="value" fill="#10b981" />
-              </BarChart>
+                <Legend 
+                  verticalAlign="bottom" 
+                  height={36}
+                  formatter={(value) => value}
+                />
+              </PieChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* Donor Engagement Segments */}
+        {/* Donor Engagement */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Engagement Segments</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Engagement</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data.donorSegments.engagementSegments}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis 
-                  dataKey="segment" 
-                  tick={{ fill: '#6b7280' }}
+                  dataKey="name" 
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={100}
+                  interval={0}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
                 <YAxis 
-                  tick={{ fill: '#6b7280' }}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
+                  tickFormatter={(value) => `${value}`}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -741,8 +725,13 @@ export default function AnalyticsContent() {
                   }}
                   labelStyle={{ color: '#374151' }}
                   itemStyle={{ color: '#6b7280' }}
+                  formatter={(value: number) => [`${value} donors`, 'Count']}
                 />
-                <Bar dataKey="value" fill="#f59e0b" />
+                <Bar 
+                  dataKey="value" 
+                  fill="#f59e0b"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

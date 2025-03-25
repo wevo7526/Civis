@@ -32,23 +32,38 @@ async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIRespon
       body: JSON.stringify({ action, data }),
     });
 
+    const responseData = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
-      throw new Error(errorData.message || 'Failed to process request');
+      throw new Error(responseData.error || responseData.message || `HTTP error! status: ${response.status}`);
     }
 
-    const responseData = await response.json() as AIResponse;
+    if (!responseData.success) {
+      throw new Error(responseData.message || 'Request failed');
+    }
+
     return {
       ...responseData,
       content: formatContent(responseData.content)
     };
   } catch (error) {
     console.error('Error making AI request:', error);
-    throw error;
+    return {
+      success: false,
+      content: [{
+        text: error instanceof Error ? error.message : 'An unexpected error occurred'
+      }],
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
 }
 
 export const aiService = {
+  // Chat
+  async chat(message: string): Promise<AIResponse> {
+    return makeAIRequest('chat', { message });
+  },
+
   // Donor Analysis
   async analyzeDonors(donors: Donor[]): Promise<AIResponse> {
     return makeAIRequest('analyze_donors', donors);
@@ -125,46 +140,24 @@ export const aiService = {
 
   // Fundraising Analysis
   async analyzeFundraising(data: { donors: Donor[]; projects: Project[]; events: Event[] }): Promise<AIResponse> {
-    try {
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'analyzeFundraising', data }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
-        throw new Error(errorData.message || 'Failed to process request');
-      }
-
-      const responseData = await response.json() as AIResponse;
-      
-      // Ensure content is a string before formatting
-      const content = typeof responseData.content === 'string' 
-        ? responseData.content 
-        : JSON.stringify(responseData.content);
-
-      return {
-        ...responseData,
-        content: formatContent(content)
-      };
-    } catch (error) {
-      console.error('Error analyzing fundraising:', error);
-      return {
-        success: false,
-        content: 'Failed to analyze fundraising data. Please try again.',
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
-      };
-    }
+    return makeAIRequest('analyzeFundraising', data);
   }
 };
 
-function formatContent(content: string): string {
-  return content
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .join('\n\n');
+function formatContent(content: string | Array<{ text: string }>): string | Array<{ text: string }> {
+  if (Array.isArray(content)) {
+    return content.map(item => ({
+      text: item.text.trim()
+    }));
+  }
+  
+  if (typeof content === 'string') {
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n\n');
+  }
+
+  return '';
 } 

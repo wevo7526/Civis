@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
 // Security headers
 const securityHeaders = {
@@ -14,6 +15,10 @@ const securityHeaders = {
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
+  const supabase = createMiddlewareClient({ req: request, res: response });
+
+  // Refresh session if expired
+  await supabase.auth.getSession();
 
   // Add security headers
   Object.entries(securityHeaders).forEach(([key, value]) => {
