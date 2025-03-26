@@ -31,11 +31,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
 interface DashboardMetrics {
-  totalDonors: number;
-  totalRevenue: number;
-  averageDonation: number;
+  totalPrograms: number;
+  activeVolunteers: number;
   upcomingEvents: number;
-  donorRetentionRate: number;
+  totalGrants: number;
+  totalImpact: number;
 }
 
 interface RevenueData {
@@ -135,63 +135,30 @@ export default function Dashboard() {
         throw new Error('No authenticated user found');
       }
 
-      // Fetch donors with created_at for growth rate calculation
-      const { data: donors, error: donorsError } = await supabase
-        .from('donors')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      // Fetch various organizational data
+      const [programs, volunteers, events, grants] = await Promise.all([
+        supabase.from('programs').select('*').eq('user_id', user.id),
+        supabase.from('volunteers').select('*').eq('user_id', user.id),
+        supabase.from('events').select('*').eq('user_id', user.id),
+        supabase.from('grants').select('*').eq('user_id', user.id)
+      ]);
 
-      if (donorsError) throw donorsError;
-
-      const donorsList = donors || [];
-      const events = (await supabase.from('events').select('*').eq('user_id', user.id)).data || [];
-
-      // Calculate metrics with proper type handling and null checks
-      const totalRevenue = donorsList.reduce((sum, donor) => {
-        const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
-        return sum + (isNaN(amount) ? 0 : amount);
-      }, 0);
-
-      // Calculate average donation with proper filtering
-      const validDonations = donorsList.filter(donor => {
-        const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
-        return !isNaN(amount) && amount > 0;
-      });
-      const averageDonation = validDonations.length > 0
-        ? validDonations.reduce((sum, donor) => {
-            const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
-            return sum + amount;
-          }, 0) / validDonations.length
-        : 0;
-
-      const upcomingEvents = events.filter(e => {
-        const eventDate = new Date(e.date);
-        return eventDate > new Date();
-      }).length;
-
-      // Calculate donor retention with proper null checks
-      const returningDonors = donorsList.filter(donor => {
-        const donations = donorsList.filter(d => d.email === donor.email);
-        return donations.length > 1;
-      });
-      const donorRetentionRate = donorsList.length > 0 ? (returningDonors.length / donorsList.length) * 100 : 0;
+      // Calculate metrics
+      const activeVolunteers = volunteers.data?.filter(v => v.status === 'active').length || 0;
+      const upcomingEvents = events.data?.filter(e => new Date(e.date) > new Date()).length || 0;
+      const totalGrants = grants.data?.length || 0;
+      const totalImpact = programs.data?.reduce((sum, program) => sum + (program.impact_score || 0), 0) || 0;
 
       setMetrics({
-        totalDonors: donorsList.length,
-        totalRevenue,
-        averageDonation,
+        totalPrograms: programs.data?.length || 0,
+        activeVolunteers,
         upcomingEvents,
-        donorRetentionRate
+        totalGrants,
+        totalImpact
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error fetching metrics:', {
-        message: errorMessage,
-        error: error,
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      setError(`Failed to load dashboard metrics: ${errorMessage}`);
+      console.error('Error fetching metrics:', error);
+      setError('Failed to load dashboard metrics');
     } finally {
       setLoading(false);
     }
@@ -216,6 +183,80 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Error fetching activities:', err);
     }
+  };
+
+  const getActivityIcon = (type: string) => {
+    // Donor activities
+    if (type.startsWith('donor_')) {
+      return <UserIcon className="h-4 w-4 text-purple-700" />;
+    }
+    // Event activities
+    if (type.startsWith('event_')) {
+      return <CalendarIcon className="h-4 w-4 text-blue-700" />;
+    }
+    // Campaign activities
+    if (type.startsWith('campaign_')) {
+      return <MegaphoneIcon className="h-4 w-4 text-green-700" />;
+    }
+    // Email campaign activities
+    if (type.startsWith('email_')) {
+      return <EnvelopeIcon className="h-4 w-4 text-indigo-700" />;
+    }
+    // Document activities
+    if (type.startsWith('document_')) {
+      return <DocumentIcon className="h-4 w-4 text-orange-700" />;
+    }
+    // Workflow activities
+    if (type.startsWith('workflow_')) {
+      return <SparklesIcon className="h-4 w-4 text-pink-700" />;
+    }
+    // Grant activities
+    if (type.startsWith('grant_')) {
+      return <CurrencyDollarIcon className="h-4 w-4 text-yellow-700" />;
+    }
+    // Impact report activities
+    if (type === 'impact_report') {
+      return <ChartBarIcon className="h-4 w-4 text-teal-700" />;
+    }
+    // Default icon
+    return <BellIcon className="h-4 w-4 text-gray-700" />;
+  };
+
+  const getActivityColor = (type: string) => {
+    // Donor activities
+    if (type.startsWith('donor_')) {
+      return 'bg-purple-100';
+    }
+    // Event activities
+    if (type.startsWith('event_')) {
+      return 'bg-blue-100';
+    }
+    // Campaign activities
+    if (type.startsWith('campaign_')) {
+      return 'bg-green-100';
+    }
+    // Email campaign activities
+    if (type.startsWith('email_')) {
+      return 'bg-indigo-100';
+    }
+    // Document activities
+    if (type.startsWith('document_')) {
+      return 'bg-orange-100';
+    }
+    // Workflow activities
+    if (type.startsWith('workflow_')) {
+      return 'bg-pink-100';
+    }
+    // Grant activities
+    if (type.startsWith('grant_')) {
+      return 'bg-yellow-100';
+    }
+    // Impact report activities
+    if (type === 'impact_report') {
+      return 'bg-teal-100';
+    }
+    // Default color
+    return 'bg-gray-100';
   };
 
   const quickActions = [
@@ -291,72 +332,60 @@ export default function Dashboard() {
         {/* Left Column - Metrics and Chart */}
         <div className="lg:col-span-8 space-y-6">
           {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="bg-white border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center space-x-4">
-                  <div className="h-14 w-14 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
-                    <UserGroupIcon className="h-7 w-7 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Total Donors</p>
-                    <p className="text-2xl font-semibold text-gray-900">{metrics?.totalDonors || 0}</p>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-blue-50 rounded-full">
+                  <FolderIcon className="h-6 w-6 text-blue-600" />
                 </div>
-              </CardContent>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Active Programs</p>
+                  <p className="text-2xl font-bold text-gray-900">{metrics?.totalPrograms || 0}</p>
+                </div>
+              </div>
             </Card>
 
-            <Card className="bg-white border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center space-x-4">
-                  <div className="h-14 w-14 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-                    <CurrencyDollarIcon className="h-7 w-7 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-                    <p className="text-2xl font-semibold text-gray-900">
-                      ${metrics?.totalRevenue?.toLocaleString() || 0}
-                    </p>
-                  </div>
+            <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-green-50 rounded-full">
+                  <UserGroupIcon className="h-6 w-6 text-green-600" />
                 </div>
-              </CardContent>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Active Volunteers</p>
+                  <p className="text-2xl font-bold text-gray-900">{metrics?.activeVolunteers || 0}</p>
+                </div>
+              </div>
             </Card>
 
-            <Card className="bg-white border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center space-x-4">
-                  <div className="h-14 w-14 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                    <CurrencyDollarIcon className="h-7 w-7 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Average Donation</p>
-                    <p className="text-2xl font-semibold text-gray-900">
-                      ${(metrics?.averageDonation ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                  </div>
+            <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-yellow-50 rounded-full">
+                  <CalendarIcon className="h-6 w-6 text-yellow-600" />
                 </div>
-              </CardContent>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Upcoming Events</p>
+                  <p className="text-2xl font-bold text-gray-900">{metrics?.upcomingEvents || 0}</p>
+                </div>
+              </div>
             </Card>
 
-            <Card className="bg-white border-0 shadow-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center space-x-4">
-                  <div className="h-14 w-14 rounded-lg bg-yellow-50 flex items-center justify-center flex-shrink-0">
-                    <CalendarIcon className="h-7 w-7 text-yellow-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Upcoming Events</p>
-                    <p className="text-2xl font-semibold text-gray-900">{metrics?.upcomingEvents || 0}</p>
-                  </div>
+            <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-purple-50 rounded-full">
+                  <BuildingOfficeIcon className="h-6 w-6 text-purple-600" />
                 </div>
-              </CardContent>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Active Grants</p>
+                  <p className="text-2xl font-bold text-gray-900">{metrics?.totalGrants || 0}</p>
+                </div>
+              </div>
             </Card>
           </div>
 
-          {/* Revenue Chart */}
+          {/* Impact Overview */}
           <Card className="bg-white border-0 shadow-sm">
             <CardHeader className="border-b-0">
-              <CardTitle>Revenue Overview</CardTitle>
+              <CardTitle>Organizational Impact</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
@@ -375,7 +404,7 @@ export default function Dashboard() {
                     />
                     <YAxis 
                       className="text-sm text-gray-500"
-                      tickFormatter={(value) => `$${value.toLocaleString()}`}
+                      tickFormatter={(value) => `${value}%`}
                       width={80}
                     />
                     <Tooltip 
@@ -385,7 +414,7 @@ export default function Dashboard() {
                         borderRadius: '0.5rem',
                         boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)'
                       }}
-                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      formatter={(value: number) => [`${value}%`, 'Impact Score']}
                       labelFormatter={(label) => {
                         const [year, month] = label.split('-');
                         const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -407,61 +436,108 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Right Column - Recent Activity and Donor Retention */}
+        {/* Right Column - New Dashboard Elements */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Recent Activity */}
-          <Card className="bg-white border-0 shadow-sm">
-            <CardHeader className="border-b-0">
-              <CardTitle>Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activities.map((activity) => (
-                  <div key={activity.id} className="flex items-start space-x-3">
-                    <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
-                      {activity.type === 'donation' && <HeartIcon className="h-4 w-4 text-purple-700" />}
-                      {activity.type === 'event' && <CalendarIcon className="h-4 w-4 text-purple-700" />}
-                      {activity.type === 'campaign' && <MegaphoneIcon className="h-4 w-4 text-purple-700" />}
-                      {activity.type === 'donor' && <UserIcon className="h-4 w-4 text-purple-700" />}
-                      {activity.type === 'project' && <FolderIcon className="h-4 w-4 text-purple-700" />}
-                      {activity.type === 'report' && <DocumentTextIcon className="h-4 w-4 text-purple-700" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                      <p className="text-sm text-gray-500">{activity.description}</p>
-                      <p className="text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+          {/* Email Campaign Performance */}
+          <Card className="p-6 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Email Campaign Performance</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Open Rate</span>
+                <span className="text-sm font-medium text-gray-900">42.5%</span>
               </div>
-            </CardContent>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className="h-2 bg-blue-500 rounded-full" style={{ width: '42.5%' }}></div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Click Rate</span>
+                <span className="text-sm font-medium text-gray-900">18.2%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className="h-2 bg-green-500 rounded-full" style={{ width: '18.2%' }}></div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Unsubscribe Rate</span>
+                <span className="text-sm font-medium text-gray-900">1.8%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className="h-2 bg-red-500 rounded-full" style={{ width: '1.8%' }}></div>
+              </div>
+            </div>
           </Card>
 
-          {/* Donor Retention */}
-          <Card className="bg-white border-0 shadow-sm">
-            <CardHeader className="border-b-0">
-              <CardTitle>Donor Retention</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <div className="h-8 w-8 rounded-full bg-green-50 flex items-center justify-center">
-                    <CheckCircleIcon className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {(metrics?.donorRetentionRate ?? 0).toFixed(1)}%
-                    </p>
-                    <p className="text-xs text-gray-500">Retention Rate</p>
-                  </div>
+          {/* Fundraising Strategy Insights */}
+          <Card className="p-6 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Strategy Insights</h3>
+            <div className="space-y-4">
+              <div className="flex items-start space-x-3">
+                <div className="h-8 w-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                  <CheckCircleIcon className="h-4 w-4 text-green-600" />
                 </div>
-                <div className="text-sm text-gray-500">
-                  {(metrics?.donorRetentionRate ?? 0) >= 70 ? 'Excellent' : (metrics?.donorRetentionRate ?? 0) >= 50 ? 'Good' : 'Needs Improvement'}
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Major Donor Program</p>
+                  <p className="text-xs text-gray-500">Identify and cultivate top 10% of donors</p>
                 </div>
               </div>
-            </CardContent>
+              <div className="flex items-start space-x-3">
+                <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <CheckCircleIcon className="h-4 w-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Monthly Giving</p>
+                  <p className="text-xs text-gray-500">Convert 20% of one-time donors</p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                  <CheckCircleIcon className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Peer-to-Peer</p>
+                  <p className="text-xs text-gray-500">Launch ambassador program</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Platform Health Score */}
+          <Card className="p-6 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Platform Health</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Data Completeness</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-24 h-2 bg-gray-100 rounded-full">
+                    <div className="h-2 bg-teal-500 rounded-full" style={{ width: '85%' }}></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">85%</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Engagement Rate</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-24 h-2 bg-gray-100 rounded-full">
+                    <div className="h-2 bg-teal-500 rounded-full" style={{ width: '72%' }}></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">72%</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Automation Health</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-24 h-2 bg-gray-100 rounded-full">
+                    <div className="h-2 bg-teal-500 rounded-full" style={{ width: '92%' }}></div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">92%</span>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-900">Overall Score</span>
+                  <span className="text-lg font-semibold text-teal-600">83%</span>
+                </div>
+              </div>
+            </div>
           </Card>
         </div>
       </div>

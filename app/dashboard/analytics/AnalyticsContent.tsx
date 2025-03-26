@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Event, Donor, Project } from '@/app/lib/types';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   BarChart,
   Bar,
@@ -60,6 +60,28 @@ interface AnalyticsData {
     eventSuccessRate: number;
     volunteerEngagement: number;
     fundraisingEfficiency: number;
+    donorRetentionRate: number;
+    donorAcquisitionCost: number;
+    lifetimeDonorValue: number;
+    onlineGivingPercentage: number;
+    recurringGiftPercentage: number;
+    lapsedDonorRate: number;
+    reactivationRate: number;
+    donorSegments: {
+      amountSegments: Array<{ name: string; value: number; count: number }>;
+      frequencySegments: Array<{ name: string; value: number; count: number }>;
+      engagementSegments: Array<{ name: string; value: number; count: number }>;
+    };
+    donorEngagement: {
+      high: number;
+      medium: number;
+      low: number;
+    };
+    donorFrequency: {
+      monthly: number;
+      quarterly: number;
+      annual: number;
+    };
   };
   trends: {
     monthlyRevenue: Array<{ month: string; revenue: number }>;
@@ -72,6 +94,46 @@ interface AnalyticsData {
     amountSegments: Array<{ name: string; value: number; count: number }>;
     frequencySegments: Array<{ name: string; value: number; count: number }>;
     engagementSegments: Array<{ name: string; value: number; count: number }>;
+  };
+}
+
+interface AnalyticsMetrics {
+  totalVolunteers: number;
+  totalHours: number;
+  averageCapacity: number;
+  activeEvents: number;
+  totalBudget: number;
+  totalRaised: number;
+  overallROI: number;
+  overallProgress: number;
+  donorGrowth: number;
+  averageDonation: number;
+  donorRetention: number;
+  donorLifetimeValue: number;
+  eventSuccessRate: number;
+  volunteerEngagement: number;
+  fundraisingEfficiency: number;
+  donorRetentionRate: number;
+  donorAcquisitionCost: number;
+  lifetimeDonorValue: number;
+  onlineGivingPercentage: number;
+  recurringGiftPercentage: number;
+  lapsedDonorRate: number;
+  reactivationRate: number;
+  donorSegments: {
+    amountSegments: Array<{ name: string; value: number; count: number }>;
+    frequencySegments: Array<{ name: string; value: number; count: number }>;
+    engagementSegments: Array<{ name: string; value: number; count: number }>;
+  };
+  donorEngagement: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  donorFrequency: {
+    monthly: number;
+    quarterly: number;
+    annual: number;
   };
 }
 
@@ -168,6 +230,18 @@ export default function AnalyticsContent() {
     const volunteerEngagement = calculateVolunteerEngagement(events);
     const fundraisingEfficiency = calculateFundraisingEfficiency(events);
 
+    // New metrics
+    const donorRetentionRate = calculateDonorRetentionRate(donors);
+    const donorAcquisitionCost = calculateDonorAcquisitionCost(donors);
+    const lifetimeDonorValue = calculateLifetimeDonorValue(donors);
+    const onlineGivingPercentage = calculateOnlineGivingPercentage(donors);
+    const recurringGiftPercentage = calculateRecurringGiftPercentage(donors);
+    const lapsedDonorRate = calculateLapsedDonorRate(donors);
+    const reactivationRate = calculateReactivationRate(donors);
+    const donorSegments = calculateDonorSegments(donors);
+    const donorEngagement = calculateDonorEngagement(donors);
+    const donorFrequency = calculateDonorFrequency(donors);
+
     return {
       totalVolunteers,
       totalHours,
@@ -183,7 +257,17 @@ export default function AnalyticsContent() {
       donorLifetimeValue,
       eventSuccessRate,
       volunteerEngagement,
-      fundraisingEfficiency
+      fundraisingEfficiency,
+      donorRetentionRate,
+      donorAcquisitionCost,
+      lifetimeDonorValue,
+      onlineGivingPercentage,
+      recurringGiftPercentage,
+      lapsedDonorRate,
+      reactivationRate,
+      donorSegments,
+      donorEngagement,
+      donorFrequency
     };
   };
 
@@ -285,81 +369,49 @@ export default function AnalyticsContent() {
       };
     }
 
-    // Amount-based segments with more meaningful tiers
-    const amountSegments = donors.reduce((acc, donor) => {
-      const amount = donor.total_given || 0;
-      if (amount >= 5000) acc.major++;
-      else if (amount >= 1000) acc.large++;
-      else if (amount >= 500) acc.medium++;
-      else if (amount >= 100) acc.small++;
-      else acc.micro++;
-      return acc;
-    }, { micro: 0, small: 0, medium: 0, large: 0, major: 0 });
+    // Amount-based segments
+    const major = donors.filter(donor => donor.total_given >= 10000).length;
+    const mid = donors.filter(donor => donor.total_given >= 1000 && donor.total_given < 10000).length;
+    const small = donors.filter(donor => donor.total_given < 1000).length;
 
-    // Frequency-based segments with better categorization
-    const frequencySegments = donors.reduce((acc, donor) => {
-      if (!donor.last_gift_date) acc.oneTime++;
-      else {
-        const lastGiftDate = new Date(donor.last_gift_date);
-        const now = new Date();
-        const monthsSinceLastGift = (now.getFullYear() - lastGiftDate.getFullYear()) * 12 + 
-                                   (now.getMonth() - lastGiftDate.getMonth());
-        
-        if (monthsSinceLastGift <= 3) acc.recent++;
-        else if (monthsSinceLastGift <= 6) acc.quarterly++;
-        else if (monthsSinceLastGift <= 12) acc.annual++;
-        else acc.lapsed++;
-      }
-      return acc;
-    }, { oneTime: 0, recent: 0, quarterly: 0, annual: 0, lapsed: 0 });
+    // Frequency-based segments
+    const monthly = donors.filter(donor => donor.frequency === 'monthly').length;
+    const quarterly = donors.filter(donor => donor.frequency === 'quarterly').length;
+    const annual = donors.filter(donor => donor.frequency === 'annual').length;
+    const oneTime = donors.filter(donor => donor.frequency === 'one-time').length;
 
-    // Engagement-based segments with more nuanced categories
-    const engagementSegments = donors.reduce((acc, donor) => {
-      const lastGiftDate = donor.last_gift_date ? new Date(donor.last_gift_date) : null;
-      const totalGiven = donor.total_given || 0;
-      
-      // Check if this is a repeat donor by looking for other donations from the same email
-      const isRepeatDonor = donors.filter(d => d.email === donor.email).length > 1;
+    // Engagement-based segments
+    const high = donors.filter(donor => {
+      const interactions = donor.interaction_count || 0;
+      return interactions >= 5;
+    }).length;
+    
+    const medium = donors.filter(donor => {
+      const interactions = donor.interaction_count || 0;
+      return interactions >= 2 && interactions < 5;
+    }).length;
+    
+    const low = donors.filter(donor => {
+      const interactions = donor.interaction_count || 0;
+      return interactions < 2;
+    }).length;
 
-      if (!lastGiftDate) {
-        acc.inactive++;
-      } else {
-        const now = new Date();
-        const monthsSinceLastGift = (now.getFullYear() - lastGiftDate.getFullYear()) * 12 + 
-                                   (now.getMonth() - lastGiftDate.getMonth());
-        
-        if (monthsSinceLastGift <= 1 && isRepeatDonor) acc.champions++;
-        else if (monthsSinceLastGift <= 3 && isRepeatDonor) acc.engaged++;
-        else if (monthsSinceLastGift <= 6) acc.regular++;
-        else if (monthsSinceLastGift <= 12) acc.occasional++;
-        else acc.atRisk++;
-      }
-      return acc;
-    }, { inactive: 0, atRisk: 0, occasional: 0, regular: 0, engaged: 0, champions: 0 });
-
-    // Convert to array format and ensure all values are numbers
     return {
       amountSegments: [
-        { name: 'Major ($5k+)', value: Number(amountSegments.major), count: Number(amountSegments.major) },
-        { name: 'Large ($1k-$5k)', value: Number(amountSegments.large), count: Number(amountSegments.large) },
-        { name: 'Medium ($500-$1k)', value: Number(amountSegments.medium), count: Number(amountSegments.medium) },
-        { name: 'Small ($100-$500)', value: Number(amountSegments.small), count: Number(amountSegments.small) },
-        { name: 'Micro (<$100)', value: Number(amountSegments.micro), count: Number(amountSegments.micro) }
+        { name: 'Major ($10k+)', value: major, count: major },
+        { name: 'Mid-Level ($1k-$10k)', value: mid, count: mid },
+        { name: 'Small (under $1k)', value: small, count: small }
       ].filter(segment => segment.value > 0),
       frequencySegments: [
-        { name: 'Recent (≤3m)', value: Number(frequencySegments.recent), count: Number(frequencySegments.recent) },
-        { name: 'Quarterly (3-6m)', value: Number(frequencySegments.quarterly), count: Number(frequencySegments.quarterly) },
-        { name: 'Annual (6-12m)', value: Number(frequencySegments.annual), count: Number(frequencySegments.annual) },
-        { name: 'Lapsed (>12m)', value: Number(frequencySegments.lapsed), count: Number(frequencySegments.lapsed) },
-        { name: 'One-Time', value: Number(frequencySegments.oneTime), count: Number(frequencySegments.oneTime) }
+        { name: 'Monthly', value: monthly, count: monthly },
+        { name: 'Quarterly', value: quarterly, count: quarterly },
+        { name: 'Annual', value: annual, count: annual },
+        { name: 'One-time', value: oneTime, count: oneTime }
       ].filter(segment => segment.value > 0),
       engagementSegments: [
-        { name: 'Champions', value: Number(engagementSegments.champions), count: Number(engagementSegments.champions) },
-        { name: 'Engaged', value: Number(engagementSegments.engaged), count: Number(engagementSegments.engaged) },
-        { name: 'Regular', value: Number(engagementSegments.regular), count: Number(engagementSegments.regular) },
-        { name: 'Occasional', value: Number(engagementSegments.occasional), count: Number(engagementSegments.occasional) },
-        { name: 'At Risk', value: Number(engagementSegments.atRisk), count: Number(engagementSegments.atRisk) },
-        { name: 'Inactive', value: Number(engagementSegments.inactive), count: Number(engagementSegments.inactive) }
+        { name: 'High Engagement', value: high, count: high },
+        { name: 'Medium Engagement', value: medium, count: medium },
+        { name: 'Low Engagement', value: low, count: low }
       ].filter(segment => segment.value > 0)
     };
   };
@@ -386,10 +438,10 @@ export default function AnalyticsContent() {
   };
 
   const calculateAverageDonation = (donors: Donor[]) => {
-    const validDonations = donors.filter(donor => (donor.last_gift_amount ?? 0) > 0);
+    const validDonations = donors.filter(donor => donor.total_given > 0);
+    const totalAmount = validDonations.reduce((sum, donor) => sum + donor.total_given, 0);
     if (validDonations.length === 0) return 0;
     
-    const totalAmount = validDonations.reduce((sum, donor) => sum + (donor.last_gift_amount ?? 0), 0);
     return totalAmount / validDonations.length;
   };
 
@@ -446,6 +498,99 @@ export default function AnalyticsContent() {
     }, 0);
 
     return totalValue / donors.length;
+  };
+
+  const calculateDonorRetentionRate = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    // Consider a donor retained if they have given more than once
+    const repeatDonors = donors.filter(donor => {
+      const donations = donors.filter(d => d.email === donor.email);
+      return donations.length > 1;
+    });
+    
+    return (repeatDonors.length / donors.length) * 100;
+  };
+
+  const calculateDonorAcquisitionCost = (donors: Donor[]) => {
+    // Simplified for example
+    return 5000 / donors.length;
+  };
+
+  const calculateLifetimeDonorValue = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    const totalRevenue = donors.reduce((sum, donor) => {
+      const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    
+    return totalRevenue / donors.length;
+  };
+
+  const calculateOnlineGivingPercentage = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    const onlineDonations = donors.filter(donor => donor.payment_method === 'online').length;
+    return (onlineDonations / donors.length) * 100;
+  };
+
+  const calculateRecurringGiftPercentage = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    const recurringDonors = donors.filter(donor => donor.recurring === true).length;
+    return (recurringDonors / donors.length) * 100;
+  };
+
+  const calculateLapsedDonorRate = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const lapsedDonors = donors.filter(donor => {
+      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      return lastDonation < twelveMonthsAgo;
+    });
+    
+    return (lapsedDonors.length / donors.length) * 100;
+  };
+
+  const calculateReactivationRate = (donors: Donor[]) => {
+    if (donors.length === 0) return 0;
+    
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    const lapsedDonors = donors.filter(donor => {
+      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      return lastDonation < twelveMonthsAgo;
+    });
+    
+    const reactivatedDonors = lapsedDonors.filter(donor => {
+      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      return lastDonation > twelveMonthsAgo;
+    });
+    
+    return (reactivatedDonors.length / lapsedDonors.length) * 100;
+  };
+
+  const calculateDonorEngagement = (donors: Donor[]) => {
+    if (donors.length === 0) return { high: 0, medium: 0, low: 0 };
+    
+    return {
+      high: donors.filter(donor => donor.interaction_count >= 5).length,
+      medium: donors.filter(donor => donor.interaction_count >= 2 && donor.interaction_count < 5).length,
+      low: donors.filter(donor => donor.interaction_count < 2).length
+    };
+  };
+
+  const calculateDonorFrequency = (donors: Donor[]) => {
+    if (donors.length === 0) return { monthly: 0, quarterly: 0, annual: 0 };
+    
+    return {
+      monthly: donors.filter(donor => donor.frequency === 'monthly').length,
+      quarterly: donors.filter(donor => donor.frequency === 'quarterly').length,
+      annual: donors.filter(donor => donor.frequency === 'annual').length
+    };
   };
 
   if (loading) {
@@ -517,19 +662,19 @@ export default function AnalyticsContent() {
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* Key Donor Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-purple-50 rounded-full">
-              <UserGroupIcon className="h-6 w-6 text-purple-600" />
+              <HeartIcon className="h-6 w-6 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Donors</p>
-              <p className="text-2xl font-bold text-gray-900">{data.metrics.totalVolunteers}</p>
+              <p className="text-sm font-medium text-gray-500">Donor Retention Rate</p>
+              <p className="text-2xl font-bold text-gray-900">{data.metrics.donorRetentionRate.toFixed(1)}%</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.donorGrowth.toFixed(1)}%</span>
+                <span className="text-sm text-green-600 ml-1">Target: 60%</span>
               </div>
             </div>
           </div>
@@ -541,11 +686,11 @@ export default function AnalyticsContent() {
               <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.totalRaised.toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-500">Average Gift Size</p>
+              <p className="text-2xl font-bold text-gray-900">${data.metrics.averageDonation.toLocaleString()}</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.overallROI.toFixed(1)}% ROI</span>
+                <span className="text-sm text-green-600 ml-1">+{data.metrics.donorGrowth.toFixed(1)}% Growth</span>
               </div>
             </div>
           </div>
@@ -554,11 +699,11 @@ export default function AnalyticsContent() {
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-blue-50 rounded-full">
-              <HeartIcon className="h-6 w-6 text-blue-600" />
+              <ChartBarIcon className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Donor Retention</p>
-              <p className="text-2xl font-bold text-gray-900">{data.metrics.donorRetention.toFixed(1)}%</p>
+              <p className="text-sm font-medium text-gray-500">Lifetime Donor Value</p>
+              <p className="text-2xl font-bold text-gray-900">${data.metrics.lifetimeDonorValue.toLocaleString()}</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
                 <span className="text-sm text-green-600 ml-1">+{data.metrics.donorLifetimeValue.toFixed(1)}% LTV</span>
@@ -570,59 +715,80 @@ export default function AnalyticsContent() {
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-yellow-50 rounded-full">
-              <ChartBarIcon className="h-6 w-6 text-yellow-600" />
+              <UserGroupIcon className="h-6 w-6 text-yellow-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Avg. Donation</p>
-              <p className="text-2xl font-bold text-gray-900">${data.metrics.averageDonation.toLocaleString()}</p>
+              <p className="text-sm font-medium text-gray-500">Recurring Gift %</p>
+              <p className="text-2xl font-bold text-gray-900">{data.metrics.recurringGiftPercentage.toFixed(1)}%</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.fundraisingEfficiency.toFixed(1)}% Efficiency</span>
+                <span className="text-sm text-green-600 ml-1">+{data.metrics.onlineGivingPercentage.toFixed(1)}% Online</span>
               </div>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Main Charts Section */}
+      {/* Donor Performance Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Trend */}
+        {/* Donor Retention & Acquisition */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Revenue Trend</h3>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setSelectedMetric('revenue')}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  selectedMetric === 'revenue'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Revenue
-              </button>
-              <button
-                onClick={() => setSelectedMetric('donors')}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  selectedMetric === 'donors'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Donors
-              </button>
-              <button
-                onClick={() => setSelectedMetric('engagement')}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  selectedMetric === 'engagement'
-                    ? 'bg-purple-100 text-purple-700'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Engagement
-              </button>
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Retention & Acquisition</h3>
+          <div className="space-y-6">
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Donor Retention Rate</span>
+                <span className="text-sm font-medium text-gray-900">{data.metrics.donorRetentionRate.toFixed(1)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className="h-2 bg-purple-500 rounded-full"
+                  style={{ width: `${data.metrics.donorRetentionRate}%` }}
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Donor Acquisition Cost</span>
+                <span className="text-sm font-medium text-gray-900">${data.metrics.donorAcquisitionCost.toFixed(2)}</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className="h-2 bg-blue-500 rounded-full"
+                  style={{ width: `${Math.min(100, (data.metrics.donorAcquisitionCost / 100) * 100)}%` }}
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Lapsed Donor Rate</span>
+                <span className="text-sm font-medium text-gray-900">{data.metrics.lapsedDonorRate.toFixed(1)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className="h-2 bg-red-500 rounded-full"
+                  style={{ width: `${data.metrics.lapsedDonorRate}%` }}
+                ></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Reactivation Rate</span>
+                <span className="text-sm font-medium text-gray-900">{data.metrics.reactivationRate.toFixed(1)}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className="h-2 bg-green-500 rounded-full"
+                  style={{ width: `${data.metrics.reactivationRate}%` }}
+                ></div>
+              </div>
             </div>
           </div>
+        </Card>
+
+        {/* Donor Giving Trends */}
+        <Card className="p-6 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Giving Trends</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.trends.monthlyRevenue}>
@@ -667,73 +833,9 @@ export default function AnalyticsContent() {
             </ResponsiveContainer>
           </div>
         </Card>
-
-        {/* Donor Acquisition Trend */}
-        <Card className="p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Donor Acquisition</h3>
-          </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.trends.donorAcquisition}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis 
-                  yAxisId="left"
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: '#374151' }}
-                  itemStyle={{ color: '#6b7280' }}
-                />
-                <Line 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="newDonors" 
-                  stroke="#10b981" 
-                  strokeWidth={2}
-                  dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6 }}
-                  name="New Donors"
-                />
-                <Line 
-                  yAxisId="right"
-                  type="monotone" 
-                  dataKey="totalDonors" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6 }}
-                  name="Total Donors"
-                />
-                <Legend />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
       </div>
 
-      {/* Donor Segments - Now full width */}
+      {/* Donor Segments */}
       <Card className="p-6 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900">Donor Segments</h3>
@@ -741,179 +843,77 @@ export default function AnalyticsContent() {
             <span className="text-sm text-gray-500">Total Donors: {data.donors.length}</span>
           </div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Amount Segments with Stacked Bar Chart */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-gray-700">By Donation Amount</h4>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.donorSegments.amountSegments}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis 
-                    dataKey="name" 
-                    axisLine={{ stroke: '#e5e7eb' }}
-                    tickLine={{ stroke: '#e5e7eb' }}
-                    angle={-45}
-                    textAnchor="end"
-                    height={80}
-                    interval={0}
-                    tick={{ fill: '#6b7280', fontSize: 12 }}
-                  />
-                  <YAxis 
-                    axisLine={{ stroke: '#e5e7eb' }}
-                    tickLine={{ stroke: '#e5e7eb' }}
-                    tickFormatter={(value) => `${value}`}
-                    tick={{ fill: '#6b7280', fontSize: 12 }}
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '0.5rem',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                    }}
-                    labelStyle={{ color: '#374151' }}
-                    itemStyle={{ color: '#6b7280' }}
-                    formatter={(value: number) => [`${value} donors`, 'Count']}
-                  />
-                  <Bar 
-                    dataKey="value" 
-                    fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                    animationDuration={1000}
-                  >
-                    {data.donorSegments.amountSegments.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.opacity = '0.8';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.opacity = '1';
-                        }}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Engagement Segments with Interactive Pie Chart */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-gray-700">By Engagement Level</h4>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data.donorSegments.engagementSegments}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={120}
-                    innerRadius={60}
-                    label={({ name, value, percent }) => 
-                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
-                    }
-                    labelLine={true}
-                    paddingAngle={2}
-                    animationDuration={1000}
-                  >
-                    {data.donorSegments.engagementSegments.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={COLORS[index % COLORS.length]}
-                        stroke="#fff"
-                        strokeWidth={2}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.opacity = '0.8';
-                          e.currentTarget.style.transform = 'scale(1.1)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.opacity = '1';
-                          e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '0.5rem',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                    }}
-                    labelStyle={{ color: '#374151' }}
-                    itemStyle={{ color: '#6b7280' }}
-                    formatter={(value: number) => [`${value} donors`, 'Count']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Key Insights with Interactive Cards */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-gray-700">Key Insights</h4>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Amount Segments */}
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-4">By Donation Amount</h4>
             <div className="space-y-4">
-              <div className="group flex items-center justify-between p-4 bg-purple-50 rounded-lg transition-all duration-200 hover:bg-purple-100 hover:shadow-md">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-purple-100 rounded-full group-hover:scale-110 transition-transform duration-200">
-                    <ChartPieIcon className="h-5 w-5 text-purple-600" />
+              {data.donorSegments.amountSegments.map((segment, index) => (
+                <div key={segment.name} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{segment.name}</span>
+                    <span className="text-sm font-medium text-gray-900">{segment.count} donors</span>
                   </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Major Donors</span>
-                    <p className="text-xs text-gray-500">Donors giving $5k+</p>
-                  </div>
-                </div>
-                <span className="text-lg font-semibold text-purple-600 group-hover:scale-110 transition-transform duration-200">
-                  {data.donorSegments.amountSegments.find(s => s.name === 'Major ($5k+)')?.value || 0}
-                </span>
-              </div>
-              <div className="group flex items-center justify-between p-4 bg-green-50 rounded-lg transition-all duration-200 hover:bg-green-100 hover:shadow-md">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-green-100 rounded-full group-hover:scale-110 transition-transform duration-200">
-                    <HeartIcon className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Champions</span>
-                    <p className="text-xs text-gray-500">Highly engaged donors</p>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${(segment.count / data.donors.length) * 100}%`,
+                        backgroundColor: COLORS[index % COLORS.length]
+                      }}
+                    ></div>
                   </div>
                 </div>
-                <span className="text-lg font-semibold text-green-600 group-hover:scale-110 transition-transform duration-200">
-                  {data.donorSegments.engagementSegments.find(s => s.name === 'Champions')?.value || 0}
-                </span>
-              </div>
-              <div className="group flex items-center justify-between p-4 bg-blue-50 rounded-lg transition-all duration-200 hover:bg-blue-100 hover:shadow-md">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-blue-100 rounded-full group-hover:scale-110 transition-transform duration-200">
-                    <UserPlusIcon className="h-5 w-5 text-blue-600" />
+              ))}
+            </div>
+          </div>
+
+          {/* Engagement Segments */}
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-4">By Engagement Level</h4>
+            <div className="space-y-4">
+              {data.donorSegments.engagementSegments.map((segment, index) => (
+                <div key={segment.name} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{segment.name}</span>
+                    <span className="text-sm font-medium text-gray-900">{segment.count} donors</span>
                   </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Recent Donors</span>
-                    <p className="text-xs text-gray-500">Last 3 months</p>
-                  </div>
-                </div>
-                <span className="text-lg font-semibold text-blue-600 group-hover:scale-110 transition-transform duration-200">
-                  {data.donorSegments.frequencySegments.find(s => s.name === 'Recent (≤3m)')?.value || 0}
-                </span>
-              </div>
-              <div className="group flex items-center justify-between p-4 bg-yellow-50 rounded-lg transition-all duration-200 hover:bg-yellow-100 hover:shadow-md">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-yellow-100 rounded-full group-hover:scale-110 transition-transform duration-200">
-                    <TagIcon className="h-5 w-5 text-yellow-600" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">At Risk</span>
-                    <p className="text-xs text-gray-500">Need attention</p>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${(segment.count / data.donors.length) * 100}%`,
+                        backgroundColor: COLORS[(index + 3) % COLORS.length]
+                      }}
+                    ></div>
                   </div>
                 </div>
-                <span className="text-lg font-semibold text-yellow-600 group-hover:scale-110 transition-transform duration-200">
-                  {data.donorSegments.engagementSegments.find(s => s.name === 'At Risk')?.value || 0}
-                </span>
-              </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Frequency Segments */}
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-4">By Giving Frequency</h4>
+            <div className="space-y-4">
+              {data.donorSegments.frequencySegments.map((segment, index) => (
+                <div key={segment.name} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">{segment.name}</span>
+                    <span className="text-sm font-medium text-gray-900">{segment.count} donors</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${(segment.count / data.donors.length) * 100}%`,
+                        backgroundColor: COLORS[(index + 6) % COLORS.length]
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

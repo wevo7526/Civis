@@ -1,13 +1,3 @@
-import type {
-  AIResponse,
-  Donor
-} from '@/lib/types';
-
-export type {
-  AIResponse,
-  Donor
-};
-
 export interface NextPageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -323,4 +313,29 @@ export interface ChatConfig {
   maxTokens?: number;
   temperature?: number;
   model?: string;
+}
+
+export interface Donor {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  created_at: string;
+  updated_at: string;
+  total_given: number;
+  donation_date: string;
+  payment_method: 'online' | 'check' | 'cash' | 'other';
+  recurring: boolean;
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'one-time';
+  last_donation_date: string;
+  interaction_count: number;
+  notes: string;
+  tags: string[];
+  status: 'active' | 'inactive' | 'lapsed';
 } 
