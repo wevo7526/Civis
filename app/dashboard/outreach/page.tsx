@@ -4,50 +4,25 @@ import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
-  EnvelopeIcon,
-  UserGroupIcon,
-  ClockIcon,
-  DocumentTextIcon,
-  PencilIcon,
-  TrashIcon,
   PlusIcon,
-  ChevronUpDownIcon,
-  SparklesIcon,
-  BoldIcon,
-  ItalicIcon,
-  ListBulletIcon,
 } from '@heroicons/react/24/outline';
-import { Button } from '../../../components/ui/button';
-import { Input } from '../../../components/ui/input';
-import { Label } from '../../../components/ui/label';
-import { Textarea } from '../../../components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatsDisplay } from './components/StatsDisplay';
+import { CampaignList } from './components/CampaignList';
+import { CampaignForm } from './components/CampaignForm';
+import type { CampaignFormData } from './components/CampaignForm';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../../../components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../../components/ui/select';
-import { Badge } from '../../../components/ui/badge';
-import { Card } from '../../../components/ui/card';
-import { workflowTemplates } from '../../../lib/workflowTemplates';
-import { toast } from 'sonner';
-import { Loading } from '@/components/ui/loading';
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { CalendarIcon } from "@heroicons/react/24/outline"
-import { cn } from "@/lib/utils"
-import { Switch } from "@/components/ui/switch"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Settings2 } from 'lucide-react';
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 interface OutreachTemplate {
   id: string;
@@ -190,6 +165,7 @@ export default function OutreachPage() {
     organizationWebsite: '',
     isDefault: false
   });
+  const [showCampaignForm, setShowCampaignForm] = useState(false);
 
   const loadAllData = async (isMounted: boolean) => {
     if (!isMounted) return;
@@ -877,77 +853,10 @@ export default function OutreachPage() {
     );
   };
 
-  const handleCreateCampaign = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isFormValid()) return;
-
-    try {
-      // First, save email settings
-      const emailSettingsResponse = await fetch('/api/email-settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sender_name: campaignForm.fromName,
-          sender_email: campaignForm.fromEmail,
-          reply_to_email: campaignForm.replyTo,
-          organization_name: campaignForm.organizationName,
-          organization_address: campaignForm.organizationAddress,
-          organization_phone: campaignForm.organizationPhone,
-          organization_website: campaignForm.organizationWebsite,
-          is_default: campaignForm.isDefault
-        }),
-      });
-
-      if (!emailSettingsResponse.ok) {
-        const errorData = await emailSettingsResponse.json();
-        throw new Error(errorData.error || 'Failed to save email settings');
-      }
-
-      // Then create the campaign
-      const campaignResponse = await fetch('/api/campaigns', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: campaignForm.name,
-          subject: campaignForm.subject,
-          content: campaignForm.content,
-          recipients: selectedRecipients.map(r => ({ email: r.email })),
-          scheduled_for: campaignForm.scheduleTime?.toISOString(),
-        }),
-      });
-
-      if (!campaignResponse.ok) {
-        const error = await campaignResponse.json();
-        throw new Error(error.error || 'Failed to create campaign');
-      }
-
-      const data = await campaignResponse.json();
-      setCampaigns(prev => [data.campaign, ...prev]);
-      setIsCampaignOpen(false);
-      setSelectedRecipients([]);
-      setCampaignForm({
-        name: '',
-        subject: '',
-        content: '',
-        fromName: '',
-        fromEmail: '',
-        replyTo: '',
-        scheduleTime: null,
-        organizationName: '',
-        organizationAddress: '',
-        organizationPhone: '',
-        organizationWebsite: '',
-        isDefault: false
-      });
-      toast.success('Campaign created successfully');
-    } catch (error) {
-      console.error('Error creating campaign:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create campaign');
-    }
+  const handleCreateCampaign = async (data: CampaignFormData) => {
+    // TODO: Implement campaign creation logic
+    console.log('Creating campaign:', data);
+    setShowCampaignForm(false);
   };
 
   if (loading) {
@@ -959,17 +868,11 @@ export default function OutreachPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header Section */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Outreach</h1>
-          <p className="mt-2 text-gray-600">
-            Create and manage email campaigns for your donors and volunteers
-          </p>
-        </div>
-        <Button 
-          onClick={() => setIsCampaignOpen(true)}
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900">Outreach</h1>
+        <Button
+          onClick={() => setShowCampaignForm(true)}
           className="bg-purple-600 hover:bg-purple-700 text-white"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
@@ -977,524 +880,36 @@ export default function OutreachPage() {
         </Button>
       </div>
 
-      {/* Stats Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-purple-50 rounded-full">
-              <UserGroupIcon className="h-6 w-6 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Donors</p>
-              <p className="text-2xl font-bold text-gray-900">{recipientStats.totalDonors}</p>
-              <p className="text-sm text-gray-500 mt-1">
-                {recipientStats.activeDonors} active
-              </p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 rounded-full">
-              <UserGroupIcon className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
-              <p className="text-2xl font-bold text-gray-900">{recipientStats.totalVolunteers}</p>
-              <p className="text-sm text-gray-500 mt-1">
-                {recipientStats.activeVolunteers} active
-              </p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-green-50 rounded-full">
-              <EnvelopeIcon className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Recent Activity</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {recipientStats.recentDonors + recipientStats.recentVolunteers}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Last 30 days
-              </p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <StatsDisplay stats={recipientStats} />
 
-      {/* Filters Section */}
-      <div className="flex gap-4 mb-8">
-        <div className="flex-1">
-          <Input
-            placeholder="Search templates..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-          />
-        </div>
-        <Select value={typeFilter} onValueChange={(value: any) => setTypeFilter(value)}>
-          <SelectTrigger className="w-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500">
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="donor">Donor</SelectItem>
-            <SelectItem value="volunteer">Volunteer</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Tabs defaultValue="campaigns" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+          <TabsTrigger value="settings">Email Settings</TabsTrigger>
+        </TabsList>
 
-      {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredTemplates.map((template) => (
-          <Card key={template.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="font-medium text-lg text-gray-900">{template.name}</h3>
-                <p className="text-sm text-gray-500 mt-1">{template.description}</p>
-              </div>
-              <Badge 
-                variant={template.status === 'active' ? 'default' : 'secondary'}
-                className={`${
-                  template.status === 'active' 
-                    ? 'bg-green-100 text-green-700' 
-                    : template.status === 'draft'
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-gray-100 text-gray-700'
-                } border-0`}
-              >
-                {template.status}
-              </Badge>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center text-sm text-gray-600">
-                <EnvelopeIcon className="h-4 w-4 mr-2 text-gray-400" />
-                {template.type === 'both' ? 'All Recipients' : `${template.type}s Only`}
-              </div>
-              <div className="flex items-center text-sm text-gray-600">
-                <DocumentTextIcon className="h-4 w-4 mr-2 text-gray-400" />
-                {template.content.length > 100 
-                  ? `${template.content.substring(0, 100)}...` 
-                  : template.content}
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelectedTemplate(template);
-                  setIsPreviewOpen(true);
-                }}
-                className="border-gray-200 hover:bg-gray-50"
-              >
-                Preview
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openEditMode(template)}
-                className="border-gray-200 hover:bg-gray-50"
-              >
-                Edit
-              </Button>
-              {template.status === 'draft' && (
-                <Button
-                  size="sm"
-                  onClick={() => activateTemplate(template)}
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
-                >
-                  Activate
-                </Button>
-              )}
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => deleteTemplate(template.id)}
-                className="bg-red-50 text-red-600 hover:bg-red-100 border-0"
-              >
-                Delete
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Create Template Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
-          <DialogHeader className="sticky top-0 bg-white z-10 pb-4 border-b border-gray-100">
-            <DialogTitle className="text-2xl font-semibold text-gray-900">
-              {isEditMode ? 'Edit Template' : 'Create New Template'}
-            </DialogTitle>
-            <DialogDescription className="text-gray-600">
-              {isEditMode ? 'Update your communication template.' : 'Create a new communication template for your donors and volunteers.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <form id="create-template-form" onSubmit={handleFormSubmit} className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium text-gray-700">Template Name</Label>
-                <Input 
-                  id="name" 
-                  name="name" 
-                  value={formData.name}
-                  onChange={handleFormChange}
-                  required 
-                  placeholder="Enter template name"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="type" className="text-sm font-medium text-gray-700">Recipient Type</Label>
-                <Select value={formData.type} onValueChange={handleSelectChange}>
-                  <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="both">All Recipients</SelectItem>
-                    <SelectItem value="donor">Donors Only</SelectItem>
-                    <SelectItem value="volunteer">Volunteers Only</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="subject" className="text-sm font-medium text-gray-700">Email Subject</Label>
-              <Input 
-                id="subject" 
-                name="subject" 
-                value={formData.subject}
-                onChange={handleFormChange}
-                required 
-                placeholder="Enter email subject"
-                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+        <TabsContent value="campaigns" className="space-y-4">
+          {showCampaignForm ? (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">Create New Campaign</h2>
+              <CampaignForm
+                recipients={recipients}
+                onSubmit={handleCreateCampaign}
+                onCancel={() => setShowCampaignForm(false)}
               />
             </div>
+          ) : (
+            <CampaignList campaigns={campaigns} />
+          )}
+        </TabsContent>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium text-gray-700">Email Content</Label>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="rich-text"
-                      checked={isRichText}
-                      onCheckedChange={setIsRichText}
-                      className="data-[state=checked]:bg-purple-600 data-[state=unchecked]:bg-gray-200 relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 [&>span]:bg-white [&>span]:translate-x-0 data-[state=checked]:[&>span]:translate-x-4"
-                    />
-                    <Label htmlFor="rich-text" className="text-sm text-gray-600">Rich Text Editor</Label>
-                  </div>
-                </div>
-              </div>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                {isRichText && (
-                  <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                    <div className="flex items-center space-x-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => formatText('bold')}
-                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                            >
-                              <BoldIcon className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Bold</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => formatText('italic')}
-                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                            >
-                              <ItalicIcon className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Italic</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => formatText('list')}
-                              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                            >
-                              <ListBulletIcon className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Bullet List</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                  </div>
-                )}
-                <Textarea
-                  ref={editorRef}
-                  value={editorContent}
-                  onChange={(e) => setEditorContent(e.target.value)}
-                  placeholder="Write your email content here..."
-                  className="min-h-[200px] border-0 focus:ring-0"
-                />
-              </div>
-
-              {/* AI Assistant Section */}
-              <div className="mt-2 space-y-2">
-                <Label className="text-sm font-medium text-gray-700">AI Assistant</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="Enter your prompt for AI assistance..."
-                    className="flex-1 border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleAIGenerate}
-                    disabled={isGenerating}
-                    className="bg-purple-600 hover:bg-purple-700 text-white"
-                  >
-                    {isGenerating ? 'Generating...' : 'Generate'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsCreateOpen(false);
-                  setIsEditMode(false);
-                  setEditingTemplate(null);
-                  setEditorContent('');
-                  setFormData({
-                    name: '',
-                    description: '',
-                    type: 'both',
-                    subject: '',
-                  });
-                }}
-                className="border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </Button>
-              <Button 
-                type="submit"
-                form="create-template-form"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-                disabled={!formData.name || !formData.subject || !editorContent}
-              >
-                {isEditMode ? 'Update Template' : 'Create Template'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Preview Dialog */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-2xl bg-white shadow-lg rounded-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-gray-900">{selectedTemplate?.name}</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              {selectedTemplate?.description}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-700">Type</Label>
-                <p className="text-gray-900">{selectedTemplate?.type === 'both' ? 'All Recipients' : `${selectedTemplate?.type}s Only`}</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Subject</Label>
-              <p className="text-gray-900">{selectedTemplate?.subject}</p>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Content</Label>
-              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
-                <div
-                  className="prose max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedTemplate?.content || '' }}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
-              <Button
-                variant="outline"
-                onClick={() => setIsPreviewOpen(false)}
-                className="border-gray-200 hover:bg-gray-50"
-              >
-                Close
-              </Button>
+        <TabsContent value="settings" className="space-y-4">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Email Settings</h2>
               <Button
                 onClick={() => {
-                  if (selectedTemplate) {
-                    activateTemplate(selectedTemplate);
-                    setIsPreviewOpen(false);
-                  }
-                }}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                Send Now
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Email Settings Modal */}
-      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-2xl bg-white shadow-lg rounded-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-gray-900">
-              {selectedSetting ? 'Edit Email Settings' : 'Add Email Settings'}
-            </DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Configure your email sending settings and organization information.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSettingsSubmit} className="space-y-6 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="sender_name" className="text-sm font-medium text-gray-700">
-                  Sender Name
-                </Label>
-                <Input
-                  id="sender_name"
-                  value={settingsForm.sender_name}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_name: e.target.value }))}
-                  required
-                  placeholder="Enter sender name"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sender_email" className="text-sm font-medium text-gray-700">
-                  Sender Email
-                </Label>
-                <Input
-                  id="sender_email"
-                  type="email"
-                  value={settingsForm.sender_email}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_email: e.target.value }))}
-                  required
-                  placeholder="Enter sender email"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="reply_to_email" className="text-sm font-medium text-gray-700">
-                  Reply-To Email
-                </Label>
-                <Input
-                  id="reply_to_email"
-                  type="email"
-                  value={settingsForm.reply_to_email}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, reply_to_email: e.target.value }))}
-                  placeholder="Enter reply-to email"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="organization_name" className="text-sm font-medium text-gray-700">
-                  Organization Name
-                </Label>
-                <Input
-                  id="organization_name"
-                  value={settingsForm.organization_name}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_name: e.target.value }))}
-                  placeholder="Enter organization name"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="organization_address" className="text-sm font-medium text-gray-700">
-                  Organization Address
-                </Label>
-                <Input
-                  id="organization_address"
-                  value={settingsForm.organization_address}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_address: e.target.value }))}
-                  placeholder="Enter organization address"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="organization_phone" className="text-sm font-medium text-gray-700">
-                  Organization Phone
-                </Label>
-                <Input
-                  id="organization_phone"
-                  value={settingsForm.organization_phone}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_phone: e.target.value }))}
-                  placeholder="Enter organization phone"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="organization_website" className="text-sm font-medium text-gray-700">
-                  Organization Website
-                </Label>
-                <Input
-                  id="organization_website"
-                  value={settingsForm.organization_website}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_website: e.target.value }))}
-                  placeholder="Enter organization website"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_default"
-                    checked={settingsForm.is_default}
-                    onCheckedChange={(checked) => setSettingsForm(prev => ({ ...prev, is_default: checked }))}
-                  />
-                  <Label htmlFor="is_default" className="text-sm font-medium text-gray-700">
-                    Set as Default
-                  </Label>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsSettingsOpen(false);
+                  console.log('Opening settings modal');
                   setSelectedSetting(null);
                   setSettingsForm({
                     sender_name: '',
@@ -1506,414 +921,156 @@ export default function OutreachPage() {
                     organization_website: '',
                     is_default: false
                   });
+                  setIsSettingsOpen(true);
+                  console.log('isSettingsOpen:', true);
                 }}
-                className="border-gray-200 hover:bg-gray-50"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
                 className="bg-purple-600 hover:bg-purple-700 text-white"
               >
-                {selectedSetting ? 'Update Settings' : 'Add Settings'}
+                <PlusIcon className="h-5 w-5 mr-2" />
+                New Setting
               </Button>
             </div>
-          </form>
-        </DialogContent>
-      </Dialog>
 
-      {/* Email Settings List */}
-      <div className="mt-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {emailSettings.map((setting) => (
-            <Card key={setting.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-medium text-lg text-gray-900">{setting.sender_name}</h3>
-                  <p className="text-sm text-gray-500">{setting.sender_email}</p>
-                </div>
-                {setting.is_default && (
-                  <Badge className="bg-green-100 text-green-700 border-0">Default</Badge>
-                )}
-              </div>
-              <div className="space-y-2">
-                {setting.organization_name && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Organization:</span> {setting.organization_name}
-                  </p>
-                )}
-                {setting.reply_to_email && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Reply-To:</span> {setting.reply_to_email}
-                  </p>
-                )}
-              </div>
-              <div className="mt-4 flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEditSettings(setting)}
-                  className="border-gray-200 hover:bg-gray-50"
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => handleDeleteSettings(setting.id)}
-                >
-                  Delete
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Campaigns Section */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold text-gray-900">Email Campaigns</h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {campaigns.map((campaign) => (
-            <Card key={campaign.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-medium text-lg text-gray-900">{campaign.name}</h3>
-                  <p className="text-sm text-gray-500">{campaign.subject}</p>
-                </div>
-                <Badge 
-                  variant={campaign.status === 'completed' ? 'default' : 'secondary'}
-                  className={`${
-                    campaign.status === 'completed' 
-                      ? 'bg-green-100 text-green-700' 
-                      : campaign.status === 'pending'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-red-100 text-red-700'
-                  } border-0`}
-                >
-                  {campaign.status}
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Recipients:</span> {campaign.sent_count}/{campaign.total_recipients}
-                </p>
-                {campaign.failed_count > 0 && (
-                  <p className="text-sm text-red-600">
-                    <span className="font-medium">Failed:</span> {campaign.failed_count}
-                  </p>
-                )}
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Created:</span> {new Date(campaign.created_at).toLocaleDateString()}
-                </p>
-                {campaign.completed_at && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Completed:</span> {new Date(campaign.completed_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Campaign Dialog */}
-      <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-gray-900">Create New Campaign</DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Create a new email campaign to send to your recipients.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleCreateCampaign} className="space-y-6 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="campaign-name" className="text-sm font-medium text-gray-700">
-                  Campaign Name
-                </Label>
-                <Input
-                  id="campaign-name"
-                  value={campaignForm.name}
-                  onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
-                  required
-                  placeholder="Enter campaign name"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="campaign-subject" className="text-sm font-medium text-gray-700">
-                  Email Subject
-                </Label>
-                <Input
-                  id="campaign-subject"
-                  value={campaignForm.subject}
-                  onChange={(e) => setCampaignForm(prev => ({ ...prev, subject: e.target.value }))}
-                  required
-                  placeholder="Enter email subject"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Recipients</Label>
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <p className="text-sm text-gray-600">
-                    {selectedRecipients.length} recipients selected
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedRecipients([])}
-                    className="border-gray-200 hover:bg-gray-50"
-                  >
-                    Clear Selection
-                  </Button>
-                </div>
-                <div className="max-h-60 overflow-y-auto">
-                  {recipients.map((recipient) => (
-                    <div key={recipient.id} className="flex items-center space-x-2 py-2">
-                      <input
-                        type="checkbox"
-                        id={`recipient-${recipient.id}`}
-                        checked={selectedRecipients.some(r => r.id === recipient.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedRecipients(prev => [...prev, recipient]);
-                          } else {
-                            setSelectedRecipients(prev => prev.filter(r => r.id !== recipient.id));
-                          }
-                        }}
-                        className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor={`recipient-${recipient.id}`} className="text-sm text-gray-700">
-                        {recipient.name} ({recipient.email})
-                      </label>
+            <div className="space-y-4">
+              {emailSettings.length === 0 ? (
+                <p className="text-gray-600">No email settings configured yet.</p>
+              ) : (
+                <div className="grid gap-4">
+                  {emailSettings.map((setting) => (
+                    <div
+                      key={setting.id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                    >
+                      <div>
+                        <h3 className="font-medium">{setting.sender_name}</h3>
+                        <p className="text-sm text-gray-600">{setting.sender_email}</p>
+                        {setting.is_default && (
+                          <span className="inline-block mt-1 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                            Default
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditSettings(setting)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteSettings(setting.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              )}
             </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-white">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedSetting ? 'Edit Email Setting' : 'New Email Setting'}
+            </DialogTitle>
+            <DialogDescription>
+              Configure your email sender information and organization details.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSettingsSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium text-gray-700">Email Content</Label>
-              <Textarea
-                value={campaignForm.content}
-                onChange={(e) => setCampaignForm(prev => ({ ...prev, content: e.target.value }))}
-                required
-                placeholder="Write your email content here..."
-                className="min-h-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="from-name" className="text-sm font-medium text-gray-700">
-                  From Name
-                </Label>
-                <Input
-                  id="from-name"
-                  value={campaignForm.fromName}
-                  onChange={(e) => setCampaignForm(prev => ({ ...prev, fromName: e.target.value }))}
-                  placeholder="Enter sender name"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="from-email" className="text-sm font-medium text-gray-700">
-                  From Email
-                </Label>
-                <Input
-                  id="from-email"
-                  type="email"
-                  value={campaignForm.fromEmail}
-                  onChange={(e) => setCampaignForm(prev => ({ ...prev, fromEmail: e.target.value }))}
-                  placeholder="Enter sender email"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="reply-to" className="text-sm font-medium text-gray-700">
-                Reply-To Email
-              </Label>
+              <Label htmlFor="sender_name">Sender Name</Label>
               <Input
-                id="reply-to"
-                type="email"
-                value={campaignForm.replyTo}
-                onChange={(e) => setCampaignForm(prev => ({ ...prev, replyTo: e.target.value }))}
-                placeholder="Enter reply-to email"
-                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                id="sender_name"
+                value={settingsForm.sender_name}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_name: e.target.value }))}
+                required
+                placeholder="Enter sender name"
               />
             </div>
-
-            <div className="space-y-4 pt-4 border-t border-gray-100">
-              <h3 className="text-lg font-medium text-gray-900">Organization Details</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="organization-name" className="text-sm font-medium text-gray-700">
-                    Organization Name
-                  </Label>
-                  <Input
-                    id="organization-name"
-                    value={campaignForm.organizationName}
-                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationName: e.target.value }))}
-                    placeholder="Enter organization name"
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="organization-address" className="text-sm font-medium text-gray-700">
-                    Organization Address
-                  </Label>
-                  <Input
-                    id="organization-address"
-                    value={campaignForm.organizationAddress}
-                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationAddress: e.target.value }))}
-                    placeholder="Enter organization address"
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="organization-phone" className="text-sm font-medium text-gray-700">
-                    Organization Phone
-                  </Label>
-                  <Input
-                    id="organization-phone"
-                    value={campaignForm.organizationPhone}
-                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationPhone: e.target.value }))}
-                    placeholder="Enter organization phone"
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="organization-website" className="text-sm font-medium text-gray-700">
-                    Organization Website
-                  </Label>
-                  <Input
-                    id="organization-website"
-                    value={campaignForm.organizationWebsite}
-                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationWebsite: e.target.value }))}
-                    placeholder="Enter organization website"
-                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is-default"
-                  checked={campaignForm.isDefault}
-                  onCheckedChange={(checked) => setCampaignForm(prev => ({ ...prev, isDefault: checked }))}
-                />
-                <Label htmlFor="is-default" className="text-sm font-medium text-gray-700">
-                  Set as Default Organization
-                </Label>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="sender_email">Sender Email</Label>
+              <Input
+                id="sender_email"
+                type="email"
+                value={settingsForm.sender_email}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_email: e.target.value }))}
+                required
+                placeholder="Enter sender email"
+              />
             </div>
-
-            <div className="space-y-2 pt-4 border-t border-gray-100">
-              <Label className="text-sm font-medium text-gray-700">Schedule Campaign</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal border-gray-200",
-                        !campaignForm.scheduleTime && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {campaignForm.scheduleTime ? (
-                        format(campaignForm.scheduleTime, "PPP")
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={campaignForm.scheduleTime || undefined}
-                      onSelect={(date) => setCampaignForm(prev => ({ ...prev, scheduleTime: date || null }))}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Input
-                  type="time"
-                  value={campaignForm.scheduleTime ? format(campaignForm.scheduleTime, "HH:mm") : ""}
-                  onChange={(e) => {
-                    const [hours, minutes] = e.target.value.split(":");
-                    const newDate = campaignForm.scheduleTime || new Date();
-                    newDate.setHours(parseInt(hours), parseInt(minutes));
-                    setCampaignForm(prev => ({ ...prev, scheduleTime: newDate }));
-                  }}
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-              <p className="text-sm text-gray-500 mt-1">
-                {campaignForm.scheduleTime ? `Scheduled for ${format(campaignForm.scheduleTime, "PPP 'at' p")}` : "No schedule set"}
-              </p>
+            <div className="space-y-2">
+              <Label htmlFor="reply_to_email">Reply-To Email</Label>
+              <Input
+                id="reply_to_email"
+                type="email"
+                value={settingsForm.reply_to_email}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, reply_to_email: e.target.value }))}
+                placeholder="Enter reply-to email"
+              />
             </div>
-
-            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+            <div className="space-y-2">
+              <Label htmlFor="organization_name">Organization Name</Label>
+              <Input
+                id="organization_name"
+                value={settingsForm.organization_name}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_name: e.target.value }))}
+                placeholder="Enter organization name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization_address">Organization Address</Label>
+              <Input
+                id="organization_address"
+                value={settingsForm.organization_address}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_address: e.target.value }))}
+                placeholder="Enter organization address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization_phone">Organization Phone</Label>
+              <Input
+                id="organization_phone"
+                value={settingsForm.organization_phone}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_phone: e.target.value }))}
+                placeholder="Enter organization phone"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization_website">Organization Website</Label>
+              <Input
+                id="organization_website"
+                value={settingsForm.organization_website}
+                onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_website: e.target.value }))}
+                placeholder="Enter organization website"
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="is_default"
+                checked={settingsForm.is_default}
+                onCheckedChange={(checked) => setSettingsForm(prev => ({ ...prev, is_default: checked }))}
+              />
+              <Label htmlFor="is_default">Set as Default</Label>
+            </div>
+            <div className="flex justify-end space-x-2 pt-4">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => {
-                  setIsCampaignOpen(false);
-                  setSelectedRecipients([]);
-                  setCampaignForm({
-                    name: '',
-                    subject: '',
-                    content: '',
-                    fromName: '',
-                    fromEmail: '',
-                    replyTo: '',
-                    scheduleTime: null,
-                    organizationName: '',
-                    organizationAddress: '',
-                    organizationPhone: '',
-                    organizationWebsite: '',
-                    isDefault: false
-                  });
-                }}
-                className="border-gray-200 hover:bg-gray-50"
+                onClick={() => setIsSettingsOpen(false)}
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-                disabled={!isFormValid()}
-              >
-                {campaignForm.scheduleTime && campaignForm.scheduleTime < new Date() ? (
-                  "Schedule must be in the future"
-                ) : (
-                  <>
-                    Create Campaign
-                    {selectedRecipients.length > 0 && (
-                      <span className="ml-2 text-sm opacity-90">
-                        ({selectedRecipients.length} recipients)
-                      </span>
-                    )}
-                  </>
-                )}
+              <Button type="submit">
+                {selectedSetting ? 'Save Changes' : 'Create Setting'}
               </Button>
             </div>
           </form>
