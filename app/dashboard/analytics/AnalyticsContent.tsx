@@ -65,6 +65,7 @@ interface AnalyticsData {
     monthlyRevenue: Array<{ month: string; revenue: number }>;
     volunteerGrowth: Array<{ month: string; volunteers: number }>;
     eventParticipation: Array<{ month: string; participation: number }>;
+    donorAcquisition: Array<{ month: string; newDonors: number; totalDonors: number }>;
   };
   eventTypes: Array<{ type: string; count: number }>;
   donorSegments: {
@@ -203,6 +204,22 @@ export default function AnalyticsContent() {
       };
     }).reverse();
 
+    // Donor acquisition trend
+    const donorAcquisition = Array.from({ length: months }, (_, i) => {
+      const month = subMonths(new Date(), i);
+      const monthDonors = donors.filter(donor => {
+        const donorDate = new Date(donor.created_at);
+        return donorDate.getMonth() === month.getMonth() && donorDate.getFullYear() === month.getFullYear();
+      });
+      return {
+        month: format(month, 'MMM yyyy'),
+        newDonors: monthDonors.length,
+        totalDonors: donors.filter(donor => 
+          new Date(donor.created_at) <= month
+        ).length
+      };
+    }).reverse();
+
     // Volunteer growth trend
     const volunteerGrowth = Array.from({ length: months }, (_, i) => {
       const month = subMonths(new Date(), i);
@@ -235,6 +252,7 @@ export default function AnalyticsContent() {
 
     return {
       monthlyRevenue,
+      donorAcquisition,
       volunteerGrowth,
       eventParticipation
     };
@@ -650,75 +668,33 @@ export default function AnalyticsContent() {
           </div>
         </Card>
 
-        {/* Donor Segments */}
+        {/* Donor Acquisition Trend */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Segments</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data.donorSegments.amountSegments}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  labelLine={true}
-                  paddingAngle={2}
-                >
-                  {data.donorSegments.amountSegments.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={COLORS[index % COLORS.length]}
-                      stroke="#fff"
-                      strokeWidth={2}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: '#374151' }}
-                  itemStyle={{ color: '#6b7280' }}
-                  formatter={(value: number) => [`${value} donors`, 'Count']}
-                />
-                <Legend 
-                  verticalAlign="bottom" 
-                  height={36}
-                  formatter={(value) => value}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-gray-900">Donor Acquisition</h3>
           </div>
-        </Card>
-
-        {/* Donor Engagement */}
-        <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Engagement</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.donorSegments.engagementSegments}>
+              <LineChart data={data.trends.donorAcquisition}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis 
-                  dataKey="name" 
+                  dataKey="month" 
+                  tick={{ fill: '#6b7280' }}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  interval={0}
-                  tick={{ fill: '#6b7280', fontSize: 12 }}
                 />
                 <YAxis 
+                  yAxisId="left"
+                  tick={{ fill: '#6b7280' }}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
-                  tickFormatter={(value) => `${value}`}
-                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fill: '#6b7280' }}
+                  axisLine={{ stroke: '#e5e7eb' }}
+                  tickLine={{ stroke: '#e5e7eb' }}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -729,62 +705,219 @@ export default function AnalyticsContent() {
                   }}
                   labelStyle={{ color: '#374151' }}
                   itemStyle={{ color: '#6b7280' }}
-                  formatter={(value: number) => [`${value} donors`, 'Count']}
                 />
-                <Bar 
-                  dataKey="value" 
-                  fill="#f59e0b"
-                  radius={[4, 4, 0, 0]}
+                <Line 
+                  yAxisId="left"
+                  type="monotone" 
+                  dataKey="newDonors" 
+                  stroke="#10b981" 
+                  strokeWidth={2}
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6 }}
+                  name="New Donors"
                 />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Donor Frequency */}
-        <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Frequency</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.donorSegments.frequencySegments}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="name" 
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                  interval={0}
-                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                <Line 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey="totalDonors" 
+                  stroke="#3b82f6" 
+                  strokeWidth={2}
+                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6 }}
+                  name="Total Donors"
                 />
-                <YAxis 
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                  tickFormatter={(value) => `${value}`}
-                  tick={{ fill: '#6b7280', fontSize: 12 }}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: '#374151' }}
-                  itemStyle={{ color: '#6b7280' }}
-                  formatter={(value: number) => [`${value} donors`, 'Count']}
-                />
-                <Bar 
-                  dataKey="value" 
-                  fill="#10b981"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
+                <Legend />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
       </div>
+
+      {/* Donor Segments - Now full width */}
+      <Card className="p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">Donor Segments</h3>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-500">Total Donors: {data.donors.length}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Amount Segments with Stacked Bar Chart */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-gray-700">By Donation Amount</h4>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.donorSegments.amountSegments}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    tickLine={{ stroke: '#e5e7eb' }}
+                    angle={-45}
+                    textAnchor="end"
+                    height={80}
+                    interval={0}
+                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                  />
+                  <YAxis 
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    tickLine={{ stroke: '#e5e7eb' }}
+                    tickFormatter={(value) => `${value}`}
+                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                    labelStyle={{ color: '#374151' }}
+                    itemStyle={{ color: '#6b7280' }}
+                    formatter={(value: number) => [`${value} donors`, 'Count']}
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="#8b5cf6"
+                    radius={[4, 4, 0, 0]}
+                    animationDuration={1000}
+                  >
+                    {data.donorSegments.amountSegments.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`}
+                        fill={COLORS[index % COLORS.length]}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.8';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Engagement Segments with Interactive Pie Chart */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-gray-700">By Engagement Level</h4>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data.donorSegments.engagementSegments}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={120}
+                    innerRadius={60}
+                    label={({ name, value, percent }) => 
+                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
+                    }
+                    labelLine={true}
+                    paddingAngle={2}
+                    animationDuration={1000}
+                  >
+                    {data.donorSegments.engagementSegments.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={COLORS[index % COLORS.length]}
+                        stroke="#fff"
+                        strokeWidth={2}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '0.8';
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                    labelStyle={{ color: '#374151' }}
+                    itemStyle={{ color: '#6b7280' }}
+                    formatter={(value: number) => [`${value} donors`, 'Count']}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Key Insights with Interactive Cards */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-medium text-gray-700">Key Insights</h4>
+            <div className="space-y-4">
+              <div className="group flex items-center justify-between p-4 bg-purple-50 rounded-lg transition-all duration-200 hover:bg-purple-100 hover:shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-purple-100 rounded-full group-hover:scale-110 transition-transform duration-200">
+                    <ChartPieIcon className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Major Donors</span>
+                    <p className="text-xs text-gray-500">Donors giving $5k+</p>
+                  </div>
+                </div>
+                <span className="text-lg font-semibold text-purple-600 group-hover:scale-110 transition-transform duration-200">
+                  {data.donorSegments.amountSegments.find(s => s.name === 'Major ($5k+)')?.value || 0}
+                </span>
+              </div>
+              <div className="group flex items-center justify-between p-4 bg-green-50 rounded-lg transition-all duration-200 hover:bg-green-100 hover:shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-green-100 rounded-full group-hover:scale-110 transition-transform duration-200">
+                    <HeartIcon className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Champions</span>
+                    <p className="text-xs text-gray-500">Highly engaged donors</p>
+                  </div>
+                </div>
+                <span className="text-lg font-semibold text-green-600 group-hover:scale-110 transition-transform duration-200">
+                  {data.donorSegments.engagementSegments.find(s => s.name === 'Champions')?.value || 0}
+                </span>
+              </div>
+              <div className="group flex items-center justify-between p-4 bg-blue-50 rounded-lg transition-all duration-200 hover:bg-blue-100 hover:shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-blue-100 rounded-full group-hover:scale-110 transition-transform duration-200">
+                    <UserPlusIcon className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Recent Donors</span>
+                    <p className="text-xs text-gray-500">Last 3 months</p>
+                  </div>
+                </div>
+                <span className="text-lg font-semibold text-blue-600 group-hover:scale-110 transition-transform duration-200">
+                  {data.donorSegments.frequencySegments.find(s => s.name === 'Recent (≤3m)')?.value || 0}
+                </span>
+              </div>
+              <div className="group flex items-center justify-between p-4 bg-yellow-50 rounded-lg transition-all duration-200 hover:bg-yellow-100 hover:shadow-md">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-yellow-100 rounded-full group-hover:scale-110 transition-transform duration-200">
+                    <TagIcon className="h-5 w-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">At Risk</span>
+                    <p className="text-xs text-gray-500">Need attention</p>
+                  </div>
+                </div>
+                <span className="text-lg font-semibold text-yellow-600 group-hover:scale-110 transition-transform duration-200">
+                  {data.donorSegments.engagementSegments.find(s => s.name === 'At Risk')?.value || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 } 

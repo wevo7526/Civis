@@ -96,6 +96,13 @@ interface Campaign {
   failed_count: number;
   created_at: string;
   completed_at: string | null;
+  organization_name?: string;
+  organization_address?: string;
+  organization_phone?: string;
+  organization_website?: string;
+  is_default?: boolean;
+  recipient_ids?: string[];
+  user_id: string;
 }
 
 export default function OutreachPage() {
@@ -166,6 +173,7 @@ export default function OutreachPage() {
     isDefault: false
   });
   const [showCampaignForm, setShowCampaignForm] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
 
   const loadAllData = async (isMounted: boolean) => {
     if (!isMounted) return;
@@ -331,10 +339,13 @@ export default function OutreachPage() {
 
   const loadCampaigns = async () => {
     try {
-      const response = await fetch('/api/campaigns');
-      if (!response.ok) throw new Error('Failed to fetch campaigns');
-      const data = await response.json();
-      setCampaigns(data.campaigns);
+      const { data: campaigns, error } = await createClientComponentClient()
+        .from('email_campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setCampaigns(campaigns || []);
     } catch (error) {
       console.error('Error loading campaigns:', error);
       toast.error('Failed to load campaigns');
@@ -469,8 +480,7 @@ export default function OutreachPage() {
   };
 
   // Update handleCreateTemplate
-  const handleCreateTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleCreateTemplate = async (data: CampaignFormData) => {
     setError(null);
 
     try {
@@ -478,19 +488,19 @@ export default function OutreachPage() {
       if (!user) throw new Error('Not authenticated');
 
       // Validate required fields
-      if (!formData.name || !formData.subject || !editorContent) {
+      if (!data.name || !data.subject || !data.content) {
         throw new Error('Please fill in all required fields');
       }
 
       // Create the template
       const newTemplate = {
         user_id: user.id,
-        name: formData.name,
-        type: formData.type as 'donor' | 'volunteer' | 'both',
-        subject: formData.subject,
-        content: editorContent,
-        schedule: 'immediate', // Add default schedule value
-        status: 'draft' // Start as draft
+        name: data.name,
+        type: data.type as 'donor' | 'volunteer' | 'both',
+        subject: data.subject,
+        content: data.content,
+        schedule: 'immediate',
+        status: 'draft'
       };
 
       // Create the template in the database
@@ -529,6 +539,94 @@ export default function OutreachPage() {
       setError(errorMessage);
       toast.error(errorMessage);
       console.error('Error creating template:', err);
+    }
+  };
+
+  // Update handleEditTemplate
+  const handleEditTemplate = async (data: CampaignFormData) => {
+    setError(null);
+
+    try {
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (!editingTemplate) throw new Error('No template selected for editing');
+
+      // Validate required fields
+      if (!data.name || !data.subject || !data.content) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      // Update the template
+      const updatedTemplate = {
+        name: data.name,
+        type: data.type as 'donor' | 'volunteer' | 'both',
+        subject: data.subject,
+        content: data.content,
+        status: editingTemplate.status
+      };
+
+      // First, check if the template exists and user has access
+      const { data: existingTemplate, error: checkError } = await createClientComponentClient()
+        .from('outreach_templates')
+        .select('*')
+        .eq('id', editingTemplate.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (checkError || !existingTemplate) {
+        throw new Error('Template not found or access denied');
+      }
+
+      // Update the template in the database
+      const { data: template, error: templateError } = await createClientComponentClient()
+        .from('outreach_templates')
+        .update(updatedTemplate)
+        .eq('id', editingTemplate.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (templateError) {
+        console.error('Template update error:', templateError);
+        throw new Error(templateError.message);
+      }
+
+      if (!template) {
+        throw new Error('Failed to update template - no data returned');
+      }
+
+      // Update the templates list
+      setTemplates(prev => prev.map(t => t.id === template.id ? template : t));
+      
+      // Reset form and close dialog
+      setIsCreateOpen(false);
+      setIsEditMode(false);
+      setEditingTemplate(null);
+      setEditorContent('');
+      setFormData({
+        name: '',
+        description: '',
+        type: 'both',
+        subject: '',
+      });
+
+      // Show success message
+      toast.success('Template updated successfully');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update template';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      console.error('Error updating template:', err);
+    }
+  };
+
+  // Update the form submission handler
+  const handleFormSubmit = async (data: CampaignFormData) => {
+    if (isEditMode) {
+      await handleEditTemplate(data);
+    } else {
+      await handleCreateTemplate(data);
     }
   };
 
@@ -647,86 +745,6 @@ export default function OutreachPage() {
   });
 
   // Add edit template function
-  const handleEditTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-
-    try {
-      const { data: { user } } = await createClientComponentClient().auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      if (!editingTemplate) throw new Error('No template selected for editing');
-
-      // Validate required fields
-      if (!formData.name || !formData.subject || !editorContent) {
-        throw new Error('Please fill in all required fields');
-      }
-
-      // Update the template
-      const updatedTemplate = {
-        name: formData.name,
-        type: formData.type as 'donor' | 'volunteer' | 'both',
-        subject: formData.subject,
-        content: editorContent,
-        status: editingTemplate.status // Keep the current status
-      };
-
-      // First, check if the template exists and user has access
-      const { data: existingTemplate, error: checkError } = await createClientComponentClient()
-        .from('outreach_templates')
-        .select('*')
-        .eq('id', editingTemplate.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (checkError || !existingTemplate) {
-        throw new Error('Template not found or access denied');
-      }
-
-      // Update the template in the database
-      const { data: template, error: templateError } = await createClientComponentClient()
-        .from('outreach_templates')
-        .update(updatedTemplate)
-        .eq('id', editingTemplate.id)
-        .eq('user_id', user.id)
-        .select()
-        .single();
-
-      if (templateError) {
-        console.error('Template update error:', templateError);
-        throw new Error(templateError.message);
-      }
-
-      if (!template) {
-        throw new Error('Failed to update template - no data returned');
-      }
-
-      // Update the templates list
-      setTemplates(prev => prev.map(t => t.id === template.id ? template : t));
-      
-      // Reset form and close dialog
-      setIsCreateOpen(false);
-      setIsEditMode(false);
-      setEditingTemplate(null);
-      setEditorContent('');
-      setFormData({
-        name: '',
-        description: '',
-        type: 'both',
-        subject: '',
-      });
-
-      // Show success message
-      toast.success('Template updated successfully');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update template';
-      setError(errorMessage);
-      toast.error(errorMessage);
-      console.error('Error updating template:', err);
-    }
-  };
-
-  // Add function to open edit mode
   const openEditMode = (template: OutreachTemplate) => {
     setEditingTemplate(template);
     setIsEditMode(true);
@@ -738,15 +756,6 @@ export default function OutreachPage() {
       subject: template.subject,
     });
     setEditorContent(template.content);
-  };
-
-  // Update the form submission handler
-  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    if (isEditMode) {
-      await handleEditTemplate(e);
-    } else {
-      await handleCreateTemplate(e);
-    }
   };
 
   // Add new function to handle settings form submission
@@ -854,9 +863,96 @@ export default function OutreachPage() {
   };
 
   const handleCreateCampaign = async (data: CampaignFormData) => {
-    // TODO: Implement campaign creation logic
-    console.log('Creating campaign:', data);
-    setShowCampaignForm(false);
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const campaignData = {
+        name: data.name,
+        subject: data.subject,
+        content: data.content,
+        from_name: data.fromName,
+        from_email: data.fromEmail,
+        reply_to: data.replyTo,
+        scheduled_for: data.scheduleTime?.toISOString() || null,
+        total_recipients: data.recipients.length,
+        status: data.scheduleTime ? 'pending' : 'completed',
+        organization_name: data.organizationName,
+        organization_address: data.organizationAddress,
+        organization_phone: data.organizationPhone,
+        organization_website: data.organizationWebsite
+      };
+
+      if (editingCampaign) {
+        const { error: updateError } = await createClientComponentClient()
+          .from('email_campaigns')
+          .update(campaignData)
+          .eq('id', editingCampaign.id);
+
+        if (updateError) {
+          console.error('Campaign update error:', updateError);
+          throw new Error(updateError.message || 'Failed to update campaign');
+        }
+        toast.success('Campaign updated successfully');
+      } else {
+        const { error: insertError } = await createClientComponentClient()
+          .from('email_campaigns')
+          .insert({
+            ...campaignData,
+            user_id: user.id,
+          });
+
+        if (insertError) {
+          console.error('Campaign creation error:', insertError);
+          throw new Error(insertError.message || 'Failed to create campaign');
+        }
+        toast.success('Campaign created successfully');
+      }
+
+      await loadCampaigns();
+      setIsCampaignOpen(false);
+      setEditingCampaign(null);
+    } catch (error) {
+      console.error('Error saving campaign:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save campaign';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add function to handle campaign editing
+  const handleEditCampaign = (campaign: Campaign) => {
+    setEditingCampaign(campaign);
+    setIsCampaignOpen(true);
+  };
+
+  // Add handleDeleteCampaign function
+  const handleDeleteCampaign = async (campaignId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { error } = await createClientComponentClient()
+        .from('email_campaigns')
+        .delete()
+        .eq('id', campaignId);
+
+      if (error) throw error;
+      toast.success('Campaign deleted successfully');
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      setError(error instanceof Error ? error.message : 'Failed to delete campaign');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -868,11 +964,11 @@ export default function OutreachPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-6 space-y-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">Outreach</h1>
         <Button
-          onClick={() => setShowCampaignForm(true)}
+          onClick={() => setIsCampaignOpen(true)}
           className="bg-purple-600 hover:bg-purple-700 text-white"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
@@ -889,18 +985,11 @@ export default function OutreachPage() {
         </TabsList>
 
         <TabsContent value="campaigns" className="space-y-4">
-          {showCampaignForm ? (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">Create New Campaign</h2>
-              <CampaignForm
-                recipients={recipients}
-                onSubmit={handleCreateCampaign}
-                onCancel={() => setShowCampaignForm(false)}
-              />
-            </div>
-          ) : (
-            <CampaignList campaigns={campaigns} />
-          )}
+          <CampaignList 
+            campaigns={campaigns} 
+            onEdit={handleEditCampaign}
+            onDelete={handleDeleteCampaign}
+          />
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4">
@@ -909,7 +998,6 @@ export default function OutreachPage() {
               <h2 className="text-xl font-semibold">Email Settings</h2>
               <Button
                 onClick={() => {
-                  console.log('Opening settings modal');
                   setSelectedSetting(null);
                   setSettingsForm({
                     sender_name: '',
@@ -922,7 +1010,6 @@ export default function OutreachPage() {
                     is_default: false
                   });
                   setIsSettingsOpen(true);
-                  console.log('isSettingsOpen:', true);
                 }}
                 className="bg-purple-600 hover:bg-purple-700 text-white"
               >
@@ -974,6 +1061,48 @@ export default function OutreachPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {editingCampaign 
+                ? 'Update your campaign details and recipients.'
+                : 'Create a new email campaign and select recipients.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6">
+            <CampaignForm
+              recipients={recipients}
+              onSubmit={handleCreateCampaign}
+              onCancel={() => {
+                setIsCampaignOpen(false);
+                setEditingCampaign(null);
+              }}
+              campaign={editingCampaign ? {
+                id: editingCampaign.id,
+                name: editingCampaign.name,
+                subject: editingCampaign.subject,
+                content: editingCampaign.content,
+                fromName: editingCampaign.from_name,
+                fromEmail: editingCampaign.from_email,
+                replyTo: editingCampaign.reply_to,
+                scheduleTime: editingCampaign.scheduled_for ? new Date(editingCampaign.scheduled_for) : null,
+                organizationName: editingCampaign.organization_name || '',
+                organizationAddress: editingCampaign.organization_address || '',
+                organizationPhone: editingCampaign.organization_phone || '',
+                organizationWebsite: editingCampaign.organization_website || '',
+                isDefault: editingCampaign.is_default || false,
+                recipients: recipients.filter(r => editingCampaign.recipient_ids?.includes(r.id)),
+                type: 'both'
+              } : undefined}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="sm:max-w-[425px] bg-white">

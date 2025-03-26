@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,9 +22,11 @@ interface CampaignFormProps {
   recipients: Recipient[];
   onSubmit: (data: CampaignFormData) => Promise<void>;
   onCancel: () => void;
+  campaign?: CampaignFormData;
 }
 
 export interface CampaignFormData {
+  id?: string;
   name: string;
   subject: string;
   content: string;
@@ -38,24 +40,33 @@ export interface CampaignFormData {
   organizationWebsite: string;
   isDefault: boolean;
   recipients: Recipient[];
+  type: 'donor' | 'volunteer' | 'both';
 }
 
-export function CampaignForm({ recipients, onSubmit, onCancel }: CampaignFormProps) {
+export function CampaignForm({ recipients, onSubmit, onCancel, campaign }: CampaignFormProps) {
   const [formData, setFormData] = useState<CampaignFormData>({
-    name: '',
-    subject: '',
-    content: '',
-    fromName: '',
-    fromEmail: '',
-    replyTo: '',
-    scheduleTime: null,
-    organizationName: '',
-    organizationAddress: '',
-    organizationPhone: '',
-    organizationWebsite: '',
-    isDefault: false,
-    recipients: []
+    id: campaign?.id,
+    name: campaign?.name || '',
+    subject: campaign?.subject || '',
+    content: campaign?.content || '',
+    fromName: campaign?.fromName || '',
+    fromEmail: campaign?.fromEmail || '',
+    replyTo: campaign?.replyTo || '',
+    scheduleTime: campaign?.scheduleTime || null,
+    organizationName: campaign?.organizationName || '',
+    organizationAddress: campaign?.organizationAddress || '',
+    organizationPhone: campaign?.organizationPhone || '',
+    organizationWebsite: campaign?.organizationWebsite || '',
+    isDefault: campaign?.isDefault || false,
+    recipients: campaign?.recipients || [],
+    type: campaign?.type || 'donor'
   });
+
+  useEffect(() => {
+    if (campaign) {
+      setFormData(campaign);
+    }
+  }, [campaign]);
 
   const isFormValid = () => {
     return (
@@ -250,11 +261,7 @@ export function CampaignForm({ recipients, onSubmit, onCancel }: CampaignFormPro
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {formData.scheduleTime ? (
-                  format(formData.scheduleTime, "PPP")
-                ) : (
-                  <span>Pick a date</span>
-                )}
+                {formData.scheduleTime ? format(formData.scheduleTime, "PPP") : "Pick a date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -266,7 +273,7 @@ export function CampaignForm({ recipients, onSubmit, onCancel }: CampaignFormPro
               />
             </PopoverContent>
           </Popover>
-          <Input
+          <input
             type="time"
             value={formData.scheduleTime ? format(formData.scheduleTime, "HH:mm") : ""}
             onChange={(e) => {
@@ -275,15 +282,12 @@ export function CampaignForm({ recipients, onSubmit, onCancel }: CampaignFormPro
               newDate.setHours(parseInt(hours), parseInt(minutes));
               setFormData(prev => ({ ...prev, scheduleTime: newDate }));
             }}
-            className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+            className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
           />
         </div>
-        <p className="text-sm text-gray-500 mt-1">
-          {formData.scheduleTime ? `Scheduled for ${format(formData.scheduleTime, "PPP 'at' p")}` : "No schedule set"}
-        </p>
       </div>
 
-      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+      <div className="flex justify-end space-x-3 pt-4">
         <Button
           type="button"
           variant="outline"
@@ -294,21 +298,10 @@ export function CampaignForm({ recipients, onSubmit, onCancel }: CampaignFormPro
         </Button>
         <Button
           type="submit"
-          className="bg-purple-600 hover:bg-purple-700 text-white"
           disabled={!isFormValid()}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
         >
-          {formData.scheduleTime && formData.scheduleTime < new Date() ? (
-            "Schedule must be in the future"
-          ) : (
-            <>
-              Create Campaign
-              {formData.recipients.length > 0 && (
-                <span className="ml-2 text-sm opacity-90">
-                  ({formData.recipients.length} recipients)
-                </span>
-              )}
-            </>
-          )}
+          {campaign ? 'Update Campaign' : 'Create Campaign'}
         </Button>
       </div>
     </form>

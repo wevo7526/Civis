@@ -4,87 +4,112 @@ import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
 import { MailDataRequired } from '@sendgrid/mail';
 
-// Initialize SendGrid with your API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
-
-// Rate limiting configuration
-const RATE_LIMIT = {
-  windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  maxEmails: 1000, // Maximum emails per day per user
-};
-
-// In-memory store for rate limiting (in production, use Redis or similar)
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-
 export async function POST(request: Request) {
   try {
+    // Get the authenticated user
     const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check rate limit
-    const now = Date.now();
-    const userRateLimit = rateLimitStore.get(session.user.id);
-
-    if (userRateLimit) {
-      if (now > userRateLimit.resetTime) {
-        // Reset rate limit if window has passed
-        rateLimitStore.set(session.user.id, { count: 1, resetTime: now + RATE_LIMIT.windowMs });
-      } else if (userRateLimit.count >= RATE_LIMIT.maxEmails) {
-        return NextResponse.json(
-          { error: 'Rate limit exceeded. Please try again later.' },
-          { status: 429 }
-        );
-      } else {
-        // Increment count
-        userRateLimit.count++;
-      }
-    } else {
-      // Initialize rate limit for new user
-      rateLimitStore.set(session.user.id, { count: 1, resetTime: now + RATE_LIMIT.windowMs });
-    }
-
-    const { to, subject, content, recipientName } = await request.json();
-
-    // Get user's email settings
-    const { data: emailSettings } = await supabase
-      .from('email_settings')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('is_default', true)
-      .single();
-
-    if (!emailSettings) {
+    if (sessionError || !session) {
       return NextResponse.json(
-        { error: 'No default email settings found' },
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Parse request body
+    const { to, subject, content, recipientName, senderEmail } = await request.json();
+
+    if (!to || !subject || !content) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Prepare email
-    const msg = {
+    // Get user's email settings
+    const { data: emailSettings, error: settingsError } = await supabase
+      .from('user_email_settings')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('sender_email', senderEmail)
+      .single();
+
+    if (settingsError || !emailSettings) {
+      return NextResponse.json(
+        { error: 'Email settings not found' },
+        { status: 404 }
+      );
+    }
+
+    // Set SendGrid API key from user settings
+    if (!emailSettings.sendgrid_api_key) {
+      return NextResponse.json(
+        { error: 'SendGrid API key not configured' },
+        { status: 400 }
+      );
+    }
+
+    sgMail.setApiKey(emailSettings.sendgrid_api_key);
+
+    // Prepare email data
+    const msg: MailDataRequired = {
       to,
       from: {
         email: emailSettings.sender_email,
-        name: emailSettings.sender_name,
+        name: emailSettings.sender_name
       },
-      replyTo: emailSettings.reply_to_email,
+      replyTo: emailSettings.reply_to_email || emailSettings.sender_email,
       subject,
-      text: content,
       html: content,
       trackingSettings: {
         clickTracking: { enable: true },
         openTracking: { enable: true },
+        subscriptionTracking: { enable: true }
       },
+      customArgs: {
+        user_id: session.user.id,
+        template_id: emailSettings.id
+      }
     };
 
     // Send email
-    await sgMail.send(msg);
+    const response = await sgMail.send(msg);
+    
+    if (!response || response[0]?.statusCode !== 202) {
+      throw new Error('Failed to send email via SendGrid');
+    }
 
-    return NextResponse.json({ success: true });
+    const messageId = response[0]?.headers['x-message-id'];
+
+    // Log the email send in your database
+    const { error: logError } = await supabase
+      .from('email_logs')
+      .insert([
+        {
+          user_id: session.user.id,
+          recipient_email: to,
+          recipient_name: recipientName,
+          subject,
+          content,
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          sendgrid_message_id: messageId,
+          sender_email: emailSettings.sender_email,
+          sender_name: emailSettings.sender_name,
+          organization_name: emailSettings.organization_name
+        }
+      ]);
+
+    if (logError) {
+      console.error('Error logging email:', logError);
+      // Don't throw here, as the email was sent successfully
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      messageId
+    });
   } catch (error) {
     console.error('Error sending email:', error);
     return NextResponse.json(

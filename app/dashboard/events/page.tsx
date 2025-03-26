@@ -13,7 +13,7 @@ import { Dialog } from '@headlessui/react';
 
 interface Event {
   id: string;
-  title: string;
+  name: string;
   description: string;
   date: string;
   location: string;
@@ -30,29 +30,29 @@ interface Event {
 }
 
 interface EventFormData {
-  title: string;
+  name: string;
   description: string;
   date: string;
   location: string;
   type: 'fundraiser' | 'volunteer' | 'community' | 'awareness' | 'other';
   status: 'active' | 'completed' | 'planned' | 'cancelled';
-  max_volunteers?: number;
-  budget?: number;
-  amount_raised?: number;
-  fundraising_goal?: number;
+  max_volunteers?: number | null;
+  budget?: number | null;
+  amount_raised?: number | null;
+  fundraising_goal?: number | null;
 }
 
 const initialFormData: EventFormData = {
-  title: '',
+  name: '',
   description: '',
   date: new Date().toISOString().split('T')[0],
   location: '',
   type: 'volunteer',
   status: 'planned',
-  max_volunteers: 10,
-  budget: 0,
-  amount_raised: 0,
-  fundraising_goal: 0
+  max_volunteers: null,
+  budget: null,
+  amount_raised: null,
+  fundraising_goal: null
 };
 
 export default function Events() {
@@ -74,7 +74,7 @@ export default function Events() {
   useEffect(() => {
     if (eventToEdit) {
       setFormData({
-        title: eventToEdit.title,
+        name: eventToEdit.name,
         description: eventToEdit.description,
         date: eventToEdit.date,
         location: eventToEdit.location,
@@ -118,24 +118,41 @@ export default function Events() {
       setError(null);
 
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Ensure numeric fields are properly formatted
+      const formattedData = {
+        ...formData,
+        max_volunteers: formData.max_volunteers ? Number(formData.max_volunteers) : null,
+        budget: formData.budget ? Number(formData.budget) : null,
+        amount_raised: formData.amount_raised ? Number(formData.amount_raised) : null,
+        fundraising_goal: formData.fundraising_goal ? Number(formData.fundraising_goal) : null,
+      };
 
       if (eventToEdit) {
         const { error } = await supabase
           .from('events')
-          .update(formData)
+          .update(formattedData)
           .eq('id', eventToEdit.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error:', error);
+          throw new Error(error.message || 'Failed to update event');
+        }
       } else {
         const { error } = await supabase
           .from('events')
           .insert({
-            ...formData,
+            ...formattedData,
             user_id: user.id,
           });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error:', error);
+          throw new Error(error.message || 'Failed to create event');
+        }
       }
 
       await fetchEvents();
@@ -251,7 +268,7 @@ export default function Events() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
@@ -267,7 +284,7 @@ export default function Events() {
             {events.map((event) => (
               <tr key={event.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{event.title}</div>
+                  <div className="text-sm font-medium text-gray-900">{event.name}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-500">{event.type}</div>
@@ -355,15 +372,15 @@ export default function Events() {
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                    Title
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                    Name
                   </label>
                   <input
                     type="text"
-                    id="title"
+                    id="name"
                     required
-                    value={formData.title}
-                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                    value={formData.name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -442,8 +459,11 @@ export default function Events() {
                       type="number"
                       id="max_volunteers"
                       min="1"
-                      value={formData.max_volunteers}
-                      onChange={(e) => setFormData(prev => ({ ...prev, max_volunteers: parseInt(e.target.value) }))}
+                      value={formData.max_volunteers || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        max_volunteers: e.target.value ? Number(e.target.value) : null
+                      }))}
                       className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                     />
                   </div>
@@ -457,8 +477,12 @@ export default function Events() {
                     type="number"
                     id="budget"
                     min="0"
-                    value={formData.budget}
-                    onChange={(e) => setFormData(prev => ({ ...prev, budget: parseFloat(e.target.value) }))}
+                    step="0.01"
+                    value={formData.budget || ''}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      budget: e.target.value ? Number(e.target.value) : null
+                    }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -471,8 +495,12 @@ export default function Events() {
                     type="number"
                     id="amount_raised"
                     min="0"
-                    value={formData.amount_raised}
-                    onChange={(e) => setFormData(prev => ({ ...prev, amount_raised: parseFloat(e.target.value) }))}
+                    step="0.01"
+                    value={formData.amount_raised || ''}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      amount_raised: e.target.value ? Number(e.target.value) : null
+                    }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -485,8 +513,12 @@ export default function Events() {
                     type="number"
                     id="fundraising_goal"
                     min="0"
-                    value={formData.fundraising_goal}
-                    onChange={(e) => setFormData(prev => ({ ...prev, fundraising_goal: parseFloat(e.target.value) }))}
+                    step="0.01"
+                    value={formData.fundraising_goal || ''}
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      fundraising_goal: e.target.value ? Number(e.target.value) : null
+                    }))}
                     className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                   />
                 </div>
@@ -544,7 +576,7 @@ export default function Events() {
             
             <div className="p-6">
               <p className="text-sm text-gray-500">
-                Are you sure you want to delete {eventToDelete?.title}? This action cannot be undone.
+                Are you sure you want to delete {eventToDelete?.name}? This action cannot be undone.
               </p>
             </div>
             

@@ -235,8 +235,8 @@ export default function Dashboard() {
     },
     {
       name: 'Launch Campaign',
-      description: 'Start a new fundraising campaign',
-      href: '/dashboard/campaigns',
+      description: 'Start a new email campaign',
+      href: '/dashboard/outreach',
       icon: MegaphoneIcon,
       color: 'bg-green-50 text-green-600',
     },
