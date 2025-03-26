@@ -147,20 +147,20 @@ export default function Dashboard() {
       const donorsList = donors || [];
       const events = (await supabase.from('events').select('*').eq('user_id', user.id)).data || [];
 
-      // Calculate metrics with null checks and proper type handling
+      // Calculate metrics with proper type handling and null checks
       const totalRevenue = donorsList.reduce((sum, donor) => {
-        const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+        const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
         return sum + (isNaN(amount) ? 0 : amount);
       }, 0);
 
-      // Calculate average donation
+      // Calculate average donation with proper filtering
       const validDonations = donorsList.filter(donor => {
-        const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+        const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
         return !isNaN(amount) && amount > 0;
       });
       const averageDonation = validDonations.length > 0
         ? validDonations.reduce((sum, donor) => {
-            const amount = typeof donor.amount === 'string' ? parseFloat(donor.amount) : donor.amount;
+            const amount = typeof donor.total_given === 'string' ? parseFloat(donor.total_given) : donor.total_given;
             return sum + amount;
           }, 0) / validDonations.length
         : 0;
@@ -170,7 +170,7 @@ export default function Dashboard() {
         return eventDate > new Date();
       }).length;
 
-      // Calculate donor retention with null checks
+      // Calculate donor retention with proper null checks
       const returningDonors = donorsList.filter(donor => {
         const donations = donorsList.filter(d => d.email === donor.email);
         return donations.length > 1;

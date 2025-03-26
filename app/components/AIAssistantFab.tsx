@@ -38,11 +38,14 @@ export default function AIAssistantFab({ className }: AIAssistantFabProps) {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-4xl h-[80vh] p-0">
-          <DialogHeader className="p-4 border-b bg-purple-600 text-white">
-            <DialogTitle>AI Nonprofit Assistant</DialogTitle>
+        <DialogContent className="max-w-4xl h-[80vh] p-0 bg-white">
+          <DialogHeader className="px-4 py-2 border-b bg-gray-50">
+            <DialogTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" />
+              AI Nonprofit Assistant
+            </DialogTitle>
           </DialogHeader>
-          <div className="h-[calc(80vh-4rem)]">
+          <div className="h-[calc(80vh-3rem)]">
             {isOpen && <ChatInterface />}
           </div>
         </DialogContent>

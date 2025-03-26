@@ -25,6 +25,13 @@ import remarkGfm from 'remark-gfm';
 import { GrantSection, GrantDocument } from '@/app/lib/types';
 import { Project } from '@/app/lib/types';
 import { grantWriterService, AIResponse } from '@/app/lib/grantWriterService';
+import dynamic from 'next/dynamic';
+
+// Dynamically import MDEditor to avoid SSR issues
+const MDEditor = dynamic(
+  () => import('@uiw/react-md-editor').then((mod) => mod.default),
+  { ssr: false }
+);
 
 interface GrantSectionTemplate {
   id: string;
@@ -32,6 +39,20 @@ interface GrantSectionTemplate {
   description: string;
   required: boolean;
 }
+
+type SectionTemplateKey = 
+  | 'executive_summary'
+  | 'organization_background'
+  | 'project_overview'
+  | 'problem_statement'
+  | 'target_population'
+  | 'methodology'
+  | 'timeline'
+  | 'budget'
+  | 'evaluation'
+  | 'sustainability'
+  | 'partnerships'
+  | 'capacity';
 
 const GRANT_SECTIONS: GrantSectionTemplate[] = [
   {
@@ -128,24 +149,14 @@ interface GrantDocumentEditorProps {
   onClose: () => void;
   document: GrantDocument;
   project: Project;
-  onSave: (document: GrantDocument) => Promise<void>;
+  onSave: (document: GrantDocument) => void;
   onGenerateSection: (sectionId: string, customPrompt?: string) => Promise<void>;
-  isGenerating: boolean;
-  progressMessage?: string | null;
+  isGenerating?: boolean;
+  progressMessage?: string;
 }
 
-const SECTION_TEMPLATES = {
-  executive_summary: `## Executive Summary
-
-[Your project summary here]
-
-### Key Points
-- Project Overview
-- Mission Alignment
-- Expected Impact
-- Funding Request
-- Timeline`,
-
+const SECTION_TEMPLATES: Record<SectionTemplateKey, string> = {
+  executive_summary: `## Executive Summary\n\n[Your project summary here]\n\n### Key Points\n- Project Overview\n- Mission Alignment\n- Expected Impact\n- Funding Request\n- Timeline`,
   organization_background: `## Organization Background & Mission
 
 ### History
@@ -310,42 +321,36 @@ export default function GrantDocumentEditor({
   project,
   onSave,
   onGenerateSection,
-  isGenerating: externalIsGenerating,
-  progressMessage: externalProgressMessage,
+  isGenerating: externalIsGenerating = false,
+  progressMessage: externalProgressMessage = '',
 }: GrantDocumentEditorProps) {
   const [document, setDocument] = useState<GrantDocument>(initialDocument);
   const [previewMode, setPreviewMode] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
-  const [selectedText, setSelectedText] = useState('');
+  const [isGenerating, setIsGenerating] = useState(externalIsGenerating);
+  const [progressMessage, setProgressMessage] = useState(externalProgressMessage || '');
   const [wordCount, setWordCount] = useState(0);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [progressMessage, setProgressMessage] = useState<string | null>(externalProgressMessage || null);
+  const [selectedText, setSelectedText] = useState('');
 
   // Update document when initialDocument changes
   useEffect(() => {
     setDocument(initialDocument);
   }, [initialDocument]);
 
-  // Update progress message when external progress message changes
-  useEffect(() => {
-    if (externalProgressMessage) {
-      setProgressMessage(externalProgressMessage);
-    } else {
-      setProgressMessage(null);
-    }
-  }, [externalProgressMessage]);
-
-  // Update isGenerating state when external state changes
+  // Update isGenerating when externalIsGenerating changes
   useEffect(() => {
     setIsGenerating(externalIsGenerating);
-    if (!externalIsGenerating) {
-      setProgressMessage(null); // Clear progress message when generation is complete
-    }
   }, [externalIsGenerating]);
+
+  // Update progressMessage when externalProgressMessage changes
+  useEffect(() => {
+    setProgressMessage(externalProgressMessage || '');
+  }, [externalProgressMessage]);
 
   useEffect(() => {
     if (selectedSection && document) {
@@ -362,21 +367,45 @@ export default function GrantDocumentEditor({
       ...prev,
       sections: prev.sections.map(section =>
         section.id === sectionId
-          ? { ...section, content, last_updated: new Date().toISOString() }
+          ? { ...section, content: content || '', last_updated: new Date().toISOString() }
           : section
       ),
       updated_at: new Date().toISOString(),
     }));
   };
 
-  const handleAddSection = (sectionId: string) => {
+  const handleSectionTitleUpdate = (sectionId: string, newTitle: string) => {
+    setDocument(prev => ({
+      ...prev,
+      sections: prev.sections.map(section => 
+        section.id === sectionId 
+          ? { ...section, title: newTitle, last_updated: new Date().toISOString() }
+          : section
+      ),
+      updated_at: new Date().toISOString(),
+    }));
+  };
+
+  const handleSectionContentUpdate = (sectionId: string, newContent: string) => {
+    setDocument(prev => ({
+      ...prev,
+      sections: prev.sections.map(section => 
+        section.id === sectionId 
+          ? { ...section, content: newContent, last_updated: new Date().toISOString() }
+          : section
+      ),
+      updated_at: new Date().toISOString(),
+    }));
+  };
+
+  const handleAddSection = (sectionId: SectionTemplateKey) => {
     const template = GRANT_SECTIONS.find(s => s.id === sectionId);
     if (!template) return;
 
     const newSection: GrantSection = {
       id: crypto.randomUUID(),
       title: template.title,
-      content: SECTION_TEMPLATES[sectionId as keyof typeof SECTION_TEMPLATES] || '',
+      content: SECTION_TEMPLATES[sectionId] || '',
       status: 'draft',
       last_updated: new Date().toISOString(),
     };
@@ -402,25 +431,58 @@ export default function GrantDocumentEditor({
       setError('Failed to generate content');
     } finally {
       setIsGenerating(false);
-      setProgressMessage(null); // Clear the progress message
+      setProgressMessage('');
     }
   };
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      setProgressMessage('Saving document...');
-      await onSave({
+      setSaveMessage('Saving document...');
+      
+      // Ensure all required fields are present
+      const documentToSave = {
         ...document,
+        title: document.title || 'Untitled Grant Document',
+        status: document.status || 'draft',
+        created_at: document.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+        sections: document.sections.map(section => ({
+          ...section,
+          last_updated: section.last_updated || new Date().toISOString()
+        }))
+      };
+
+      console.log('Saving document:', documentToSave);
+      await onSave(documentToSave);
+      
+      // Update local state with the saved document
+      setDocument(documentToSave);
+      setSaveMessage('Document saved successfully!');
     } catch (error) {
       console.error('Error saving document:', error);
-      setError('Failed to save document');
+      setSaveMessage(error instanceof Error ? error.message : 'Failed to save document');
     } finally {
       setIsSaving(false);
-      setProgressMessage(null); // Clear the progress message
     }
+  };
+
+  const handleExport = () => {
+    // Create a formatted document with all sections
+    const formattedContent = document.sections
+      .map(section => `# ${section.title}\n\n${section.content}`)
+      .join('\n\n---\n\n');
+
+    // Create a blob and download
+    const blob = new Blob([formattedContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement('a');
+    a.href = url;
+    a.download = `${document.title || 'grant-proposal'}.md`;
+    window.document.body.appendChild(a);
+    a.click();
+    window.document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleDeleteSection = (sectionId: string) => {
@@ -459,39 +521,72 @@ export default function GrantDocumentEditor({
         break;
     }
 
-    handleSectionUpdate(selectedSection, newContent);
+    handleSectionContentUpdate(selectedSection, newContent);
+  };
+
+  const renderPreview = () => {
+    if (!previewMode) return null;
+
+    return (
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="prose max-w-none bg-white p-8 rounded-lg shadow-sm">
+          {document.sections.map((section, index) => (
+            <div key={section.id} className="mb-8">
+              <h2 className="text-2xl font-bold mb-4">{section.title || 'Untitled Section'}</h2>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {section.content || ''}
+              </ReactMarkdown>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const handleEditorChange = (value: string | null) => {
+    if (!selectedSection) return;
+    handleSectionContentUpdate(selectedSection, value || '');
+  };
+
+  const handleTitleChange = (value: string | null) => {
+    if (!selectedSection) return;
+    handleSectionTitleUpdate(selectedSection, value || '');
   };
 
   if (!isOpen || !document) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50">
-      <div className="absolute inset-4 mx-auto max-w-7xl bg-white rounded-lg shadow-xl flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-[90vw] h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center space-x-4">
-            <DocumentTextIcon className="h-8 w-8 text-purple-600" />
-            <div>
-              <h2 className="text-2xl font-semibold text-gray-900">Grant Proposal</h2>
-              {isSaving ? (
-                <p className="text-sm text-yellow-500">Saving...</p>
-              ) : (
-                <p className="text-sm text-gray-500">Last saved: {new Date(document.updated_at).toLocaleString()}</p>
-              )}
-            </div>
+            <h2 className="text-xl font-semibold text-gray-900">Grant Proposal Editor</h2>
+            {saveMessage && (
+              <span className={`text-sm ${saveMessage.includes('successfully') ? 'text-green-600' : 'text-red-600'}`}>
+                {saveMessage}
+              </span>
+            )}
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             <button
               onClick={() => setPreviewMode(!previewMode)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center"
             >
               <EyeIcon className="h-5 w-5 mr-2" />
               {previewMode ? 'Edit' : 'Preview'}
             </button>
             <button
+              onClick={handleExport}
+              className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center"
+            >
+              <DocumentTextIcon className="h-5 w-5 mr-2" />
+              Export
+            </button>
+            <button
               onClick={handleSave}
               disabled={isSaving}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md flex items-center"
             >
               {isSaving ? (
                 <>
@@ -507,35 +602,12 @@ export default function GrantDocumentEditor({
             </button>
             <button
               onClick={onClose}
-              className="inline-flex items-center p-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              className="p-2 text-gray-400 hover:text-gray-500"
             >
-              <XMarkIcon className="h-5 w-5" />
+              <XMarkIcon className="h-6 w-6" />
             </button>
           </div>
         </div>
-
-        {/* Status Messages */}
-        {error && (
-          <div className="px-6 py-4 bg-red-50 border-b border-red-200">
-            <div className="flex">
-              <XCircleIcon className="h-5 w-5 text-red-400 mr-3" />
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {progressMessage && (
-          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
-            <div className="flex">
-              {isGenerating ? (
-                <ArrowPathIcon className="h-5 w-5 text-blue-400 mr-3 animate-spin" />
-              ) : (
-                <CheckCircleIcon className="h-5 w-5 text-blue-400 mr-3" />
-              )}
-              <p className="text-sm text-blue-700">{progressMessage}</p>
-            </div>
-          </div>
-        )}
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
@@ -619,8 +691,20 @@ export default function GrantDocumentEditor({
                           {getSectionStatusIcon(section.status)}
                           <span>{displayTitle}</span>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {section.content.trim().split(/\s+/).filter(word => word.length > 0).length} words
+                        <div className="flex items-center space-x-2">
+                          <div className="text-xs text-gray-500">
+                            {section.content.trim().split(/\s+/).filter(word => word.length > 0).length} words
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSection(section.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50"
+                            title="Delete section"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                         </div>
                       </button>
                     );
@@ -635,7 +719,7 @@ export default function GrantDocumentEditor({
                   {Object.keys(SECTION_TEMPLATES).map((sectionId: string) => (
                     <button
                       key={sectionId}
-                      onClick={() => handleAddSection(sectionId)}
+                      onClick={() => handleAddSection(sectionId as SectionTemplateKey)}
                       className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors duration-150"
                     >
                       <div className="font-medium">
@@ -652,93 +736,44 @@ export default function GrantDocumentEditor({
           </div>
 
           {/* Main Editor Area */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Editor/Preview */}
-            <div className="flex-1 overflow-hidden bg-gray-50">
-              {selectedSection ? (
-                <div className="h-full flex flex-col">
-                  {previewMode ? (
-                    <div className="flex-1 overflow-y-auto p-6">
-                      <div className="prose max-w-none bg-white p-8 rounded-lg shadow-sm">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {document.sections.find(s => s.id === selectedSection)?.content || ''}
-                        </ReactMarkdown>
+          <div className="flex-1 overflow-hidden bg-gray-50">
+            {previewMode ? (
+              renderPreview()
+            ) : (
+              <div className="h-full flex flex-col">
+                {selectedSection ? (
+                  <>
+                    <div className="p-4 border-b">
+                      <input
+                        type="text"
+                        value={document.sections.find(s => s.id === selectedSection)?.title || ''}
+                        onChange={(e) => handleTitleChange(e.target.value)}
+                        className="w-full text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-0"
+                        placeholder="Section Title"
+                      />
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="h-full">
+                        <textarea
+                          value={document.sections.find(s => s.id === selectedSection)?.content || ''}
+                          onChange={(e) => handleEditorChange(e.target.value)}
+                          className="w-full h-full p-4 resize-none border-none focus:outline-none focus:ring-0"
+                          placeholder="Start writing your section..."
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <div className="h-full flex flex-col">
-                      <div className="flex-1 p-6">
-                        <div className="h-full bg-white rounded-lg shadow-sm flex flex-col">
-                          {/* Toolbar */}
-                          <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                            <div className="flex items-center space-x-4">
-                              <button
-                                onClick={() => handleFormatText('bold')}
-                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                                title="Bold"
-                              >
-                                <BoldIcon className="h-5 w-5" />
-                              </button>
-                              <button
-                                onClick={() => handleFormatText('italic')}
-                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                                title="Italic"
-                              >
-                                <ItalicIcon className="h-5 w-5" />
-                              </button>
-                              <button
-                                onClick={() => handleFormatText('list')}
-                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                                title="Bullet List"
-                              >
-                                <ListBulletIcon className="h-5 w-5" />
-                              </button>
-                              <button
-                                onClick={() => handleFormatText('numbered')}
-                                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
-                                title="Numbered List"
-                              >
-                                <QueueListIcon className="h-5 w-5" />
-                              </button>
-                              <div className="h-6 w-px bg-gray-300 mx-2"></div>
-                              <div className="text-sm text-gray-500">
-                                {wordCount} words
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                Last updated: {new Date(document.sections.find(s => s.id === selectedSection)?.last_updated || '').toLocaleString()}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Editor */}
-                          <div className="flex-1 p-4">
-                            <textarea
-                              value={document.sections.find(s => s.id === selectedSection)?.content || ''}
-                              onChange={(e) => handleSectionUpdate(selectedSection, e.target.value)}
-                              className="w-full h-full p-4 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500 resize-none font-mono text-sm"
-                              placeholder="Start writing..."
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Footer */}
-                  <div className="px-6 py-4 bg-white border-t border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 mr-4">
+                    {/* AI Prompt Bar */}
+                    <div className="p-4 border-t bg-white">
+                      <div className="flex items-center space-x-2">
                         <input
                           type="text"
                           value={customPrompt}
                           onChange={(e) => setCustomPrompt(e.target.value)}
                           placeholder="Enter custom prompt for AI generation..."
-                          className="w-full px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-purple-500 focus:border-purple-500"
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-purple-500 focus:border-purple-500"
                         />
-                      </div>
-                      <div className="flex space-x-3">
                         <button
-                          onClick={() => handleGenerateContent()}
+                          onClick={handleGenerateContent}
                           disabled={isGenerating}
                           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -754,25 +789,18 @@ export default function GrantDocumentEditor({
                             </>
                           )}
                         </button>
-                        <button
-                          onClick={() => handleDeleteSection(selectedSection)}
-                          className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                        >
-                          <TrashIcon className="h-5 w-5 mr-2" />
-                          Delete
-                        </button>
                       </div>
                     </div>
+                  </>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    <DocumentTextIcon className="h-12 w-12 mb-4" />
+                    <p className="text-lg font-medium">Select a section to start editing</p>
+                    <p className="text-sm mt-2">Or add a new section from the sidebar</p>
                   </div>
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                  <DocumentTextIcon className="h-12 w-12 mb-4" />
-                  <p className="text-lg font-medium">Select a section to start editing</p>
-                  <p className="text-sm mt-2">Or add a new section from the sidebar</p>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

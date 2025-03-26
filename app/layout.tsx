@@ -5,8 +5,8 @@ import ClientWrapper from './components/ClientWrapper';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { NotificationsBell } from './components/Notifications/NotificationsBell';
-import { Toaster } from '@/components/ui/toaster';
-import AIAssistantFab from '@/components/AIAssistantFab';
+import { Toaster } from './components/ui/toaster';
+import AIAssistantFab from './components/AIAssistantFab';
 
 const inter = Inter({ subsets: ['latin'] });
 

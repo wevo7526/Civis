@@ -66,16 +66,12 @@ export default function DonorCard({
         <div>
           <p className="text-sm font-medium text-gray-500">Last Gift</p>
           <p className="mt-1 text-sm text-gray-900">
-            {new Date(donor.last_gift_date).toLocaleDateString()}
+            {donor.last_gift_date ? new Date(donor.last_gift_date).toLocaleDateString() : 'No gifts yet'}
           </p>
         </div>
         <div>
           <p className="text-sm font-medium text-gray-500">Last Gift Amount</p>
-          <p className="mt-1 text-sm text-gray-900">${donor.last_gift_amount.toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Type</p>
-          <p className="mt-1 text-sm text-gray-900 capitalize">{donor.type}</p>
+          <p className="mt-1 text-sm text-gray-900">${donor.last_gift_amount?.toLocaleString() || '0'}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-gray-500">Status</p>

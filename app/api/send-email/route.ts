@@ -4,20 +4,6 @@ import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
 import { MailDataRequired } from '@sendgrid/mail';
 
-// Initialize SendGrid with API key
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
-
-if (!SENDGRID_API_KEY) {
-  throw new Error('SENDGRID_API_KEY is not set');
-}
-
-if (!SENDGRID_FROM_EMAIL) {
-  throw new Error('SENDGRID_FROM_EMAIL is not set');
-}
-
-sgMail.setApiKey(SENDGRID_API_KEY);
-
 export async function POST(request: Request) {
   try {
     // Get the authenticated user
@@ -32,7 +18,7 @@ export async function POST(request: Request) {
     }
 
     // Parse request body
-    const { to, subject, content, recipientName } = await request.json();
+    const { to, subject, content, recipientName, senderEmail } = await request.json();
 
     if (!to || !subject || !content) {
       return NextResponse.json(
@@ -41,16 +27,49 @@ export async function POST(request: Request) {
       );
     }
 
+    // Get user's email settings
+    const { data: emailSettings, error: settingsError } = await supabase
+      .from('user_email_settings')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('sender_email', senderEmail)
+      .single();
+
+    if (settingsError || !emailSettings) {
+      return NextResponse.json(
+        { error: 'Email settings not found' },
+        { status: 404 }
+      );
+    }
+
+    // Set SendGrid API key from user settings
+    if (!emailSettings.sendgrid_api_key) {
+      return NextResponse.json(
+        { error: 'SendGrid API key not configured' },
+        { status: 400 }
+      );
+    }
+
+    sgMail.setApiKey(emailSettings.sendgrid_api_key);
+
     // Prepare email data
     const msg: MailDataRequired = {
       to,
-      from: { email: SENDGRID_FROM_EMAIL as string },
+      from: {
+        email: emailSettings.sender_email,
+        name: emailSettings.sender_name
+      },
+      replyTo: emailSettings.reply_to_email || emailSettings.sender_email,
       subject,
       html: content,
       trackingSettings: {
         clickTracking: { enable: true },
         openTracking: { enable: true },
         subscriptionTracking: { enable: true }
+      },
+      customArgs: {
+        user_id: session.user.id,
+        template_id: emailSettings.id
       }
     };
 
@@ -75,7 +94,10 @@ export async function POST(request: Request) {
           content,
           status: 'sent',
           sent_at: new Date().toISOString(),
-          sendgrid_message_id: messageId
+          sendgrid_message_id: messageId,
+          sender_email: emailSettings.sender_email,
+          sender_name: emailSettings.sender_name,
+          organization_name: emailSettings.organization_name
         }
       ]);
 
@@ -90,13 +112,8 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Error sending email:', error);
-    
-    // Return more detailed error information
     return NextResponse.json(
-      { 
-        error: 'Failed to send email',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Failed to send email' },
       { status: 500 }
     );
   }

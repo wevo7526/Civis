@@ -200,7 +200,7 @@ export interface GrantSection {
   id: string;
   title: string;
   content: string;
-  status: 'draft' | 'in_review' | 'approved' | 'rejected';
+  status: 'draft' | 'generated' | 'in_review' | 'approved' | 'rejected';
   last_updated: string;
 }
 

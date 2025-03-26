@@ -47,6 +47,7 @@ import { CalendarIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Settings2 } from 'lucide-react';
 
 interface OutreachTemplate {
   id: string;
@@ -93,6 +94,19 @@ interface EmailTemplate {
   updated_at: string;
 }
 
+interface EmailSettings {
+  id: string;
+  sender_name: string;
+  sender_email: string;
+  reply_to_email?: string;
+  organization_name?: string;
+  organization_address?: string;
+  organization_phone?: string;
+  organization_website?: string;
+  sendgrid_api_key: string;
+  is_default: boolean;
+}
+
 export default function OutreachPage() {
   const [templates, setTemplates] = useState<OutreachTemplate[]>([]);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -130,6 +144,20 @@ export default function OutreachPage() {
   const timeInputRef = useRef<HTMLInputElement>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<OutreachTemplate | null>(null);
+  const [emailSettings, setEmailSettings] = useState<EmailSettings[]>([]);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedSetting, setSelectedSetting] = useState<EmailSettings | null>(null);
+  const [settingsForm, setSettingsForm] = useState({
+    sender_name: '',
+    sender_email: '',
+    reply_to_email: '',
+    organization_name: '',
+    organization_address: '',
+    organization_phone: '',
+    organization_website: '',
+    sendgrid_api_key: '',
+    is_default: false
+  });
 
   const loadAllData = async (isMounted: boolean) => {
     if (!isMounted) return;
@@ -278,9 +306,25 @@ export default function OutreachPage() {
     }
   };
 
+  const loadEmailSettings = async (isMounted: boolean) => {
+    try {
+      const response = await fetch('/api/email-settings');
+      if (!response.ok) throw new Error('Failed to fetch email settings');
+      
+      const data = await response.json();
+      if (isMounted) {
+        setEmailSettings(data.settings);
+      }
+    } catch (error) {
+      console.error('Error loading email settings:', error);
+      toast.error('Failed to load email settings');
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     loadAllData(isMounted);
+    loadEmailSettings(isMounted);
 
     return () => {
       isMounted = false;
@@ -684,6 +728,82 @@ export default function OutreachPage() {
     }
   };
 
+  // Add new function to handle settings form submission
+  const handleSettingsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const url = selectedSetting 
+        ? '/api/email-settings'
+        : '/api/email-settings';
+      
+      const method = selectedSetting ? 'PUT' : 'POST';
+      const body = selectedSetting 
+        ? { ...settingsForm, id: selectedSetting.id }
+        : settingsForm;
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) throw new Error('Failed to save email settings');
+
+      await loadEmailSettings(true);
+      setIsSettingsOpen(false);
+      setSelectedSetting(null);
+      setSettingsForm({
+        sender_name: '',
+        sender_email: '',
+        reply_to_email: '',
+        organization_name: '',
+        organization_address: '',
+        organization_phone: '',
+        organization_website: '',
+        sendgrid_api_key: '',
+        is_default: false
+      });
+      toast.success('Email settings saved successfully');
+    } catch (error) {
+      console.error('Error saving email settings:', error);
+      toast.error('Failed to save email settings');
+    }
+  };
+
+  // Add new function to handle settings deletion
+  const handleDeleteSettings = async (id: string) => {
+    try {
+      const response = await fetch(`/api/email-settings?id=${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) throw new Error('Failed to delete email settings');
+
+      await loadEmailSettings(true);
+      toast.success('Email settings deleted successfully');
+    } catch (error) {
+      console.error('Error deleting email settings:', error);
+      toast.error('Failed to delete email settings');
+    }
+  };
+
+  // Add new function to handle settings edit
+  const handleEditSettings = (settings: EmailSettings) => {
+    setSelectedSetting(settings);
+    setSettingsForm({
+      sender_name: settings.sender_name,
+      sender_email: settings.sender_email,
+      reply_to_email: settings.reply_to_email || '',
+      organization_name: settings.organization_name || '',
+      organization_address: settings.organization_address || '',
+      organization_phone: settings.organization_phone || '',
+      organization_website: settings.organization_website || '',
+      sendgrid_api_key: settings.sendgrid_api_key,
+      is_default: settings.is_default
+    });
+    setIsSettingsOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -702,13 +822,23 @@ export default function OutreachPage() {
             Create and manage communication templates for donors and volunteers
           </p>
         </div>
-        <Button 
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-purple-600 hover:bg-purple-700 text-white"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
-          New Template
-        </Button>
+        <div className="flex space-x-4">
+          <Button
+            onClick={() => setIsSettingsOpen(true)}
+            variant="outline"
+            className="border-gray-200 hover:bg-gray-50"
+          >
+            <Settings2 className="h-5 w-5 mr-2" />
+            Email Settings
+          </Button>
+          <Button 
+            onClick={() => setIsCreateOpen(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            New Template
+          </Button>
+        </div>
       </div>
 
       {/* Stats Section */}
@@ -1099,6 +1229,227 @@ export default function OutreachPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Email Settings Modal */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-2xl bg-white shadow-lg rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">
+              {selectedSetting ? 'Edit Email Settings' : 'Add Email Settings'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Configure your email sending settings and organization information.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSettingsSubmit} className="space-y-6 py-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="sender_name" className="text-sm font-medium text-gray-700">
+                  Sender Name
+                </Label>
+                <Input
+                  id="sender_name"
+                  value={settingsForm.sender_name}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_name: e.target.value }))}
+                  required
+                  placeholder="Enter sender name"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sender_email" className="text-sm font-medium text-gray-700">
+                  Sender Email
+                </Label>
+                <Input
+                  id="sender_email"
+                  type="email"
+                  value={settingsForm.sender_email}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sender_email: e.target.value }))}
+                  required
+                  placeholder="Enter sender email"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reply_to_email" className="text-sm font-medium text-gray-700">
+                  Reply-To Email
+                </Label>
+                <Input
+                  id="reply_to_email"
+                  type="email"
+                  value={settingsForm.reply_to_email}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, reply_to_email: e.target.value }))}
+                  placeholder="Enter reply-to email"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="organization_name" className="text-sm font-medium text-gray-700">
+                  Organization Name
+                </Label>
+                <Input
+                  id="organization_name"
+                  value={settingsForm.organization_name}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_name: e.target.value }))}
+                  placeholder="Enter organization name"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="organization_address" className="text-sm font-medium text-gray-700">
+                  Organization Address
+                </Label>
+                <Input
+                  id="organization_address"
+                  value={settingsForm.organization_address}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_address: e.target.value }))}
+                  placeholder="Enter organization address"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="organization_phone" className="text-sm font-medium text-gray-700">
+                  Organization Phone
+                </Label>
+                <Input
+                  id="organization_phone"
+                  value={settingsForm.organization_phone}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_phone: e.target.value }))}
+                  placeholder="Enter organization phone"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="organization_website" className="text-sm font-medium text-gray-700">
+                  Organization Website
+                </Label>
+                <Input
+                  id="organization_website"
+                  value={settingsForm.organization_website}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, organization_website: e.target.value }))}
+                  placeholder="Enter organization website"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sendgrid_api_key" className="text-sm font-medium text-gray-700">
+                  SendGrid API Key
+                </Label>
+                <Input
+                  id="sendgrid_api_key"
+                  type="password"
+                  value={settingsForm.sendgrid_api_key}
+                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sendgrid_api_key: e.target.value }))}
+                  required
+                  placeholder="Enter SendGrid API key"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_default"
+                    checked={settingsForm.is_default}
+                    onCheckedChange={(checked) => setSettingsForm(prev => ({ ...prev, is_default: checked }))}
+                  />
+                  <Label htmlFor="is_default" className="text-sm font-medium text-gray-700">
+                    Set as Default
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsSettingsOpen(false);
+                  setSelectedSetting(null);
+                  setSettingsForm({
+                    sender_name: '',
+                    sender_email: '',
+                    reply_to_email: '',
+                    organization_name: '',
+                    organization_address: '',
+                    organization_phone: '',
+                    organization_website: '',
+                    sendgrid_api_key: '',
+                    is_default: false
+                  });
+                }}
+                className="border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                {selectedSetting ? 'Update Settings' : 'Add Settings'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Settings List */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Email Settings</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {emailSettings.map((setting) => (
+            <Card key={setting.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-medium text-lg text-gray-900">{setting.sender_name}</h3>
+                  <p className="text-sm text-gray-500">{setting.sender_email}</p>
+                </div>
+                {setting.is_default && (
+                  <Badge className="bg-green-100 text-green-700 border-0">Default</Badge>
+                )}
+              </div>
+              <div className="space-y-2">
+                {setting.organization_name && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Organization:</span> {setting.organization_name}
+                  </p>
+                )}
+                {setting.reply_to_email && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Reply-To:</span> {setting.reply_to_email}
+                  </p>
+                )}
+              </div>
+              <div className="mt-4 flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleEditSettings(setting)}
+                  className="border-gray-200 hover:bg-gray-50"
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDeleteSettings(setting.id)}
+                >
+                  Delete
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
     </div>
   );
 } 

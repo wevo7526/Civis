@@ -11,17 +11,18 @@ export interface GrantSection {
   id: string;
   title: string;
   content: string;
-  status: 'draft' | 'generated' | 'reviewed';
-  lastUpdated: string;
+  status: 'draft' | 'generated';
+  last_updated: string;
 }
 
 export interface GrantDocument {
   id: string;
-  projectId: string;
+  project_id: string;
+  title?: string;
   sections: GrantSection[];
-  status: 'draft' | 'in_progress' | 'complete';
-  createdAt: string;
-  updatedAt: string;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AIResponse {
@@ -262,7 +263,7 @@ export const grantWriterService = {
               title: section.title,
               content: '',
               status: 'draft',
-              lastUpdated: new Date().toISOString(),
+              last_updated: new Date().toISOString(),
             })),
             status: 'draft',
             created_at: new Date().toISOString(),
@@ -280,11 +281,12 @@ export const grantWriterService = {
       // Transform the response to match the GrantDocument interface
       return {
         id: data.id,
-        projectId: data.project_id,
+        project_id: data.project_id,
+        title: data.title,
         sections: data.sections,
         status: data.status,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
       };
     } catch (error) {
       console.error('Error in createGrantDocument:', error);
@@ -309,7 +311,7 @@ export const grantWriterService = {
           ...section,
           content,
           status: 'generated',
-          lastUpdated: new Date().toISOString(),
+          last_updated: new Date().toISOString(),
         };
       }
       return section;

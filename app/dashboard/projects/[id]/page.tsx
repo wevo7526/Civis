@@ -18,7 +18,7 @@ import {
   TagIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
-import type { Project, GrantDocument, GrantSection } from '@/app/lib/types';
+import type { Project, GrantDocument, GrantSection, FundraisingCampaign } from '@/app/lib/types';
 import type { AIResponse as GrantWriterAIResponse } from '@/app/lib/grantWriterService';
 import { aiService } from '@/lib/aiService';
 import { grantWriterService } from '@/app/lib/grantWriterService';
@@ -38,9 +38,10 @@ interface EditorItem {
   type: 'grant' | 'insights' | 'fundraising';
   project_id: string;
   status: 'draft' | 'in_review' | 'approved' | 'rejected';
-  user_id: string;
+  user_id?: string;
   created_at: string;
   updated_at: string;
+  sections?: GrantSection[];
 }
 
 type EditorType = 'grant' | 'insights' | 'fundraising';
@@ -81,7 +82,7 @@ export default function ProjectDetails() {
     grantProposal: false,
     insights: false,
   });
-  const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string | undefined>(undefined);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [savedItems, setSavedItems] = useState<SavedItems>({
     grants: [],
@@ -184,15 +185,21 @@ export default function ProjectDetails() {
     }
   };
 
-  const handleOpenEditor = async (type: 'grant' | 'fundraising' | 'insights', item?: any) => {
+  const handleOpenEditor = async (type: 'grant' | 'fundraising' | 'insights', item?: GrantDocument | FundraisingCampaign) => {
     if (!project || !project.id) return;
     
     setEditorType(type);
     
     if (type === 'grant') {
-      if (item) {
+      if (item && 'sections' in item) { // Type guard for GrantDocument
         // If editing an existing document, use the item directly
-        setCurrentGrantDocument(item);
+        setCurrentGrantDocument(item as GrantDocument);
+        const content = (item as GrantDocument).sections.map(s => s.content).join('\n\n');
+        setEditorItem({
+          ...item,
+          type: 'grant',
+          content,
+        } as EditorItem);
       } else if (!currentGrantDocument) {
         // Create a new grant document
         const newDoc: GrantDocument = {
@@ -206,15 +213,24 @@ export default function ProjectDetails() {
           updated_at: new Date().toISOString(),
         };
         setCurrentGrantDocument(newDoc);
+        setEditorItem({
+          ...newDoc,
+          type: 'grant',
+          content: '',
+        } as EditorItem);
         // Add the new document to saved items
         setSavedItems(prev => ({
           ...prev,
           grants: [newDoc, ...prev.grants],
         }));
       }
-      setEditorItem(item);
-    } else {
-      setEditorItem(item);
+    } else if (item) {
+      const content = 'content' in item ? item.content : '';
+      setEditorItem({
+        ...item,
+        type: type,
+        content,
+      } as EditorItem);
     }
     
     setShowEditor(true);
@@ -261,7 +277,7 @@ export default function ProjectDetails() {
     } catch (err) {
       console.error('Error generating section:', err);
       setError('Failed to generate section');
-      setProgressMessage(null);
+      setProgressMessage(undefined);
     } finally {
       setLoadingStates(prev => ({ ...prev, grantProposal: false }));
     }

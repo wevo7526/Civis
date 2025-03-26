@@ -61,40 +61,158 @@ export const grantWriterService = {
   // Document management methods
   async saveDocument(document: GrantDocument): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('grant_documents')
-        .update({
-          title: document.title,
-          sections: document.sections,
-          status: document.status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', document.id);
+      console.log('Starting saveDocument with document:', document);
 
-      if (error) throw error;
+      // Transform the document to match the database schema
+      const dbDocument = {
+        id: document.id,
+        project_id: document.project_id,
+        title: document.title || 'Untitled Grant Document',
+        sections: document.sections.map(section => ({
+          ...section,
+          last_updated: section.last_updated || new Date().toISOString()
+        })),
+        status: document.status || 'draft',
+        success_status: document.success_status || null,
+        type: document.type || 'standard',
+        created_at: document.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Transformed document for database:', dbDocument);
+
+      // Get the current user's ID from the session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        throw new Error('User not authenticated');
+      }
+
+      // First, check if the document exists
+      const { data: existingDoc, error: fetchError } = await supabase
+        .from('grant_documents')
+        .select('*')
+        .eq('id', document.id)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error checking existing document:', fetchError);
+        throw new Error(`Failed to check existing document: ${fetchError.message}`);
+      }
+
+      let result;
+      if (existingDoc) {
+        // If document exists, update it
+        result = await supabase
+          .from('grant_documents')
+          .update(dbDocument)
+          .eq('id', document.id)
+          .select()
+          .single();
+      } else {
+        // If document doesn't exist, insert it
+        result = await supabase
+          .from('grant_documents')
+          .insert([dbDocument])
+          .select()
+          .single();
+      }
+
+      if (result.error) {
+        console.error('Error saving to grant_documents:', result.error);
+        throw new Error(`Failed to save grant document: ${result.error.message}`);
+      }
+
+      console.log('Successfully saved to grant_documents:', result.data);
+
+      // Save to writing_items table
+      const writingItem = {
+        id: document.id,
+        title: document.title || 'Untitled Grant Document',
+        content: JSON.stringify(document.sections),
+        type: 'grant',
+        project_id: document.project_id,
+        status: document.status || 'draft',
+        user_id: session.user.id,
+        created_at: document.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Saving to writing_items:', writingItem);
+
+      const { error: writingError } = await supabase
+        .from('writing_items')
+        .upsert(writingItem);
+
+      if (writingError) {
+        console.error('Error saving to writing_items:', writingError);
+        throw new Error(`Failed to save writing item: ${writingError.message}`);
+      }
+
+      // Create a version in writing_versions
+      const version = {
+        writing_item_id: document.id,
+        title: document.title || 'Untitled Grant Document',
+        content: JSON.stringify(document.sections),
+        user_id: session.user.id,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('Creating writing version:', version);
+
+      const { error: versionError } = await supabase
+        .from('writing_versions')
+        .insert(version);
+
+      if (versionError) {
+        console.error('Error saving version:', versionError);
+        // Don't throw here as this is not critical
+      }
+
+      console.log('Document saved successfully');
     } catch (error) {
-      console.error('Error saving document:', error);
+      console.error('Error in saveDocument:', error);
       throw error;
     }
   },
 
   async createGrantDocument(projectId: string, title: string): Promise<GrantDocument> {
-    const { data, error } = await supabase
-      .from('grant_documents')
-      .insert([{
-        project_id: projectId,
-        title,
-        type: 'standard',
-        status: 'draft',
-        sections: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
+    if (!projectId) {
+      throw new Error('Project ID is required');
+    }
 
-    if (error) throw error;
-    return data;
+    if (!title) {
+      throw new Error('Title is required');
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('grant_documents')
+        .insert([{
+          project_id: projectId,
+          title,
+          type: 'standard',
+          status: 'draft',
+          sections: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating grant document:', error);
+        throw new Error(`Failed to create grant document: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('No data returned from create operation');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error in createGrantDocument:', error);
+      throw error;
+    }
   },
 
   async updateGrantDocument(id: string, updates: Partial<GrantDocument>): Promise<GrantDocument> {

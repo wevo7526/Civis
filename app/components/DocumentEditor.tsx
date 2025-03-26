@@ -17,7 +17,7 @@ interface DocumentEditorProps {
   projectName: string;
   onGenerate: (prompt: string) => void;
   isGenerating: boolean;
-  progressMessage: string | null;
+  progressMessage: string | undefined;
   isEditing: boolean;
 }
 

@@ -85,7 +85,6 @@ export interface VolunteerHours {
 }
 
 export type AIRequest = 
-  | 'chat'
   | 'analyze_donors'
   | 'analyzeDonorEngagement'
   | 'generate_donor_report'
@@ -107,7 +106,7 @@ export type AIRequest =
 
 export interface AIResponse {
   success: boolean;
-  content: string | Array<{ text: string }>;
+  content: string;
   message?: string;
   data?: {
     analyzedItems?: number;
@@ -202,30 +201,20 @@ export interface Event {
 
 export interface Donor {
   id: string;
+  user_id: string;
   name: string;
   email: string;
   phone?: string;
-  type: 'individual' | 'corporate' | 'foundation' | 'government';
   status: 'active' | 'inactive';
-  amount: number;
-  giving_history: Array<{
-    date: string;
-    amount: number;
-    campaign_id: string;
-    campaign_name: string;
-  }>;
   total_given: number;
-  last_gift_date: string;
-  last_gift_amount: number;
-  preferred_communication: 'email' | 'phone' | 'mail' | 'any';
-  notes: string;
-  last_donation?: string;
-  donation_date?: string;
-  last_contact?: string;
-  engagement?: number;
+  last_gift_amount?: number;
+  last_gift_date?: string;
+  preferred_communication?: 'email' | 'phone' | 'mail';
+  notes?: string;
+  donation_date: string;
+  amount: number;
   created_at: string;
   updated_at: string;
-  user_id: string;
 }
 
 export interface Grant {
