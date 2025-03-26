@@ -79,6 +79,7 @@ export default function AnalyticsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
+  const [selectedMetric, setSelectedMetric] = useState<'revenue' | 'donors' | 'engagement'>('revenue');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -367,10 +368,10 @@ export default function AnalyticsContent() {
   };
 
   const calculateAverageDonation = (donors: Donor[]) => {
-    const validDonations = donors.filter(donor => donor.last_gift_amount > 0);
+    const validDonations = donors.filter(donor => (donor.last_gift_amount ?? 0) > 0);
     if (validDonations.length === 0) return 0;
     
-    const totalAmount = validDonations.reduce((sum, donor) => sum + donor.last_gift_amount, 0);
+    const totalAmount = validDonations.reduce((sum, donor) => sum + (donor.last_gift_amount ?? 0), 0);
     return totalAmount / validDonations.length;
   };
 
@@ -430,7 +431,11 @@ export default function AnalyticsContent() {
   };
 
   if (loading) {
-    return null; // Let the Suspense fallback handle loading state
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      </div>
+    );
   }
 
   if (error || !data) {
@@ -458,38 +463,35 @@ export default function AnalyticsContent() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-          <p className="text-gray-500">Track event performance and impact metrics</p>
-        </div>
+      {/* Time Range Selector */}
+      <div className="flex items-center justify-between">
         <div className="flex space-x-2">
           <button
             onClick={() => setTimeRange('week')}
-            className={`px-3 py-1 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               timeRange === 'week'
-                ? 'bg-purple-100 text-purple-700'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
             Week
           </button>
           <button
             onClick={() => setTimeRange('month')}
-            className={`px-3 py-1 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               timeRange === 'month'
-                ? 'bg-purple-100 text-purple-700'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
             Month
           </button>
           <button
             onClick={() => setTimeRange('year')}
-            className={`px-3 py-1 rounded-md text-sm font-medium ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               timeRange === 'year'
-                ? 'bg-purple-100 text-purple-700'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
             Year
@@ -497,7 +499,7 @@ export default function AnalyticsContent() {
         </div>
       </div>
 
-      {/* Key Metrics Grid */}
+      {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
@@ -505,7 +507,7 @@ export default function AnalyticsContent() {
               <UserGroupIcon className="h-6 w-6 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Volunteers</p>
+              <p className="text-sm font-medium text-gray-500">Total Donors</p>
               <p className="text-2xl font-bold text-gray-900">{data.metrics.totalVolunteers}</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
@@ -517,15 +519,15 @@ export default function AnalyticsContent() {
 
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 rounded-full">
-              <ClockIcon className="h-6 w-6 text-blue-600" />
+            <div className="p-3 bg-green-50 rounded-full">
+              <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Hours</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(data.metrics.totalHours)}</p>
+              <p className="text-sm font-medium text-gray-500">Total Revenue</p>
+              <p className="text-2xl font-bold text-gray-900">${data.metrics.totalRaised.toLocaleString()}</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.volunteerEngagement.toFixed(1)}%</span>
+                <span className="text-sm text-green-600 ml-1">+{data.metrics.overallROI.toFixed(1)}% ROI</span>
               </div>
             </div>
           </div>
@@ -533,15 +535,15 @@ export default function AnalyticsContent() {
 
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
-            <div className="p-3 bg-green-50 rounded-full">
-              <ChartBarIcon className="h-6 w-6 text-green-600" />
+            <div className="p-3 bg-blue-50 rounded-full">
+              <HeartIcon className="h-6 w-6 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Event Success Rate</p>
-              <p className="text-2xl font-bold text-gray-900">{Math.round(data.metrics.eventSuccessRate)}%</p>
+              <p className="text-sm font-medium text-gray-500">Donor Retention</p>
+              <p className="text-2xl font-bold text-gray-900">{data.metrics.donorRetention.toFixed(1)}%</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.fundraisingEfficiency.toFixed(1)}%</span>
+                <span className="text-sm text-green-600 ml-1">+{data.metrics.donorLifetimeValue.toFixed(1)}% LTV</span>
               </div>
             </div>
           </div>
@@ -550,68 +552,62 @@ export default function AnalyticsContent() {
         <Card className="p-6 shadow-sm hover:shadow-md transition-shadow duration-200 border border-gray-100">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-yellow-50 rounded-full">
-              <CalendarIcon className="h-6 w-6 text-yellow-600" />
+              <ChartBarIcon className="h-6 w-6 text-yellow-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Active Events</p>
-              <p className="text-2xl font-bold text-gray-900">{data.metrics.activeEvents}</p>
+              <p className="text-sm font-medium text-gray-500">Avg. Donation</p>
+              <p className="text-2xl font-bold text-gray-900">${data.metrics.averageDonation.toLocaleString()}</p>
               <div className="flex items-center mt-1">
                 <ArrowTrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-sm text-green-600 ml-1">+{data.metrics.averageCapacity.toFixed(1)}%</span>
+                <span className="text-sm text-green-600 ml-1">+{data.metrics.fundraisingEfficiency.toFixed(1)}% Efficiency</span>
               </div>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Charts Grid */}
+      {/* Main Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Volunteer Growth */}
+        {/* Revenue Trend */}
         <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Volunteer Growth</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.trends.volunteerGrowth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <YAxis 
-                  tick={{ fill: '#6b7280' }}
-                  axisLine={{ stroke: '#e5e7eb' }}
-                  tickLine={{ stroke: '#e5e7eb' }}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                  labelStyle={{ color: '#374151' }}
-                  itemStyle={{ color: '#6b7280' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="volunteers" 
-                  stroke="#10b981" 
-                  strokeWidth={2}
-                  dot={{ fill: '#10b981', strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-gray-900">Revenue Trend</h3>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setSelectedMetric('revenue')}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  selectedMetric === 'revenue'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Revenue
+              </button>
+              <button
+                onClick={() => setSelectedMetric('donors')}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  selectedMetric === 'donors'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Donors
+              </button>
+              <button
+                onClick={() => setSelectedMetric('engagement')}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  selectedMetric === 'engagement'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Engagement
+              </button>
+            </div>
           </div>
-        </Card>
-
-        {/* Event Participation */}
-        <Card className="p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6">Event Participation</h3>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.trends.eventParticipation}>
+              <LineChart data={data.trends.monthlyRevenue}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis 
                   dataKey="month" 
@@ -623,6 +619,7 @@ export default function AnalyticsContent() {
                   tick={{ fill: '#6b7280' }}
                   axisLine={{ stroke: '#e5e7eb' }}
                   tickLine={{ stroke: '#e5e7eb' }}
+                  tickFormatter={(value) => `$${value.toLocaleString()}`}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -633,13 +630,20 @@ export default function AnalyticsContent() {
                   }}
                   labelStyle={{ color: '#374151' }}
                   itemStyle={{ color: '#6b7280' }}
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
                 />
                 <Line 
                   type="monotone" 
-                  dataKey="participation" 
+                  dataKey="revenue" 
                   stroke="#8b5cf6" 
                   strokeWidth={2}
-                  dot={{ fill: '#8b5cf6', strokeWidth: 2 }}
+                  dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+                <Area 
+                  dataKey="revenue" 
+                  fill="#8b5cf6" 
+                  fillOpacity={0.1}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -736,63 +740,51 @@ export default function AnalyticsContent() {
             </ResponsiveContainer>
           </div>
         </Card>
-      </div>
 
-      {/* Event Performance Table */}
-      <Card className="p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Event Performance</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Event</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Type</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Date</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Volunteers</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Budget</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Raised</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">ROI</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {data.events.map((event) => {
-                const budget = event.budget ?? 0;
-                const amountRaised = event.amount_raised ?? 0;
-                const roi = budget > 0 ? ((amountRaised - budget) / budget) * 100 : 0;
-                return (
-                  <tr key={event.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{event.name}</div>
-                      <div className="text-sm text-muted-foreground">{event.type}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {formatDistanceToNow(new Date(event.date), { addSuffix: true })}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {event.volunteer_ids?.length || 0}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      ${budget.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      ${amountRaised.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {Math.round(roi)}%
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={event.status === 'planned' ? 'default' : 'secondary'}>
-                        {event.status}
-                      </Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+        {/* Donor Frequency */}
+        <Card className="p-6 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6">Donor Frequency</h3>
+          <div className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.donorSegments.frequencySegments}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="name" 
+                  axisLine={{ stroke: '#e5e7eb' }}
+                  tickLine={{ stroke: '#e5e7eb' }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={100}
+                  interval={0}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                />
+                <YAxis 
+                  axisLine={{ stroke: '#e5e7eb' }}
+                  tickLine={{ stroke: '#e5e7eb' }}
+                  tickFormatter={(value) => `${value}`}
+                  tick={{ fill: '#6b7280', fontSize: 12 }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'white', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                  }}
+                  labelStyle={{ color: '#374151' }}
+                  itemStyle={{ color: '#6b7280' }}
+                  formatter={(value: number) => [`${value} donors`, 'Count']}
+                />
+                <Bar 
+                  dataKey="value" 
+                  fill="#10b981"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 } 

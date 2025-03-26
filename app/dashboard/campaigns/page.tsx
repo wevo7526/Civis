@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,8 +13,20 @@ import {
   CheckCircleIcon,
   ClockIcon,
 } from '@heroicons/react/24/outline';
-import { Dialog } from '@headlessui/react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import dynamic from 'next/dynamic';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Calendar } from '@/components/ui/calendar';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 // Dynamically import GanttChart with no SSR
 const GanttChart = dynamic(() => import('@/app/components/GanttChart'), {
@@ -96,7 +108,6 @@ const initialCampaignItemFormData: CampaignItemFormData = {
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [campaignItems, setCampaignItems] = useState<CampaignItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -108,13 +119,11 @@ export default function Campaigns() {
   const [campaignItemToEdit, setCampaignItemToEdit] = useState<CampaignItem | null>(null);
   const [formData, setFormData] = useState<CampaignFormData>(initialCampaignFormData);
   const [itemFormData, setItemFormData] = useState<CampaignItemFormData>(initialCampaignItemFormData);
-  const ganttContainer = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     fetchCampaigns();
-    fetchCampaignItems();
   }, []);
 
   useEffect(() => {
@@ -151,41 +160,16 @@ export default function Campaigns() {
 
   const fetchCampaigns = async () => {
     try {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
       const { data, error } = await supabase
         .from('campaigns')
         .select('*')
-        .eq('user_id', user.id)
-        .order('start_date', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setCampaigns(data || []);
     } catch (error) {
       console.error('Error fetching campaigns:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch campaigns');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCampaignItems = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('campaign_items')
-        .select('*')
-        .order('start_date', { ascending: true });
-
-      if (error) throw error;
-      setCampaignItems(data || []);
-    } catch (error) {
-      console.error('Error fetching campaign items:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch campaign items');
+      toast.error('Failed to load campaigns');
     }
   };
 
@@ -252,7 +236,7 @@ export default function Campaigns() {
         if (error) throw error;
       }
 
-      await fetchCampaignItems();
+      await fetchCampaigns();
       handleCloseItemModal();
     } catch (error) {
       console.error('Error submitting campaign item:', error);
@@ -302,13 +286,17 @@ export default function Campaigns() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+        <Button
+          onClick={() => {
+            setCampaignToEdit(null);
+            setFormData(initialCampaignFormData);
+            setIsModalOpen(true);
+          }}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
-          Add Campaign
-        </button>
+          New Campaign
+        </Button>
       </div>
 
       {error && (
@@ -317,459 +305,207 @@ export default function Campaigns() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Budget</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Impact Target</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timeline</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {campaigns.map((campaign) => (
-              <tr key={campaign.id}>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{campaign.name}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    campaign.status === 'active' ? 'bg-green-100 text-green-800' :
-                    campaign.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                    campaign.status === 'planning' ? 'bg-blue-100 text-blue-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    ${campaign.budget.toLocaleString()}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {campaign.impact_target} {campaign.impact_metric}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {new Date(campaign.start_date).toLocaleDateString()} - {new Date(campaign.end_date).toLocaleDateString()}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button
-                    onClick={() => {
-                      setSelectedCampaign(campaign);
-                      setIsItemModalOpen(true);
-                    }}
-                    className="text-blue-600 hover:text-blue-900 mr-4"
-                  >
-                    <ChartBarIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCampaignToDelete(campaign);
-                      setIsDeleteModalOpen(true);
-                    }}
-                    className="text-red-600 hover:text-red-900 mr-4"
-                  >
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCampaignToEdit(campaign);
-                    }}
-                    className="text-purple-600 hover:text-purple-900"
-                  >
-                    <PencilIcon className="h-5 w-5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Replace the gantt container with the new component */}
-      <div className="mt-8">
-        <GanttChart 
-          data={campaignItems.map(item => ({
-            id: item.id,
-            text: item.title,
-            start_date: item.start_date,
-            end_date: item.end_date,
-            status: item.status,
-            progress: item.status === 'completed' ? 1 : 
-                     item.status === 'in-progress' ? 0.5 : 0,
-          }))}
-          links={campaignItems
-            .filter(item => item.dependencies && item.dependencies.length > 0)
-            .map(item => item.dependencies.map(depId => ({
-              id: `${item.id}-${depId}`,
-              source: depId,
-              target: item.id,
-              type: '0',
-            })))
-            .flat()}
-        />
-      </div>
-
-      {/* Add/Edit Campaign Modal */}
-      <Dialog
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
-        
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="mx-auto max-w-2xl w-full bg-white rounded-xl shadow-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <Dialog.Title className="text-lg font-medium text-gray-900">
-                {campaignToEdit ? 'Edit Campaign' : 'Add New Campaign'}
-              </Dialog.Title>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {campaigns.map((campaign) => (
+          <Card key={campaign.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="font-medium text-lg text-gray-900">{campaign.name}</h3>
+                <p className="text-sm text-gray-500">{campaign.description}</p>
+              </div>
+              <Badge 
+                variant={campaign.status === 'active' ? 'default' : 'secondary'}
+                className={`${
+                  campaign.status === 'active' 
+                    ? 'bg-green-100 text-green-700' 
+                    : campaign.status === 'planning'
+                    ? 'bg-yellow-100 text-yellow-700'
+                    : campaign.status === 'completed'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-700'
+                } border-0`}
+              >
+                {campaign.status}
+              </Badge>
             </div>
-            
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    id="name"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                    Status
-                  </label>
-                  <select
-                    id="status"
-                    required
-                    value={formData.status}
-                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as Campaign['status'] }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  >
-                    <option value="planning">Planning</option>
-                    <option value="active">Active</option>
-                    <option value="completed">Completed</option>
-                    <option value="on-hold">On Hold</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    id="start_date"
-                    required
-                    value={formData.start_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    id="end_date"
-                    required
-                    value={formData.end_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="budget" className="block text-sm font-medium text-gray-700">
-                    Budget
-                  </label>
-                  <input
-                    type="number"
-                    id="budget"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formData.budget}
-                    onChange={(e) => setFormData(prev => ({ ...prev, budget: parseFloat(e.target.value) }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="impact_target" className="block text-sm font-medium text-gray-700">
-                    Impact Target
-                  </label>
-                  <input
-                    type="text"
-                    id="impact_target"
-                    required
-                    value={formData.impact_target}
-                    onChange={(e) => setFormData(prev => ({ ...prev, impact_target: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="impact_metric" className="block text-sm font-medium text-gray-700">
-                    Impact Metric
-                  </label>
-                  <input
-                    type="text"
-                    id="impact_metric"
-                    required
-                    value={formData.impact_metric}
-                    onChange={(e) => setFormData(prev => ({ ...prev, impact_metric: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    rows={3}
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
-                >
-                  {loading ? (campaignToEdit ? 'Updating...' : 'Adding...') : (campaignToEdit ? 'Update Campaign' : 'Add Campaign')}
-                </button>
-              </div>
-            </form>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* Add/Edit Campaign Item Modal */}
-      <Dialog
-        open={isItemModalOpen}
-        onClose={handleCloseItemModal}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
-        
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="mx-auto max-w-2xl w-full bg-white rounded-xl shadow-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <Dialog.Title className="text-lg font-medium text-gray-900">
-                {campaignItemToEdit ? 'Edit Task' : 'Add New Task'}
-              </Dialog.Title>
-            </div>
-            
-            <form onSubmit={handleItemSubmit} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    required
-                    value={itemFormData.title}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, title: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                    Status
-                  </label>
-                  <select
-                    id="status"
-                    required
-                    value={itemFormData.status}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, status: e.target.value as CampaignItem['status'] }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  >
-                    <option value="not-started">Not Started</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="blocked">Blocked</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="priority" className="block text-sm font-medium text-gray-700">
-                    Priority
-                  </label>
-                  <select
-                    id="priority"
-                    required
-                    value={itemFormData.priority}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, priority: e.target.value as CampaignItem['priority'] }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="assigned_to" className="block text-sm font-medium text-gray-700">
-                    Assigned To
-                  </label>
-                  <input
-                    type="text"
-                    id="assigned_to"
-                    value={itemFormData.assigned_to}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    id="start_date"
-                    required
-                    value={itemFormData.start_date}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    id="end_date"
-                    required
-                    value={itemFormData.end_date}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, end_date: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                    Description
-                  </label>
-                  <textarea
-                    id="description"
-                    rows={3}
-                    value={itemFormData.description}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, description: e.target.value }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label htmlFor="dependencies" className="block text-sm font-medium text-gray-700">
-                    Dependencies (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    id="dependencies"
-                    value={itemFormData.dependencies.join(', ')}
-                    onChange={(e) => setItemFormData(prev => ({ ...prev, dependencies: e.target.value.split(',').map(d => d.trim()) }))}
-                    className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={handleCloseItemModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
-                >
-                  {loading ? (campaignItemToEdit ? 'Updating...' : 'Adding...') : (campaignItemToEdit ? 'Update Task' : 'Add Task')}
-                </button>
-              </div>
-            </form>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
-
-      {/* Delete Confirmation Modal */}
-      <Dialog
-        open={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        className="relative z-50"
-      >
-        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
-        
-        <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="mx-auto max-w-sm w-full bg-white rounded-xl shadow-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <Dialog.Title className="text-lg font-medium text-gray-900">
-                Delete Campaign
-              </Dialog.Title>
-            </div>
-            
-            <div className="p-6">
-              <p className="text-sm text-gray-500">
-                Are you sure you want to delete {campaignToDelete?.name}? This action cannot be undone.
+            <div className="space-y-2">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Budget:</span> ${campaign.budget.toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Impact Target:</span> {campaign.impact_target}
+              </p>
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Impact Metric:</span> {campaign.impact_metric}
+              </p>
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Duration:</span> {new Date(campaign.start_date).toLocaleDateString()} - {new Date(campaign.end_date).toLocaleDateString()}
               </p>
             </div>
-            
-            <div className="px-6 py-4 bg-gray-50 rounded-b-xl flex justify-end space-x-3">
-              <button
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+          </Card>
+        ))}
+      </div>
+
+      {/* Campaign Dialog */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">
+              {campaignToEdit ? 'Edit Campaign' : 'Create New Campaign'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {campaignToEdit 
+                ? 'Update your campaign details below.'
+                : 'Fill in the details to create a new campaign.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-6 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="campaign-name" className="text-sm font-medium text-gray-700">
+                Campaign Name
+              </Label>
+              <Input
+                id="campaign-name"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
+                placeholder="Enter campaign name"
+                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="campaign-description" className="text-sm font-medium text-gray-700">
+                Description
+              </Label>
+              <Textarea
+                id="campaign-description"
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                required
+                placeholder="Enter campaign description"
+                className="min-h-[100px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start-date" className="text-sm font-medium text-gray-700">
+                  Start Date
+                </Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                  required
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="end-date" className="text-sm font-medium text-gray-700">
+                  End Date
+                </Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                  required
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="budget" className="text-sm font-medium text-gray-700">
+                  Budget
+                </Label>
+                <Input
+                  id="budget"
+                  type="number"
+                  value={formData.budget}
+                  onChange={(e) => setFormData(prev => ({ ...prev, budget: Number(e.target.value) }))}
+                  required
+                  min="0"
+                  step="0.01"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-sm font-medium text-gray-700">
+                  Status
+                </Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as Campaign['status'] }))}
+                >
+                  <SelectTrigger className="w-full border-gray-200 focus:border-purple-500 focus:ring-purple-500">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planning">Planning</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="on-hold">On Hold</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="impact-target" className="text-sm font-medium text-gray-700">
+                  Impact Target
+                </Label>
+                <Input
+                  id="impact-target"
+                  value={formData.impact_target}
+                  onChange={(e) => setFormData(prev => ({ ...prev, impact_target: e.target.value }))}
+                  required
+                  placeholder="Enter impact target"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="impact-metric" className="text-sm font-medium text-gray-700">
+                  Impact Metric
+                </Label>
+                <Input
+                  id="impact-metric"
+                  value={formData.impact_metric}
+                  onChange={(e) => setFormData(prev => ({ ...prev, impact_metric: e.target.value }))}
+                  required
+                  placeholder="Enter impact metric"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseModal}
+                className="border-gray-200 hover:bg-gray-50"
               >
                 Cancel
-              </button>
-              <button
-                onClick={handleDeleteCampaign}
+              </Button>
+              <Button
+                type="submit"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
                 disabled={loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                {loading ? 'Deleting...' : 'Delete'}
-              </button>
+                {campaignToEdit ? 'Update Campaign' : 'Create Campaign'}
+              </Button>
             </div>
-          </Dialog.Panel>
-        </div>
+          </form>
+        </DialogContent>
       </Dialog>
     </div>
   );

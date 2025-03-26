@@ -103,8 +103,24 @@ interface EmailSettings {
   organization_address?: string;
   organization_phone?: string;
   organization_website?: string;
-  sendgrid_api_key: string;
   is_default: boolean;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  subject: string;
+  content: string;
+  from_name: string;
+  from_email: string;
+  reply_to: string;
+  status: 'pending' | 'completed' | 'failed';
+  scheduled_for: string | null;
+  total_recipients: number;
+  sent_count: number;
+  failed_count: number;
+  created_at: string;
+  completed_at: string | null;
 }
 
 export default function OutreachPage() {
@@ -155,8 +171,24 @@ export default function OutreachPage() {
     organization_address: '',
     organization_phone: '',
     organization_website: '',
-    sendgrid_api_key: '',
     is_default: false
+  });
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<Recipient[]>([]);
+  const [campaignForm, setCampaignForm] = useState({
+    name: '',
+    subject: '',
+    content: '',
+    fromName: '',
+    fromEmail: '',
+    replyTo: '',
+    scheduleTime: null as Date | null,
+    organizationName: '',
+    organizationAddress: '',
+    organizationPhone: '',
+    organizationWebsite: '',
+    isDefault: false
   });
 
   const loadAllData = async (isMounted: boolean) => {
@@ -321,10 +353,23 @@ export default function OutreachPage() {
     }
   };
 
+  const loadCampaigns = async () => {
+    try {
+      const response = await fetch('/api/campaigns');
+      if (!response.ok) throw new Error('Failed to fetch campaigns');
+      const data = await response.json();
+      setCampaigns(data.campaigns);
+    } catch (error) {
+      console.error('Error loading campaigns:', error);
+      toast.error('Failed to load campaigns');
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     loadAllData(isMounted);
     loadEmailSettings(isMounted);
+    loadCampaigns();
 
     return () => {
       isMounted = false;
@@ -732,8 +777,23 @@ export default function OutreachPage() {
   const handleSettingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Validate required fields
+      if (!settingsForm.sender_name.trim() || !settingsForm.sender_email.trim()) {
+        throw new Error('Sender name and email are required');
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(settingsForm.sender_email)) {
+        throw new Error('Invalid sender email format');
+      }
+
+      if (settingsForm.reply_to_email && !emailRegex.test(settingsForm.reply_to_email)) {
+        throw new Error('Invalid reply-to email format');
+      }
+
       const url = selectedSetting 
-        ? '/api/email-settings'
+        ? `/api/email-settings?id=${selectedSetting.id}`
         : '/api/email-settings';
       
       const method = selectedSetting ? 'PUT' : 'POST';
@@ -747,7 +807,10 @@ export default function OutreachPage() {
         body: JSON.stringify(body)
       });
 
-      if (!response.ok) throw new Error('Failed to save email settings');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save email settings');
+      }
 
       await loadEmailSettings(true);
       setIsSettingsOpen(false);
@@ -760,13 +823,12 @@ export default function OutreachPage() {
         organization_address: '',
         organization_phone: '',
         organization_website: '',
-        sendgrid_api_key: '',
         is_default: false
       });
       toast.success('Email settings saved successfully');
     } catch (error) {
       console.error('Error saving email settings:', error);
-      toast.error('Failed to save email settings');
+      toast.error(error instanceof Error ? error.message : 'Failed to save email settings');
     }
   };
 
@@ -798,10 +860,94 @@ export default function OutreachPage() {
       organization_address: settings.organization_address || '',
       organization_phone: settings.organization_phone || '',
       organization_website: settings.organization_website || '',
-      sendgrid_api_key: settings.sendgrid_api_key,
       is_default: settings.is_default
     });
     setIsSettingsOpen(true);
+  };
+
+  const isFormValid = () => {
+    return (
+      campaignForm.name.trim() !== '' &&
+      campaignForm.subject.trim() !== '' &&
+      campaignForm.content.trim() !== '' &&
+      campaignForm.fromName.trim() !== '' &&
+      campaignForm.fromEmail.trim() !== '' &&
+      selectedRecipients.length > 0 &&
+      (!campaignForm.scheduleTime || campaignForm.scheduleTime > new Date())
+    );
+  };
+
+  const handleCreateCampaign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isFormValid()) return;
+
+    try {
+      // First, save email settings
+      const emailSettingsResponse = await fetch('/api/email-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender_name: campaignForm.fromName,
+          sender_email: campaignForm.fromEmail,
+          reply_to_email: campaignForm.replyTo,
+          organization_name: campaignForm.organizationName,
+          organization_address: campaignForm.organizationAddress,
+          organization_phone: campaignForm.organizationPhone,
+          organization_website: campaignForm.organizationWebsite,
+          is_default: campaignForm.isDefault
+        }),
+      });
+
+      if (!emailSettingsResponse.ok) {
+        const errorData = await emailSettingsResponse.json();
+        throw new Error(errorData.error || 'Failed to save email settings');
+      }
+
+      // Then create the campaign
+      const campaignResponse = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: campaignForm.name,
+          subject: campaignForm.subject,
+          content: campaignForm.content,
+          recipients: selectedRecipients.map(r => ({ email: r.email })),
+          scheduled_for: campaignForm.scheduleTime?.toISOString(),
+        }),
+      });
+
+      if (!campaignResponse.ok) {
+        const error = await campaignResponse.json();
+        throw new Error(error.error || 'Failed to create campaign');
+      }
+
+      const data = await campaignResponse.json();
+      setCampaigns(prev => [data.campaign, ...prev]);
+      setIsCampaignOpen(false);
+      setSelectedRecipients([]);
+      setCampaignForm({
+        name: '',
+        subject: '',
+        content: '',
+        fromName: '',
+        fromEmail: '',
+        replyTo: '',
+        scheduleTime: null,
+        organizationName: '',
+        organizationAddress: '',
+        organizationPhone: '',
+        organizationWebsite: '',
+        isDefault: false
+      });
+      toast.success('Campaign created successfully');
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create campaign');
+    }
   };
 
   if (loading) {
@@ -819,26 +965,16 @@ export default function OutreachPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Outreach</h1>
           <p className="mt-2 text-gray-600">
-            Create and manage communication templates for donors and volunteers
+            Create and manage email campaigns for your donors and volunteers
           </p>
         </div>
-        <div className="flex space-x-4">
-          <Button
-            onClick={() => setIsSettingsOpen(true)}
-            variant="outline"
-            className="border-gray-200 hover:bg-gray-50"
-          >
-            <Settings2 className="h-5 w-5 mr-2" />
-            Email Settings
-          </Button>
-          <Button 
-            onClick={() => setIsCreateOpen(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-white"
-          >
-            <PlusIcon className="h-5 w-5 mr-2" />
-            New Template
-          </Button>
-        </div>
+        <Button 
+          onClick={() => setIsCampaignOpen(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
+        >
+          <PlusIcon className="h-5 w-5 mr-2" />
+          New Campaign
+        </Button>
       </div>
 
       {/* Stats Section */}
@@ -1340,21 +1476,6 @@ export default function OutreachPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="sendgrid_api_key" className="text-sm font-medium text-gray-700">
-                  SendGrid API Key
-                </Label>
-                <Input
-                  id="sendgrid_api_key"
-                  type="password"
-                  value={settingsForm.sendgrid_api_key}
-                  onChange={(e) => setSettingsForm(prev => ({ ...prev, sendgrid_api_key: e.target.value }))}
-                  required
-                  placeholder="Enter SendGrid API key"
-                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="is_default"
@@ -1383,7 +1504,6 @@ export default function OutreachPage() {
                     organization_address: '',
                     organization_phone: '',
                     organization_website: '',
-                    sendgrid_api_key: '',
                     is_default: false
                   });
                 }}
@@ -1404,7 +1524,6 @@ export default function OutreachPage() {
 
       {/* Email Settings List */}
       <div className="mt-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Email Settings</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {emailSettings.map((setting) => (
             <Card key={setting.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
@@ -1450,6 +1569,356 @@ export default function OutreachPage() {
           ))}
         </div>
       </div>
+
+      {/* Campaigns Section */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">Email Campaigns</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {campaigns.map((campaign) => (
+            <Card key={campaign.id} className="p-6 bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-medium text-lg text-gray-900">{campaign.name}</h3>
+                  <p className="text-sm text-gray-500">{campaign.subject}</p>
+                </div>
+                <Badge 
+                  variant={campaign.status === 'completed' ? 'default' : 'secondary'}
+                  className={`${
+                    campaign.status === 'completed' 
+                      ? 'bg-green-100 text-green-700' 
+                      : campaign.status === 'pending'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-red-100 text-red-700'
+                  } border-0`}
+                >
+                  {campaign.status}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Recipients:</span> {campaign.sent_count}/{campaign.total_recipients}
+                </p>
+                {campaign.failed_count > 0 && (
+                  <p className="text-sm text-red-600">
+                    <span className="font-medium">Failed:</span> {campaign.failed_count}
+                  </p>
+                )}
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Created:</span> {new Date(campaign.created_at).toLocaleDateString()}
+                </p>
+                {campaign.completed_at && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Completed:</span> {new Date(campaign.completed_at).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Campaign Dialog */}
+      <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white shadow-lg rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-gray-900">Create New Campaign</DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Create a new email campaign to send to your recipients.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateCampaign} className="space-y-6 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="campaign-name" className="text-sm font-medium text-gray-700">
+                  Campaign Name
+                </Label>
+                <Input
+                  id="campaign-name"
+                  value={campaignForm.name}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
+                  required
+                  placeholder="Enter campaign name"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="campaign-subject" className="text-sm font-medium text-gray-700">
+                  Email Subject
+                </Label>
+                <Input
+                  id="campaign-subject"
+                  value={campaignForm.subject}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, subject: e.target.value }))}
+                  required
+                  placeholder="Enter email subject"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Recipients</Label>
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="text-sm text-gray-600">
+                    {selectedRecipients.length} recipients selected
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedRecipients([])}
+                    className="border-gray-200 hover:bg-gray-50"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {recipients.map((recipient) => (
+                    <div key={recipient.id} className="flex items-center space-x-2 py-2">
+                      <input
+                        type="checkbox"
+                        id={`recipient-${recipient.id}`}
+                        checked={selectedRecipients.some(r => r.id === recipient.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedRecipients(prev => [...prev, recipient]);
+                          } else {
+                            setSelectedRecipients(prev => prev.filter(r => r.id !== recipient.id));
+                          }
+                        }}
+                        className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor={`recipient-${recipient.id}`} className="text-sm text-gray-700">
+                        {recipient.name} ({recipient.email})
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Email Content</Label>
+              <Textarea
+                value={campaignForm.content}
+                onChange={(e) => setCampaignForm(prev => ({ ...prev, content: e.target.value }))}
+                required
+                placeholder="Write your email content here..."
+                className="min-h-[200px] border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="from-name" className="text-sm font-medium text-gray-700">
+                  From Name
+                </Label>
+                <Input
+                  id="from-name"
+                  value={campaignForm.fromName}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, fromName: e.target.value }))}
+                  placeholder="Enter sender name"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="from-email" className="text-sm font-medium text-gray-700">
+                  From Email
+                </Label>
+                <Input
+                  id="from-email"
+                  type="email"
+                  value={campaignForm.fromEmail}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, fromEmail: e.target.value }))}
+                  placeholder="Enter sender email"
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="reply-to" className="text-sm font-medium text-gray-700">
+                Reply-To Email
+              </Label>
+              <Input
+                id="reply-to"
+                type="email"
+                value={campaignForm.replyTo}
+                onChange={(e) => setCampaignForm(prev => ({ ...prev, replyTo: e.target.value }))}
+                placeholder="Enter reply-to email"
+                className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-gray-100">
+              <h3 className="text-lg font-medium text-gray-900">Organization Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="organization-name" className="text-sm font-medium text-gray-700">
+                    Organization Name
+                  </Label>
+                  <Input
+                    id="organization-name"
+                    value={campaignForm.organizationName}
+                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationName: e.target.value }))}
+                    placeholder="Enter organization name"
+                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="organization-address" className="text-sm font-medium text-gray-700">
+                    Organization Address
+                  </Label>
+                  <Input
+                    id="organization-address"
+                    value={campaignForm.organizationAddress}
+                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationAddress: e.target.value }))}
+                    placeholder="Enter organization address"
+                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="organization-phone" className="text-sm font-medium text-gray-700">
+                    Organization Phone
+                  </Label>
+                  <Input
+                    id="organization-phone"
+                    value={campaignForm.organizationPhone}
+                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationPhone: e.target.value }))}
+                    placeholder="Enter organization phone"
+                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="organization-website" className="text-sm font-medium text-gray-700">
+                    Organization Website
+                  </Label>
+                  <Input
+                    id="organization-website"
+                    value={campaignForm.organizationWebsite}
+                    onChange={(e) => setCampaignForm(prev => ({ ...prev, organizationWebsite: e.target.value }))}
+                    placeholder="Enter organization website"
+                    className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="is-default"
+                  checked={campaignForm.isDefault}
+                  onCheckedChange={(checked) => setCampaignForm(prev => ({ ...prev, isDefault: checked }))}
+                />
+                <Label htmlFor="is-default" className="text-sm font-medium text-gray-700">
+                  Set as Default Organization
+                </Label>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-4 border-t border-gray-100">
+              <Label className="text-sm font-medium text-gray-700">Schedule Campaign</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal border-gray-200",
+                        !campaignForm.scheduleTime && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {campaignForm.scheduleTime ? (
+                        format(campaignForm.scheduleTime, "PPP")
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={campaignForm.scheduleTime || undefined}
+                      onSelect={(date) => setCampaignForm(prev => ({ ...prev, scheduleTime: date || null }))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Input
+                  type="time"
+                  value={campaignForm.scheduleTime ? format(campaignForm.scheduleTime, "HH:mm") : ""}
+                  onChange={(e) => {
+                    const [hours, minutes] = e.target.value.split(":");
+                    const newDate = campaignForm.scheduleTime || new Date();
+                    newDate.setHours(parseInt(hours), parseInt(minutes));
+                    setCampaignForm(prev => ({ ...prev, scheduleTime: newDate }));
+                  }}
+                  className="border-gray-200 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                {campaignForm.scheduleTime ? `Scheduled for ${format(campaignForm.scheduleTime, "PPP 'at' p")}` : "No schedule set"}
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsCampaignOpen(false);
+                  setSelectedRecipients([]);
+                  setCampaignForm({
+                    name: '',
+                    subject: '',
+                    content: '',
+                    fromName: '',
+                    fromEmail: '',
+                    replyTo: '',
+                    scheduleTime: null,
+                    organizationName: '',
+                    organizationAddress: '',
+                    organizationPhone: '',
+                    organizationWebsite: '',
+                    isDefault: false
+                  });
+                }}
+                className="border-gray-200 hover:bg-gray-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                disabled={!isFormValid()}
+              >
+                {campaignForm.scheduleTime && campaignForm.scheduleTime < new Date() ? (
+                  "Schedule must be in the future"
+                ) : (
+                  <>
+                    Create Campaign
+                    {selectedRecipients.length > 0 && (
+                      <span className="ml-2 text-sm opacity-90">
+                        ({selectedRecipients.length} recipients)
+                      </span>
+                    )}
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
