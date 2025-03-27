@@ -13,7 +13,8 @@ import {
   AIResponse,
   DonorAnalysisData, 
   ProjectAnalysisData, 
-  EventAnalysisData 
+  EventAnalysisData,
+  ChatMessage
 } from './types';
 
 // Initialize Supabase client
@@ -21,6 +22,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
+
+interface StreamResponse {
+  success: boolean;
+  content: string;
+  structuredData?: any;
+  error?: string;
+  status?: number;
+}
 
 async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIResponse> {
   try {
@@ -59,6 +68,123 @@ async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIRespon
 }
 
 export const aiService = {
+  // Streaming Chat
+  async streamChat(
+    messages: ChatMessage[],
+    onChunk: (chunk: string) => void,
+    onStructuredData: (data: any) => void
+  ): Promise<StreamResponse> {
+    try {
+      // Validate messages before sending
+      if (!Array.isArray(messages) || messages.length === 0) {
+        throw new Error('Messages array is required and must not be empty');
+      }
+
+      const response = await fetch('/api/ai/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          messages,
+          system: `You are an AI assistant specialized in nonprofit management and fundraising.
+          Provide both conversational responses and structured data when appropriate.
+          Format structured data as JSON within <json> tags.
+          Each structured data block should include:
+          - type: 'analysis' | 'recommendations' | 'insights' | 'metrics'
+          - title: A descriptive title
+          - content: The actual data
+          Keep responses clear, concise, and actionable.`
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      let buffer = '';
+      let currentStructuredData = '';
+      let isCollectingJson = false;
+      let hasError = false;
+
+      while (true) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = new TextDecoder().decode(value);
+          buffer += chunk;
+
+          // Process complete chunks
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                continue;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices?.[0]?.delta?.content) {
+                  const content = parsed.choices[0].delta.content;
+                  onChunk(content);
+
+                  // Handle structured data collection
+                  if (content.includes('<json>')) {
+                    isCollectingJson = true;
+                    currentStructuredData = '';
+                  } else if (content.includes('</json>')) {
+                    isCollectingJson = false;
+                    try {
+                      const structuredData = JSON.parse(currentStructuredData);
+                      onStructuredData(structuredData);
+                    } catch (e) {
+                      console.error('Failed to parse structured data:', e);
+                      hasError = true;
+                    }
+                    currentStructuredData = '';
+                  } else if (isCollectingJson) {
+                    currentStructuredData += content;
+                  }
+                }
+              } catch (e) {
+                console.error('Failed to parse chunk:', e);
+                hasError = true;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error reading stream:', error);
+          hasError = true;
+          break;
+        }
+      }
+
+      return {
+        success: !hasError,
+        content: buffer,
+        status: response.status,
+      };
+    } catch (error) {
+      console.error('Error in streaming chat:', error);
+      return {
+        success: false,
+        content: error instanceof Error ? error.message : 'An unexpected error occurred',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        status: error instanceof Error && 'status' in error ? (error as any).status : 500,
+      };
+    }
+  },
+
   // Chat
   async chat(message: string): Promise<AIResponse> {
     return makeAIRequest('chat', { message });

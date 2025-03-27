@@ -10,10 +10,17 @@ import { Loader2, Send, User, Bot } from 'lucide-react';
 import { ChatMessage } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
 
+interface StructuredData {
+  type: string;
+  data: any;
+}
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState('');
+  const [structuredData, setStructuredData] = useState<StructuredData[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -35,7 +42,7 @@ export default function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, currentStreamingMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +57,8 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+    setCurrentStreamingMessage('');
+    setStructuredData([]);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -57,27 +66,32 @@ export default function ChatInterface() {
         throw new Error('Please sign in to use the chat feature');
       }
 
-      const response = await aiService.chat(input);
-      
+      const response = await aiService.streamChat(
+        [...messages, userMessage],
+        (chunk) => {
+          setCurrentStreamingMessage(prev => prev + chunk);
+        },
+        (data) => {
+          setStructuredData(prev => [...prev, {
+            type: data.type || 'unknown',
+            data: data
+          }]);
+        }
+      );
+
       if (!response.success) {
-        throw new Error('Failed to get response from AI service');
+        throw new Error(response.error || 'Failed to get response from AI service');
       }
 
-      const content = Array.isArray(response.content) 
-        ? response.content[0]?.text 
-        : response.content;
-
-      if (!content) {
-        throw new Error('Invalid response format from AI service');
-      }
-
+      // Add the complete message to the messages array
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content,
+        content: response.content,
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      setCurrentStreamingMessage('');
     } catch (error) {
       console.error('Error in chat:', error);
       const errorMessage: ChatMessage = {
@@ -86,8 +100,36 @@ export default function ChatInterface() {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      setCurrentStreamingMessage('');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const renderStructuredData = (data: StructuredData) => {
+    switch (data.type) {
+      case 'analysis':
+        return (
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <h4 className="font-semibold mb-2">Analysis Results</h4>
+            <pre className="text-sm overflow-x-auto">
+              {JSON.stringify(data.data, null, 2)}
+            </pre>
+          </div>
+        );
+      case 'recommendations':
+        return (
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <h4 className="font-semibold mb-2">Recommendations</h4>
+            <ul className="list-disc list-inside">
+              {data.data.map((rec: string, index: number) => (
+                <li key={index} className="text-sm">{rec}</li>
+              ))}
+            </ul>
+          </div>
+        );
+      default:
+        return null;
     }
   };
 
@@ -101,37 +143,55 @@ export default function ChatInterface() {
             </div>
           )}
           {messages.map((message, index) => (
-            <div
-              key={index}
-              className={`flex items-start gap-3 ${
-                message.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
-              {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                </div>
-              )}
+            <div key={index}>
               <div
-                className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                  message.role === 'user'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                className={`flex items-start gap-3 ${
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <span className="text-xs opacity-70 mt-1 block">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </span>
-              </div>
-              {message.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-                  <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                {message.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                    <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                    message.role === 'user'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                  }`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <span className="text-xs opacity-70 mt-1 block">
+                    {new Date(message.timestamp).toLocaleTimeString()}
+                  </span>
                 </div>
-              )}
+                {message.role === 'user' && (
+                  <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                    <User className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  </div>
+                )}
+              </div>
+              {message.role === 'assistant' && structuredData
+                .filter(d => d.type === 'analysis' || d.type === 'recommendations')
+                .map((data, idx) => (
+                  <div key={idx} className="ml-11">
+                    {renderStructuredData(data)}
+                  </div>
+                ))}
             </div>
           ))}
-          {isLoading && (
+          {currentStreamingMessage && (
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-2">
+                <p className="text-sm whitespace-pre-wrap">{currentStreamingMessage}</p>
+              </div>
+            </div>
+          )}
+          {isLoading && !currentStreamingMessage && (
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
                 <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />

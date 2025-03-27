@@ -273,4 +273,16 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+}
+
+export interface StructuredResponse {
+  type: 'analysis' | 'recommendations' | 'insights' | 'metrics';
+  data: any;
+}
+
+export interface StreamResponse {
+  success: boolean;
+  content: string;
+  structuredData?: StructuredResponse[];
+  error?: string;
 } 
