@@ -148,7 +148,7 @@ interface GrantDocumentEditorProps {
   onSave: (document: GrantDocument) => void;
   onGenerateSection: (sectionId: string, customPrompt?: string) => Promise<void>;
   isGenerating?: boolean;
-  progressMessage?: string | null;
+  progressMessage?: string;
 }
 
 const SECTION_TEMPLATES: Record<SectionTemplateKey, string> = {
@@ -318,7 +318,7 @@ export default function GrantDocumentEditor({
   onSave,
   onGenerateSection,
   isGenerating: externalIsGenerating = false,
-  progressMessage: externalProgressMessage = null,
+  progressMessage: externalProgressMessage = '',
 }: GrantDocumentEditorProps) {
   const [document, setDocument] = useState<GrantDocument>(initialDocument);
   const [previewMode, setPreviewMode] = useState(false);

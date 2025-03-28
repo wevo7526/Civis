@@ -52,7 +52,8 @@ const navigation = [
   {
     name: 'Resources',
     items: [
-      { name: 'Fundraising', href: '/fundraising', icon: ChartPieIcon },
+      { name: 'Strategy', href: '/fundraising', icon: ChartPieIcon },
+      { name: 'Fundraising', href: '/dashboard/fundraising', icon: CurrencyDollarIcon },
     ],
   },
   {

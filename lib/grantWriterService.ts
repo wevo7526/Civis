@@ -265,7 +265,6 @@ export const grantWriterService = {
         id: data.id,
         project_id: data.project_id,
         title: data.title,
-        type: 'standard',
         sections: data.sections,
         status: data.status,
         created_at: data.created_at,

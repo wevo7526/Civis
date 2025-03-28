@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { EmailTemplate } from '@/types/email';
 import { 
   Grant, 
   Volunteer, 
@@ -12,14 +14,18 @@ import {
   VolunteerActivity,
   Donor
 } from '@/lib/types';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
-interface AIResponse {
-  content: Array<{
-    type: 'text';
-    text: string;
-  }>;
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+interface AIRequest {
+  prompt: string;
+  context?: {
+    currentPage?: string;
+    templateType?: 'donor' | 'volunteer' | 'both';
+    subject?: string;
+  };
 }
 
 // Validate environment variables
@@ -27,21 +33,11 @@ if (!process.env.ANTHROPIC_API_KEY) {
   throw new Error('ANTHROPIC_API_KEY is not set');
 }
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60; // 1 minute in seconds
 const MAX_REQUESTS = 30; // Maximum requests per window
 
-async function checkRateLimit(ip: string): Promise<boolean> {
+async function checkRateLimit(ip: string, supabase: any): Promise<boolean> {
   try {
     const now = Math.floor(Date.now() / 1000);
     const windowStart = now - RATE_LIMIT_WINDOW;
@@ -292,24 +288,19 @@ const validateData = (action: string, data: unknown): { isValid: boolean; messag
 
 export async function POST(request: Request) {
   try {
-    // Get request body first
-    const body = await request.json();
-    const { action, data } = body;
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-    // Get client IP
-    const forwardedFor = request.headers.get('x-forwarded-for');
-    const ip = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
-
-    // Check rate limit
-    const isAllowed = await checkRateLimit(ip);
-    if (!isAllowed) {
+    if (sessionError || !session) {
       return NextResponse.json(
-        { error: 'Rate limit exceeded. Please try again later.' },
-        { status: 429 }
+        { success: false, message: 'Authentication required' },
+        { status: 401 }
       );
     }
 
-    // Handle specialized agent requests
+    const { action, data, prompt, context } = await request.json();
+
     if (!action) {
       return NextResponse.json(
         { success: false, message: 'Action is required' },
@@ -317,14 +308,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!data) {
-      return NextResponse.json(
-        { success: false, message: 'Data is required' },
-        { status: 400 }
-      );
-    }
-
-    // Data validation
+    // Validate data
     const validation = validateData(action, data);
     if (!validation.isValid) {
       return NextResponse.json(
@@ -333,457 +317,146 @@ export async function POST(request: Request) {
       );
     }
 
-    // Process request
-    let prompt = '';
-    let response;
-
-    switch (action) {
-      case 'chat':
-        const chatData = data as { message: string };
-        prompt = chatData.message;
-        break;
-
-      case 'analyze_donors':
-        prompt = `Analyze the following donor data and provide insights on engagement levels, giving patterns, and recommendations for improvement:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Key engagement metrics
-2. Giving patterns and trends
-3. Recommendations for improvement
-4. Risk assessment for donor retention`;
-        break;
-
-      case 'analyze_projects':
-        prompt = `Analyze the following project data and provide insights on progress, challenges, and recommendations:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Progress assessment
-2. Risk analysis
-3. Resource utilization
-4. Recommendations for improvement`;
-        break;
-
-      case 'analyze_events':
-        prompt = `Analyze the following event data and provide insights on success metrics, challenges, and recommendations:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Success metrics analysis
-2. Budget efficiency
-3. Attendance insights
-4. Recommendations for future events`;
-        break;
-
-      case 'generate_grant_proposal': {
-        const project = data as Project;
-        prompt = `Generate a compelling grant proposal for the following project:
-
-Project Name: ${project.name || 'Not specified'}
-Description: ${project.description || 'Not specified'}
-Goals: ${project.goals?.join(', ') || 'Not specified'}
-Budget: $${project.budget || 'Not specified'}
-Timeline: ${project.timeline || 'Not specified'}
-Impact Target: ${project.impact_target || 'Not specified'}
-Impact Metric: ${project.impact_metric || 'Not specified'}
-Team Size: ${project.team_size || 'Not specified'}
-Team Roles: ${project.team_roles?.join(', ') || 'Not specified'}
-
-Please create a grant proposal that includes:
-
-1. Executive Summary
-   - Project overview
-   - Key objectives
-   - Expected impact
-   - Funding request
-
-2. Project Description
-   - Detailed activities
-   - Implementation approach
-   - Timeline
-   - Team structure
-
-3. Impact & Evaluation
-   - Expected outcomes
-   - Success metrics
-   - Evaluation plan
-   - Sustainability measures
-
-4. Budget & Resources
-   - Cost breakdown
-   - Resource allocation
-   - In-kind contributions
-   - Sustainability plan
-
-Make the proposal:
-- Clear and concise
-- Data-driven
-- Professional yet engaging
-- Focused on impact
-- Easy to understand
-
-Use specific examples and metrics where available. Maintain a professional tone throughout.`;
-        break;
-      }
-
-      case 'generate_donor_report':
-        prompt = `Generate a personalized donor report for the following donor:
-
-${JSON.stringify(data, null, 2)}
-
-Please include:
-1. Giving history summary
-2. Impact of their contributions
-3. Engagement metrics
-4. Personalized recommendations`;
-        break;
-
-      case 'optimize_event_plan':
-        prompt = `Optimize the following event plan:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Timeline optimization
-2. Budget efficiency suggestions
-3. Marketing recommendations
-4. Risk mitigation strategies`;
-        break;
-
-      case 'assess_program_impact':
-        prompt = `Assess the impact of the following program:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Impact metrics
-2. Success indicators
-3. Areas for improvement
-4. Recommendations for scaling`;
-        break;
-
-      case 'generate_stakeholder_update':
-        prompt = `Generate a stakeholder update for the following project:
-
-${JSON.stringify(data, null, 2)}
-
-Please include:
-1. Progress summary
-2. Key achievements
-3. Challenges and solutions
-4. Next steps`;
-        break;
-
-      case 'generate_fundraising_strategy':
-        prompt = `Generate a fundraising strategy based on the following donor data:
-
-${JSON.stringify(data, null, 2)}
-
-Please provide:
-1. Target audience analysis
-2. Campaign recommendations
-3. Timeline suggestions
-4. Resource allocation advice`;
-        break;
-
-      case 'generateOutreachMessage': {
-        const donor = data as Donor;
-        const currentDate = new Date().toISOString();
-        const lastDonationDate = donor.last_gift_date || currentDate;
-        const lastContactDate = donor.created_at || currentDate;
-        const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
-        const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
-        
-        prompt = `Generate a personalized email message for a donor with the following details:
-- Name: ${donor.first_name} ${donor.last_name}
-- Last Donation Amount: $${donor.last_gift_amount}
-- Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
-- Total Given: $${donor.total_given}
-- Preferred Communication: ${donor.preferred_communication}
-- Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
-
-The message should:
-1. Be warm and personal
-2. Acknowledge their past support
-3. Share a brief impact story
-4. Include a gentle call to action`;
-        break;
-      }
-
-      case 'analyzeDonorEngagement': {
-        const donorData = data as {
-          name: string;
-          engagement_level: string;
-          last_donation: string;
-          total_donations: number;
-          donation_frequency: string;
-        };
-
-        prompt = `Analyze the donor engagement data and provide insights:
-
-Donor Information:
-- Name: ${donorData.name}
-- Engagement Level: ${donorData.engagement_level}
-- Last Donation: ${donorData.last_donation}
-- Total Donations: ${donorData.total_donations}
-- Donation Frequency: ${donorData.donation_frequency}
-
-Please provide a detailed analysis including:
-1. Engagement Analysis
-   - Current engagement level assessment
-   - Historical engagement trends
-   - Key engagement indicators
-
-2. Strengths and Opportunities
-   - Key strengths in donor relationship
-   - Areas for improvement
-   - Potential engagement opportunities
-
-3. Recommendations for Improvement
-   - Specific actions to enhance engagement
-   - Communication strategy suggestions
-   - Follow-up recommendations
-
-4. Risk Assessment
-   - Potential engagement risks
-   - Mitigation strategies
-   - Early warning indicators
-
-5. Action Items
-   - Immediate next steps
-   - Short-term goals
-   - Long-term engagement strategy
-
-Please format the response in a clear, structured manner with bullet points for easy reading.`;
-        break;
-      }
-
-      case 'matchVolunteers': {
-        const matchData = data as {
-          volunteers: Volunteer[];
-          opportunities: VolunteerActivity[];
-        };
-        
-        prompt = `Match volunteers with opportunities based on the following data:
-          Volunteers: ${JSON.stringify(matchData.volunteers, null, 2)}
-          Opportunities: ${JSON.stringify(matchData.opportunities, null, 2)}
-
-          Provide:
-          1. Best matches for each opportunity
-          2. Skills and interests alignment
-          3. Availability considerations
-          4. Recommendations for engagement
-          5. Training needs`;
-        break;
-      }
-
-      case 'optimizeEventPlan': {
-        const event = data as Event;
-        prompt = `Optimize the event plan for:
-          Name: ${event.name}
-          Type: ${event.type}
-          Date: ${new Date(event.date).toLocaleDateString()}
-          Location: ${event.location}
-          Budget: $${event.budget || 'Not specified'}
-          Max Volunteers: ${event.max_volunteers || 'Not specified'}
-
-          Provide:
-          1. Timeline optimization
-          2. Budget allocation recommendations
-          3. Marketing strategy
-          4. Risk management plan
-          5. Success metrics
-          6. Contingency plans`;
-        break;
-      }
-
-      case 'assessProgramImpact': {
-        const program = data as Program;
-        prompt = `Assess the impact of the following program:
-          Name: ${program.name}
-          Description: ${program.description}
-          Duration: ${new Date(program.start_date).toLocaleDateString()} - ${new Date(program.end_date).toLocaleDateString()}
-          Budget: $${program.budget}
-          Target Impact: ${program.target_impact}
-
-          Provide:
-          1. Impact measurement framework
-          2. Key performance indicators
-          3. Data collection strategy
-          4. Success criteria
-          5. Recommendations for improvement`;
-        break;
-      }
-
-      case 'analyzeCommunityEngagement': {
-        const stakeholders = data as CommunityStakeholder[];
-        prompt = `Analyze community engagement based on the following stakeholders:
-          ${JSON.stringify(stakeholders, null, 2)}
-
-          Provide:
-          1. Engagement level analysis
-          2. Stakeholder mapping
-          3. Partnership opportunities
-          4. Communication strategy
-          5. Community needs assessment
-          6. Action recommendations`;
-        break;
-      }
-
-      case 'analyzeProjects': {
-        const projects = data as Project[];
-        prompt = `Analyze the following projects and provide insights:
-          ${JSON.stringify(projects, null, 2)}
-
-          Provide:
-          1. Project Status Overview
-          2. Success Rate Analysis
-          3. Resource Allocation Insights
-          4. Risk Assessment
-          5. Timeline Performance
-          6. Budget Analysis
-          7. Impact Metrics
-          8. Recommendations for Improvement`;
-        break;
-      }
-
-      case 'analyzeEvents': {
-        const events = data as Event[];
-        prompt = `Analyze the following events and provide insights:
-          ${JSON.stringify(events, null, 2)}
-
-          Provide:
-          1. Event Performance Overview
-          2. Attendance Trends
-          3. Engagement Metrics
-          4. Cost-Benefit Analysis
-          5. Success Factors
-          6. Areas for Improvement
-          7. Future Event Recommendations`;
-        break;
-      }
-
-      case 'analyzeFundraising': {
-        const fundraisingData = data as {
-          donors: Donor[];
-          projects: Project[];
-          events: Event[];
-        };
-        
-        prompt = `Analyze the overall fundraising performance based on:
-          Donors: ${JSON.stringify(fundraisingData.donors, null, 2)}
-          Projects: ${JSON.stringify(fundraisingData.projects, null, 2)}
-          Events: ${JSON.stringify(fundraisingData.events, null, 2)}
-
-          Provide:
-          1. Overall Fundraising Performance
-          2. Donor Retention and Growth
-          3. Project Funding Success
-          4. Event-Based Fundraising Impact
-          5. Key Performance Indicators
-          6. Trends and Patterns
-          7. Strategic Recommendations
-          8. Future Opportunities`;
-        break;
-      }
-
-      case 'generateDonorMessage': {
-        const donor = data as Donor;
-        const currentDate = new Date().toISOString();
-        const lastDonationDate = donor.last_gift_date || currentDate;
-        const lastContactDate = donor.created_at || currentDate;
-        const daysSinceLastDonation = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
-        const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
-        
-        prompt = `Generate a personalized email message for a donor with the following details:
-- Name: ${donor.first_name} ${donor.last_name}
-- Last Donation Amount: $${donor.last_gift_amount}
-- Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
-- Total Given: $${donor.total_given}
-- Preferred Communication: ${donor.preferred_communication}
-- Last Contact: ${new Date(lastContactDate).toLocaleDateString()}
-
-The message should:
-1. Be warm and personal
-2. Acknowledge their past support
-3. Share a brief impact story
-4. Include a gentle call to action`;
-        break;
-      }
-
-      default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
-    }
-
-    try {
-      response = await anthropic.messages.create({
-        model: 'claude-3-opus-20240229',
-        max_tokens: 2000,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        system: AGENT_SYSTEM_PROMPT,
-        temperature: 0.7,
-      });
-
-      const responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-
-      // Format the response for better readability
-      const formattedResponse = responseText
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .join('\n\n');
-
-      // Get user session after processing the request
-      const cookieStore = cookies();
-      const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-      const { data: { session } } = await supabase.auth.getSession();
-
-      // Store the interaction in Supabase if we have a session
-      if (session?.user?.id) {
-        await supabase.from('ai_interactions').insert({
-          user_id: session.user.id,
-          action,
-          prompt,
-          response: formattedResponse,
-          context: {},
-          created_at: new Date().toISOString(),
-        });
-      }
-
-      return NextResponse.json({
-        success: true,
-        content: [{
-          type: 'text',
-          text: formattedResponse
-        }],
-        data: {
-          analyzedItems: Array.isArray(data) ? data.length : 0,
-          timestamp: new Date().toISOString()
-        }
-      });
-    } catch (error) {
-      console.error('Error processing AI request:', error);
+    // Check rate limit
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+    const isAllowed = await checkRateLimit(ip, supabase);
+    if (!isAllowed) {
       return NextResponse.json(
-        { success: false, message: 'Failed to process AI request. Please try again.' },
-        { status: 500 }
+        { success: false, message: 'Rate limit exceeded' },
+        { status: 429 }
       );
     }
+
+    let systemPrompt = `You are an AI assistant specialized in nonprofit management and fundraising.
+    Provide clear, concise, and actionable insights based on the data provided.
+    Focus on specific metrics, trends, and recommendations that can drive fundraising success.`;
+
+    // Add context-specific prompts
+    if (context?.currentPage === 'fundraising') {
+      systemPrompt = `You are an AI assistant specialized in nonprofit fundraising analysis. Your role is to analyze fundraising data and provide structured, actionable insights.
+
+When analyzing fundraising data, provide your response in the following format:
+
+1. Key Metrics Summary
+   - Total funds raised
+   - Donor retention rate
+   - Average gift size
+   - Recent donor activity
+
+2. Performance Analysis
+   - Donor engagement trends
+   - Project funding status
+   - Event fundraising success
+   - Strategy effectiveness
+
+3. Actionable Recommendations
+   - High-priority actions
+   - Donor engagement opportunities
+   - Project funding needs
+   - Strategy optimization
+
+4. Risk Assessment
+   - Potential challenges
+   - Areas needing attention
+   - Growth opportunities
+   - Resource allocation
+
+Focus on providing specific, data-driven insights that can be immediately acted upon. Use the provided metrics to support your analysis and recommendations.`;
+    } else if (action === 'analyzeDonorStrategyAlignment') {
+      systemPrompt = `You are an AI assistant specialized in nonprofit fundraising strategy alignment. Your role is to analyze how well a donor matches with available fundraising strategies.
+
+When analyzing donor-strategy alignment, provide your response in the following format:
+
+1. Donor Profile Analysis
+   - Giving history and capacity
+   - Engagement level
+   - Interests and preferences
+   - Communication preferences
+
+2. Strategy Match Analysis
+   - Best matching strategies
+   - Alignment score (0-100)
+   - Potential impact
+   - Implementation timeline
+
+3. Personalized Recommendations
+   - Strategy-specific actions
+   - Engagement opportunities
+   - Risk factors
+   - Success metrics
+
+4. Action Plan
+   - Immediate next steps
+   - Required resources
+   - Timeline
+   - Success criteria
+
+Focus on providing specific, actionable insights that can be used to optimize donor engagement and fundraising success.`;
+    } else if (action === 'generateStrategyRecommendations') {
+      systemPrompt = `You are an AI assistant specialized in nonprofit fundraising strategy development. Your role is to generate strategic recommendations based on donor segments and current strategies.
+
+When generating strategy recommendations, provide your response in the following format:
+
+1. Donor Segment Analysis
+   - Major donors
+   - Mid-level donors
+   - Small donors
+   - Interest-based segments
+
+2. Current Strategy Assessment
+   - Active strategies
+   - Impact analysis
+   - Coverage gaps
+   - Resource allocation
+
+3. Strategic Recommendations
+   - Segment-specific strategies
+   - Implementation priorities
+   - Expected impact
+   - Required resources
+
+4. Implementation Plan
+   - Timeline
+   - Resource requirements
+   - Success metrics
+   - Risk mitigation
+
+Focus on providing data-driven recommendations that align with donor segments and organizational goals.`;
+    }
+
+    const message = await anthropic.messages.create({
+      model: 'claude-3-opus-20240229',
+      max_tokens: 2000,
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            action,
+            data,
+            prompt: prompt || "Generate relevant insights based on the provided data. Focus on key metrics, trends, and actionable recommendations.",
+            context
+          })
+        }
+      ],
+      system: systemPrompt,
+      temperature: 0.7,
+    });
+
+    const content = message.content[0].type === 'text' ? message.content[0].text : '';
+
+    return NextResponse.json({
+      success: true,
+      content,
+      message: 'Analysis completed successfully'
+    });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('Error in AI route:', error);
     return NextResponse.json(
-      { success: false, message: 'An unexpected error occurred. Please try again.' },
+      { 
+        success: false, 
+        message: error instanceof Error ? error.message : 'An unexpected error occurred',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

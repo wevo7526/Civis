@@ -2,11 +2,14 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import sgMail from '@sendgrid/mail';
-import { MailDataRequired } from '@sendgrid/mail';
+import { SendEmailRequest, SendEmailResponse, SendGridMessage, EmailLog } from '@/types/email';
+
+// Initialize SendGrid with your API key
+sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
 export async function POST(request: Request) {
   try {
-    // Get the authenticated user
+    // Get the session
     const supabase = createRouteHandlerClient({ cookies });
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
@@ -17,51 +20,40 @@ export async function POST(request: Request) {
       );
     }
 
-    // Parse request body
-    const { to, subject, content, recipientName, senderEmail } = await request.json();
-
-    if (!to || !subject || !content) {
+    // Parse and validate request body
+    const body: SendEmailRequest = await request.json();
+    
+    if (!body.to || !body.subject || !body.content || !body.recipientName) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    // Get user's email settings
+    // Get email settings
     const { data: emailSettings, error: settingsError } = await supabase
-      .from('user_email_settings')
+      .from('email_settings')
       .select('*')
-      .eq('user_id', session.user.id)
-      .eq('sender_email', senderEmail)
+      .eq('is_default', true)
       .single();
 
     if (settingsError || !emailSettings) {
       return NextResponse.json(
-        { error: 'Email settings not found' },
-        { status: 404 }
-      );
-    }
-
-    // Set SendGrid API key from user settings
-    if (!emailSettings.sendgrid_api_key) {
-      return NextResponse.json(
-        { error: 'SendGrid API key not configured' },
+        { error: 'No default email settings found' },
         { status: 400 }
       );
     }
 
-    sgMail.setApiKey(emailSettings.sendgrid_api_key);
-
-    // Prepare email data
-    const msg: MailDataRequired = {
-      to,
+    // Prepare email data with proper typing
+    const msg: SendGridMessage = {
+      to: body.to,
       from: {
         email: emailSettings.sender_email,
         name: emailSettings.sender_name
       },
       replyTo: emailSettings.reply_to_email || emailSettings.sender_email,
-      subject,
-      html: content,
+      subject: body.subject,
+      html: body.content,
       trackingSettings: {
         clickTracking: { enable: true },
         openTracking: { enable: true },
@@ -69,7 +61,7 @@ export async function POST(request: Request) {
       },
       customArgs: {
         user_id: session.user.id,
-        template_id: emailSettings.id
+        template_id: body.templateId
       }
     };
 
@@ -82,38 +74,67 @@ export async function POST(request: Request) {
 
     const messageId = response[0]?.headers['x-message-id'];
 
-    // Log the email send in your database
+    // Log the email send in your database with proper typing
+    const emailLog: Omit<EmailLog, 'id'> = {
+      user_id: session.user.id,
+      recipient_email: body.to,
+      recipient_name: body.recipientName,
+      subject: body.subject,
+      content: body.content,
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      sendgrid_message_id: messageId,
+      sender_email: emailSettings.sender_email,
+      sender_name: emailSettings.sender_name,
+      organization_name: emailSettings.organization_name
+    };
+
     const { error: logError } = await supabase
       .from('email_logs')
-      .insert([
-        {
-          user_id: session.user.id,
-          recipient_email: to,
-          recipient_name: recipientName,
-          subject,
-          content,
-          status: 'sent',
-          sent_at: new Date().toISOString(),
-          sendgrid_message_id: messageId,
-          sender_email: emailSettings.sender_email,
-          sender_name: emailSettings.sender_name,
-          organization_name: emailSettings.organization_name
-        }
-      ]);
+      .insert([emailLog]);
 
     if (logError) {
       console.error('Error logging email:', logError);
       // Don't throw here, as the email was sent successfully
     }
 
-    return NextResponse.json({ 
+    const successResponse: SendEmailResponse = {
       success: true,
       messageId
-    });
+    };
+
+    return NextResponse.json(successResponse);
   } catch (error) {
     console.error('Error sending email:', error);
+    
+    // Log the error in the database
+    const supabase = createRouteHandlerClient({ cookies });
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session) {
+      const errorLog: Omit<EmailLog, 'id'> = {
+        user_id: session.user.id,
+        recipient_email: 'unknown',
+        recipient_name: 'unknown',
+        subject: 'unknown',
+        content: 'unknown',
+        status: 'failed',
+        sent_at: new Date().toISOString(),
+        sender_email: 'unknown',
+        sender_name: 'unknown',
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      };
+
+      await supabase
+        .from('email_logs')
+        .insert([errorLog]);
+    }
+
     return NextResponse.json(
-      { error: 'Failed to send email' },
+      { 
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send email'
+      },
       { status: 500 }
     );
   }
