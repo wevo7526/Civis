@@ -790,13 +790,6 @@ export default function OutreachPage() {
     }
   };
 
-  const filteredTemplates = templates.filter(template => {
-    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         template.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === 'all' || template.type === typeFilter;
-    return matchesSearch && matchesType;
-  });
-
   // Add edit template function
   const openEditMode = (template: OutreachTemplate) => {
     setEditingTemplate(template);

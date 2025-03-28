@@ -18,7 +18,7 @@ interface Recipient {
   type: 'donor' | 'volunteer' | 'participant';
 }
 
-interface CampaignFormData {
+export interface CampaignFormData {
   name: string;
   subject: string;
   content: string;
