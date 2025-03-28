@@ -87,6 +87,7 @@ export default function FundraisingPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [strategyData, setStrategyData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [strategyAlignments, setStrategyAlignments] = useState<Record<string, any>>({});
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -112,7 +113,7 @@ export default function FundraisingPage() {
       const donorsData = donorsResponse.data as Donor[];
       const projectsData = projectsResponse.data as Project[];
       const eventsData = eventsResponse.data as Event[];
-      const strategyData = strategyResponse.data;
+      const strategyData = strategyResponse.data || [];
 
       setDonors(donorsData);
       setProjects(projectsData);
@@ -122,8 +123,17 @@ export default function FundraisingPage() {
       // Calculate metrics
       const metrics = calculateMetrics(donorsData, strategyData);
       setMetrics(metrics);
+
+      // Calculate strategy alignments
+      const alignments: Record<string, any> = {};
+      for (const donor of donorsData) {
+        const alignment = await calculateStrategyAlignment(donor);
+        alignments[donor.id] = alignment;
+      }
+      setStrategyAlignments(alignments);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
+      setStrategyAlignments({});
     } finally {
       setLoading(false);
     }
@@ -198,56 +208,111 @@ export default function FundraisingPage() {
     };
   };
 
-  const calculateStrategyAlignment = (donor: Donor) => {
-    const matchedStrategies = strategyData.filter((s: FundraisingStrategy) => s.donor_id === donor.id);
-    const potentialImpact = matchedStrategies.reduce((sum: number, s: FundraisingStrategy) => sum + (s.impact || 0), 0);
-    
-    // Calculate engagement score based on interaction count
-    const engagementScore = Math.min(100, ((donor.interaction_count || 0) / 5) * 100);
-    
-    // Calculate giving capacity score based on total given
-    const givingCapacityScore = Math.min(100, ((donor.total_given || 0) / 10000) * 100);
-    
-    // Calculate recency score based on last donation
-    const lastDonationDate = donor.last_donation_date ? new Date(donor.last_donation_date) : null;
-    const daysSinceLastDonation = lastDonationDate 
-      ? Math.floor((new Date().getTime() - lastDonationDate.getTime()) / (1000 * 60 * 60 * 24))
-      : 365;
-    const recencyScore = Math.max(0, 100 - (daysSinceLastDonation / 3.65));
-    
-    // Calculate overall alignment score
-    const alignmentScore = Math.round(
-      (engagementScore * 0.3) + 
-      (givingCapacityScore * 0.3) + 
-      (recencyScore * 0.4)
-    );
+  const calculateStrategyAlignment = async (donor: Donor) => {
+    try {
+      // Calculate basic metrics even if strategyData is empty
+      const engagementScore = Math.min(100, ((donor.interaction_count || 0) / 5) * 100);
+      const givingCapacityScore = Math.min(100, ((donor.total_given || 0) / 10000) * 100);
+      const lastDonationDate = donor.last_donation_date ? new Date(donor.last_donation_date) : null;
+      const daysSinceLastDonation = lastDonationDate 
+        ? Math.floor((new Date().getTime() - lastDonationDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 365;
+      const recencyScore = Math.max(0, 100 - (daysSinceLastDonation / 3.65));
+      const alignmentScore = Math.round(
+        (engagementScore * 0.3) + 
+        (givingCapacityScore * 0.3) + 
+        (recencyScore * 0.4)
+      );
 
-    // Generate insights based on scores
-    const insights = [];
-    if (engagementScore < 50) {
-      insights.push('Low engagement - Consider increasing donor interactions');
-    }
-    if (givingCapacityScore < 50) {
-      insights.push('Potential for increased giving - Focus on relationship building');
-    }
-    if (recencyScore < 50) {
-      insights.push('Inactive donor - Plan re-engagement strategy');
-    }
-    if (matchedStrategies.length === 0) {
-      insights.push('No matched strategies - Review donor profile for potential matches');
-    }
+      // If no strategy data, return basic metrics
+      if (!strategyData || strategyData.length === 0) {
+        return {
+          matchedStrategies: [],
+          potentialImpact: 0,
+          alignmentScore,
+          engagementScore,
+          givingCapacityScore,
+          recencyScore,
+          insights: [
+            engagementScore < 50 ? 'Low engagement - Consider increasing donor interactions' : null,
+            givingCapacityScore < 50 ? 'Potential for increased giving - Focus on relationship building' : null,
+            recencyScore < 50 ? 'Inactive donor - Plan re-engagement strategy' : null,
+            'No strategy data available - Please add fundraising strategies'
+          ].filter(Boolean),
+          confidenceScore: 0.7,
+          lastDonationDate,
+          daysSinceLastDonation
+        };
+      }
 
-    return {
-      matchedStrategies,
-      potentialImpact,
-      alignmentScore,
-      engagementScore,
-      givingCapacityScore,
-      recencyScore,
-      insights,
-      lastDonationDate,
-      daysSinceLastDonation
-    };
+      // Calculate matched strategies
+      const matchedStrategies = strategyData.filter((s: FundraisingStrategy) => s.donor_id === donor.id);
+      const potentialImpact = matchedStrategies.reduce((sum: number, s: FundraisingStrategy) => sum + (s.impact || 0), 0);
+
+      // Try to get AI insights if available
+      try {
+        const response = await aiService.calculateStrategyAlignment(donor, strategyData, {
+          averageDonation: donors.reduce((sum: number, d: Donor) => sum + (d.total_given || 0), 0) / donors.length,
+          successRate: strategyData.reduce((sum: number, s: FundraisingStrategy) => sum + (s.impact || 0), 0) / strategyData.length
+        });
+
+        if (response.success && response.content) {
+          const alignment = JSON.parse(response.content);
+          return {
+            matchedStrategies,
+            potentialImpact: alignment.potentialImpact || potentialImpact,
+            alignmentScore: alignment.alignmentScore || alignmentScore,
+            engagementScore: alignment.engagementScore || engagementScore,
+            givingCapacityScore: alignment.givingCapacityScore || givingCapacityScore,
+            recencyScore: alignment.recencyScore || recencyScore,
+            insights: alignment.recommendations || [
+              engagementScore < 50 ? 'Low engagement - Consider increasing donor interactions' : null,
+              givingCapacityScore < 50 ? 'Potential for increased giving - Focus on relationship building' : null,
+              recencyScore < 50 ? 'Inactive donor - Plan re-engagement strategy' : null,
+              matchedStrategies.length === 0 ? 'No matched strategies - Review donor profile for potential matches' : null
+            ].filter(Boolean),
+            confidenceScore: alignment.confidenceScore || 0.7,
+            lastDonationDate,
+            daysSinceLastDonation
+          };
+        }
+      } catch (aiError) {
+        console.error('AI analysis failed, using basic metrics:', aiError);
+      }
+
+      // Return basic metrics if AI analysis fails
+      return {
+        matchedStrategies,
+        potentialImpact,
+        alignmentScore,
+        engagementScore,
+        givingCapacityScore,
+        recencyScore,
+        insights: [
+          engagementScore < 50 ? 'Low engagement - Consider increasing donor interactions' : null,
+          givingCapacityScore < 50 ? 'Potential for increased giving - Focus on relationship building' : null,
+          recencyScore < 50 ? 'Inactive donor - Plan re-engagement strategy' : null,
+          matchedStrategies.length === 0 ? 'No matched strategies - Review donor profile for potential matches' : null
+        ].filter(Boolean),
+        confidenceScore: 0.7,
+        lastDonationDate,
+        daysSinceLastDonation
+      };
+    } catch (error) {
+      console.error('Error calculating strategy alignment:', error);
+      return {
+        matchedStrategies: [],
+        potentialImpact: 0,
+        alignmentScore: 0,
+        engagementScore: 0,
+        givingCapacityScore: 0,
+        recencyScore: 0,
+        insights: ['Unable to calculate alignment - Please try again later'],
+        confidenceScore: 0,
+        lastDonationDate: null,
+        daysSinceLastDonation: 365
+      };
+    }
   };
 
   const generateInsights = async () => {
@@ -590,7 +655,9 @@ export default function FundraisingPage() {
                 <h2 className="text-lg font-medium text-gray-900 mb-4">Strategy Alignment</h2>
                 <div className="space-y-6">
                   {donors.map((donor) => {
-                    const alignment = calculateStrategyAlignment(donor);
+                    const alignment = strategyAlignments[donor.id];
+                    if (!alignment) return null;
+
                     return (
                       <div key={donor.id} className="bg-white border rounded-lg p-6">
                         <div className="flex justify-between items-start mb-4">
@@ -684,7 +751,7 @@ export default function FundraisingPage() {
                           <div className="mb-6">
                             <h4 className="text-sm font-medium text-gray-900 mb-2">Key Insights</h4>
                             <ul className="space-y-2">
-                              {alignment.insights.map((insight, index) => (
+                              {alignment.insights.map((insight: string, index: number) => (
                                 <li key={index} className="flex items-start">
                                   <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500 mr-2 mt-0.5" />
                                   <span className="text-sm text-gray-600">{insight}</span>

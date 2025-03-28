@@ -5,6 +5,14 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
   PlusIcon,
+  Cog6ToothIcon,
+  PencilIcon,
+  TrashIcon,
+  UserGroupIcon,
+  EnvelopeIcon,
+  DocumentTextIcon,
+  ChartBarIcon,
+  PaperAirplaneIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -23,6 +31,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface OutreachTemplate {
   id: string;
@@ -115,7 +124,7 @@ export default function OutreachPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplate | null>(null);
   const [editorContent, setEditorContent] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'donor' | 'volunteer'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('all');
   const router = useRouter();
   const [recipientStats, setRecipientStats] = useState({
     totalDonors: 0,
@@ -433,7 +442,7 @@ export default function OutreachPage() {
     }, 0);
   };
 
-  // Update AI assistant function
+  // Enhanced AI content generation
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) {
       toast.error('Please enter a prompt');
@@ -444,17 +453,34 @@ export default function OutreachPage() {
       setIsGenerating(true);
       const toastId = toast.loading('Generating content...');
       
+      // Get recipient context
+      const recipientContext = selectedRecipients.length > 0 
+        ? `Target audience: ${selectedRecipients.length} recipients (${selectedRecipients.map(r => r.type).join(', ')})`
+        : '';
+
       const response = await fetch('/api/ai/global', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: `Help me write an email for ${formData.type} recipients. The subject is: ${formData.subject}. ${aiPrompt}`,
+          prompt: `Generate an engaging email campaign for ${formData.type} recipients. 
+                  ${recipientContext}
+                  Subject: ${formData.subject}
+                  Additional context: ${aiPrompt}
+                  
+                  Please provide:
+                  1. A compelling subject line
+                  2. An engaging opening paragraph
+                  3. Main content with clear call-to-action
+                  4. Closing paragraph
+                  5. Suggested follow-up timing`,
           context: {
             currentPage: 'outreach',
             templateType: formData.type,
-            subject: formData.subject
+            subject: formData.subject,
+            recipientCount: selectedRecipients.length,
+            recipientTypes: [...new Set(selectedRecipients.map(r => r.type))]
           }
         }),
       });
@@ -465,7 +491,34 @@ export default function OutreachPage() {
 
       const data = await response.json();
       if (data.success && data.content?.[0]?.text) {
-        setEditorContent(prev => prev + '\n\n' + data.content[0].text);
+        const generatedContent = data.content[0].text;
+        
+        // Parse the AI response into sections
+        const sections = generatedContent.split('\n\n');
+        const subjectLine = sections[0].replace('Subject:', '').trim();
+        const opening = sections[1];
+        const mainContent = sections[2];
+        const closing = sections[3];
+        const followUp = sections[4];
+
+        // Update form data with generated content
+        setFormData(prev => ({
+          ...prev,
+          subject: subjectLine
+        }));
+        
+        setEditorContent(prev => {
+          const newContent = [
+            opening,
+            mainContent,
+            closing,
+            '\n---\n',
+            'Suggested follow-up:',
+            followUp
+          ].join('\n\n');
+          return prev ? `${prev}\n\n${newContent}` : newContent;
+        });
+
         toast.success('Content generated successfully', { id: toastId });
         setAiPrompt('');
       } else {
@@ -955,6 +1008,141 @@ export default function OutreachPage() {
     }
   };
 
+  // Add A/B testing functionality
+  const createABTest = async (campaign: Campaign) => {
+    try {
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Create A/B test variants
+      const variants = [
+        {
+          name: `${campaign.name} - Variant A`,
+          subject: campaign.subject,
+          content: campaign.content,
+          from_name: campaign.from_name,
+          from_email: campaign.from_email,
+          reply_to: campaign.reply_to,
+          status: 'pending',
+          parent_campaign_id: campaign.id,
+          variant: 'A',
+          user_id: user.id
+        },
+        {
+          name: `${campaign.name} - Variant B`,
+          subject: campaign.subject,
+          content: campaign.content,
+          from_name: campaign.from_name,
+          from_email: campaign.from_email,
+          reply_to: campaign.reply_to,
+          status: 'pending',
+          parent_campaign_id: campaign.id,
+          variant: 'B',
+          user_id: user.id
+        }
+      ];
+
+      const { error } = await createClientComponentClient()
+        .from('email_campaigns')
+        .insert(variants);
+
+      if (error) throw error;
+
+      toast.success('A/B test created successfully');
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Error creating A/B test:', error);
+      toast.error('Failed to create A/B test');
+    }
+  };
+
+  // Add automated follow-up sequence
+  const createFollowUpSequence = async (campaign: Campaign) => {
+    try {
+      const { data: { user } } = await createClientComponentClient().auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Create follow-up sequence
+      const followUps = [
+        {
+          name: `${campaign.name} - Follow-up 1`,
+          subject: `Re: ${campaign.subject}`,
+          content: `Hi there,\n\nI wanted to follow up on my previous email...`,
+          from_name: campaign.from_name,
+          from_email: campaign.from_email,
+          reply_to: campaign.reply_to,
+          status: 'pending',
+          parent_campaign_id: campaign.id,
+          sequence_number: 1,
+          delay_days: 3,
+          user_id: user.id
+        },
+        {
+          name: `${campaign.name} - Follow-up 2`,
+          subject: `Re: ${campaign.subject}`,
+          content: `Hi there,\n\nI hope this email finds you well...`,
+          from_name: campaign.from_name,
+          from_email: campaign.from_email,
+          reply_to: campaign.reply_to,
+          status: 'pending',
+          parent_campaign_id: campaign.id,
+          sequence_number: 2,
+          delay_days: 7,
+          user_id: user.id
+        }
+      ];
+
+      const { error } = await createClientComponentClient()
+        .from('email_campaigns')
+        .insert(followUps);
+
+      if (error) throw error;
+
+      toast.success('Follow-up sequence created successfully');
+      await loadCampaigns();
+    } catch (error) {
+      console.error('Error creating follow-up sequence:', error);
+      toast.error('Failed to create follow-up sequence');
+    }
+  };
+
+  // Add campaign analytics
+  const getCampaignAnalytics = async (campaignId: string) => {
+    try {
+      const { data, error } = await createClientComponentClient()
+        .from('campaign_analytics')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching campaign analytics:', error);
+      return null;
+    }
+  };
+
+  // Add recipient segmentation
+  const segmentRecipients = (recipients: Recipient[]) => {
+    const segments = {
+      highValue: recipients.filter(r => r.type === 'donor' && (r.totalDonations || 0) > 1000),
+      activeVolunteers: recipients.filter(r => r.type === 'volunteer' && (r.hours || 0) > 20),
+      recentDonors: recipients.filter(r => {
+        if (r.type !== 'donor' || !r.lastDonation) return false;
+        const lastDonationDate = new Date(r.lastDonation);
+        return lastDonationDate > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      }),
+      inactiveRecipients: recipients.filter(r => {
+        if (!r.lastContact) return true;
+        const lastContactDate = new Date(r.lastContact);
+        return lastContactDate < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      })
+    };
+
+    return segments;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -966,138 +1154,238 @@ export default function OutreachPage() {
   return (
     <div className="container mx-auto py-6 space-y-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Outreach</h1>
-        <Button
-          onClick={() => setIsCampaignOpen(true)}
-          className="bg-purple-600 hover:bg-purple-700 text-white"
-        >
-          <PlusIcon className="h-5 w-5 mr-2" />
-          New Campaign
-        </Button>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Outreach</h1>
+          <p className="text-gray-500 mt-1">Manage your email campaigns and track performance</p>
+        </div>
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => setIsSettingsOpen(true)}
+            variant="outline"
+            className="text-purple-600 border-purple-600 hover:bg-purple-50"
+          >
+            <Cog6ToothIcon className="h-5 w-5 mr-2" />
+            Settings
+          </Button>
+          <Button
+            onClick={() => setIsCampaignOpen(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            New Campaign
+          </Button>
+        </div>
       </div>
 
-      <StatsDisplay stats={recipientStats} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Recipients</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">
+                {recipientStats.totalDonors + recipientStats.totalVolunteers}
+              </p>
+            </div>
+            <div className="bg-purple-100 rounded-full p-3">
+              <UserGroupIcon className="h-6 w-6 text-purple-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Active Campaigns</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">
+                {campaigns.filter(c => c.status === 'pending').length}
+              </p>
+            </div>
+            <div className="bg-green-100 rounded-full p-3">
+              <EnvelopeIcon className="h-6 w-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Success Rate</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">
+                {campaigns.length > 0 
+                  ? `${((campaigns.filter(c => c.status === 'completed').length / campaigns.length) * 100).toFixed(1)}%`
+                  : '0%'}
+              </p>
+            </div>
+            <div className="bg-yellow-100 rounded-full p-3">
+              <ChartBarIcon className="h-6 w-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Sent</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">
+                {campaigns.reduce((acc, campaign) => acc + campaign.sent_count, 0)}
+              </p>
+            </div>
+            <div className="bg-blue-100 rounded-full p-3">
+              <PaperAirplaneIcon className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <Tabs defaultValue="campaigns" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
-          <TabsTrigger value="settings">Email Settings</TabsTrigger>
+        <TabsList className="bg-white p-1 rounded-lg shadow-sm">
+          <TabsTrigger value="campaigns" className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-600">
+            <EnvelopeIcon className="h-5 w-5 mr-2" />
+            Campaigns
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="data-[state=active]:bg-purple-100 data-[state=active]:text-purple-600">
+            <ChartBarIcon className="h-5 w-5 mr-2" />
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="campaigns" className="space-y-4">
-          <CampaignList 
-            campaigns={campaigns} 
-            onEdit={handleEditCampaign}
-            onDelete={handleDeleteCampaign}
-          />
-        </TabsContent>
-
-        <TabsContent value="settings" className="space-y-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">Email Settings</h2>
-              <Button
-                onClick={() => {
-                  setSelectedSetting(null);
-                  setSettingsForm({
-                    sender_name: '',
-                    sender_email: '',
-                    reply_to_email: '',
-                    organization_name: '',
-                    organization_address: '',
-                    organization_phone: '',
-                    organization_website: '',
-                    is_default: false
-                  });
-                  setIsSettingsOpen(true);
-                }}
-                className="bg-purple-600 hover:bg-purple-700 text-white"
-              >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                New Setting
-              </Button>
+              <div className="flex space-x-4">
+                <Input
+                  type="text"
+                  placeholder="Search campaigns..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-64"
+                />
+                <Select
+                  value={typeFilter}
+                  onValueChange={(value) => setTypeFilter(value as 'all' | 'pending' | 'completed' | 'failed')}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <CampaignList 
+              campaigns={campaigns.filter(campaign => {
+                const matchesSearch = campaign.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                    campaign.subject.toLowerCase().includes(searchQuery.toLowerCase());
+                const matchesStatus = typeFilter === 'all' || campaign.status === typeFilter;
+                return matchesSearch && matchesStatus;
+              })}
+              onEdit={handleEditCampaign}
+              onDelete={handleDeleteCampaign}
+              onCreateABTest={createABTest}
+              onCreateFollowUp={createFollowUpSequence}
+            />
+          </div>
+        </TabsContent>
 
-            <div className="space-y-4">
-              {emailSettings.length === 0 ? (
-                <p className="text-gray-600">No email settings configured yet.</p>
-              ) : (
-                <div className="grid gap-4">
-                  {emailSettings.map((setting) => (
-                    <div
-                      key={setting.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
-                    >
-                      <div>
-                        <h3 className="font-medium">{setting.sender_name}</h3>
-                        <p className="text-sm text-gray-600">{setting.sender_email}</p>
-                        {setting.is_default && (
-                          <span className="inline-block mt-1 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                            Default
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditSettings(setting)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteSettings(setting.id)}
-                        >
-                          Delete
-                        </Button>
+        <TabsContent value="analytics" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Campaign Performance</h3>
+              <div className="space-y-4">
+                {campaigns.map(async (campaign) => {
+                  const analytics = await getCampaignAnalytics(campaign.id);
+                  return (
+                    <div key={campaign.id} className="border-b pb-4 last:border-0">
+                      <h4 className="font-medium text-gray-900">{campaign.name}</h4>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div>
+                          <p className="text-sm text-gray-500">Open Rate</p>
+                          <p className="text-lg font-semibold">
+                            {analytics?.open_rate ? `${(analytics.open_rate * 100).toFixed(1)}%` : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Click Rate</p>
+                          <p className="text-lg font-semibold">
+                            {analytics?.click_rate ? `${(analytics.click_rate * 100).toFixed(1)}%` : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Conversion Rate</p>
+                          <p className="text-lg font-semibold">
+                            {analytics?.conversion_rate ? `${(analytics.conversion_rate * 100).toFixed(1)}%` : 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-500">Unsubscribe Rate</p>
+                          <p className="text-lg font-semibold">
+                            {analytics?.unsubscribe_rate ? `${(analytics.unsubscribe_rate * 100).toFixed(1)}%` : 'N/A'}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Recipient Segments</h3>
+              <div className="space-y-4">
+                {Object.entries(segmentRecipients(recipients)).map(([segment, recipients]) => (
+                  <div key={segment} className="border-b pb-4 last:border-0">
+                    <h4 className="font-medium text-gray-900 capitalize">
+                      {segment.replace(/([A-Z])/g, ' $1').trim()}
+                    </h4>
+                    <p className="text-2xl font-semibold mt-2">{recipients.length}</p>
+                    <p className="text-sm text-gray-500">
+                      {((recipients.length / recipients.length) * 100).toFixed(1)}% of total recipients
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Engagement Trends</h3>
+              <div className="h-64">
+                {/* Add engagement chart component here */}
+                <p className="text-gray-500 text-center">Engagement trends visualization coming soon</p>
+              </div>
             </div>
           </div>
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto bg-white">
           <DialogHeader>
             <DialogTitle className="text-2xl font-bold text-gray-900">
-              {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
+              {editingTemplate ? 'Edit Template' : 'Create New Template'}
             </DialogTitle>
             <DialogDescription className="text-gray-600">
-              {editingCampaign 
-                ? 'Update your campaign details and recipients.'
-                : 'Create a new email campaign and select recipients.'}
+              {editingTemplate 
+                ? 'Update your template details.'
+                : 'Create a new email template and fill in the required fields.'}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-6">
             <CampaignForm
               recipients={recipients}
-              onSubmit={handleCreateCampaign}
+              onSubmit={handleFormSubmit}
               onCancel={() => {
-                setIsCampaignOpen(false);
-                setEditingCampaign(null);
+                setIsCreateOpen(false);
+                setEditingTemplate(null);
               }}
-              campaign={editingCampaign ? {
-                id: editingCampaign.id,
-                name: editingCampaign.name,
-                subject: editingCampaign.subject,
-                content: editingCampaign.content,
-                fromName: editingCampaign.from_name,
-                fromEmail: editingCampaign.from_email,
-                replyTo: editingCampaign.reply_to,
-                scheduleTime: editingCampaign.scheduled_for ? new Date(editingCampaign.scheduled_for) : null,
-                organizationName: editingCampaign.organization_name || '',
-                organizationAddress: editingCampaign.organization_address || '',
-                organizationPhone: editingCampaign.organization_phone || '',
-                organizationWebsite: editingCampaign.organization_website || '',
-                isDefault: editingCampaign.is_default || false,
-                recipients: recipients.filter(r => editingCampaign.recipient_ids?.includes(r.id)),
-                type: 'both'
+              template={editingTemplate ? {
+                id: editingTemplate.id,
+                name: editingTemplate.name,
+                description: editingTemplate.description,
+                type: editingTemplate.type,
+                subject: editingTemplate.subject,
+                content: editingTemplate.content,
+                status: editingTemplate.status
               } : undefined}
             />
           </div>
@@ -1203,6 +1491,48 @@ export default function OutreachPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-gray-900">
+              {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              {editingCampaign 
+                ? 'Update your campaign details and recipients.'
+                : 'Create a new email campaign and select recipients.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-6">
+            <CampaignForm
+              recipients={recipients}
+              onSubmit={handleCreateCampaign}
+              onCancel={() => {
+                setIsCampaignOpen(false);
+                setEditingCampaign(null);
+              }}
+              campaign={editingCampaign ? {
+                id: editingCampaign.id,
+                name: editingCampaign.name,
+                subject: editingCampaign.subject,
+                content: editingCampaign.content,
+                fromName: editingCampaign.from_name,
+                fromEmail: editingCampaign.from_email,
+                replyTo: editingCampaign.reply_to,
+                scheduleTime: editingCampaign.scheduled_for ? new Date(editingCampaign.scheduled_for) : null,
+                organizationName: editingCampaign.organization_name || '',
+                organizationAddress: editingCampaign.organization_address || '',
+                organizationPhone: editingCampaign.organization_phone || '',
+                organizationWebsite: editingCampaign.organization_website || '',
+                isDefault: editingCampaign.is_default || false,
+                recipients: recipients.filter(r => editingCampaign.recipient_ids?.includes(r.id)),
+                type: 'both'
+              } : undefined}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

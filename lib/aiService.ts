@@ -49,6 +49,20 @@ interface FundraisingStrategy {
   updated_at: string;
 }
 
+interface StrategyAnalysis {
+  successRate: number;
+  projectedImpact: number;
+  confidenceScore: number;
+  donorAlignment: {
+    donorId: string;
+    alignmentScore: number;
+    matchedStrategies: string[];
+    potentialImpact: number;
+  }[];
+  recommendations: string[];
+  risks: string[];
+}
+
 async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIResponse> {
   try {
     const response = await fetch('/api/ai', {
@@ -386,45 +400,127 @@ export const aiService = {
     return makeAIRequest('analyzeDonorStrategyAlignment', donorData);
   },
 
-  async generateStrategyRecommendations(data: FundraisingAnalysisData): Promise<AIResponse> {
-    const { donors, projects, events, strategies } = data;
-    
-    // Format data for analysis
-    const formattedData = {
-      donors: {
-        total: donors.length,
-        segments: {
-          major: donors.filter(d => (d.total_given || 0) >= 10000).length,
-          mid: donors.filter(d => (d.total_given || 0) >= 1000 && (d.total_given || 0) < 10000).length,
-          small: donors.filter(d => (d.total_given || 0) < 1000).length,
-        },
-        interests: donors.reduce((acc, d) => {
-          const interests = d.interests || [];
-          interests.forEach(interest => {
-            acc[interest] = (acc[interest] || 0) + 1;
-          });
-          return acc;
-        }, {} as Record<string, number>)
-      },
-      projects: {
-        total: projects.length,
-        active: projects.filter(p => p.status === 'active').length,
-        totalBudget: projects.reduce((sum, p) => sum + (p.budget || 0), 0)
-      },
-      events: {
-        total: events.length,
-        totalRaised: events.reduce((sum, e) => sum + (e.amount_raised || 0), 0)
-      },
-      currentStrategies: strategies.map(s => ({
-        name: s.name,
-        description: s.description,
-        impact: s.impact || 0,
-        status: s.status,
-        donorId: s.donor_id
-      }))
-    };
+  async analyzeStrategySuccess(
+    donors: Donor[],
+    strategies: FundraisingStrategy[],
+    historicalData: any
+  ): Promise<AIResponse> {
+    try {
+      const response = await makeAIRequest('analyzeDonorStrategyAlignment', {
+        donors,
+        strategies,
+        historicalData,
+        metrics: {
+          totalDonors: donors.length,
+          totalStrategies: strategies.length,
+          averageDonation: donors.reduce((sum, d) => sum + (d.total_given || 0), 0) / donors.length,
+          strategySuccessRate: historicalData?.successRate || 0,
+        }
+      });
 
-    return makeAIRequest('generateStrategyRecommendations', formattedData);
+      if (response.success && response.content) {
+        const analysis = JSON.parse(response.content);
+        return {
+          success: true,
+          content: analysis
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Failed to analyze strategy success',
+        content: ''
+      };
+    } catch (error) {
+      console.error('Error analyzing strategy success:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to analyze strategy success',
+        content: ''
+      };
+    }
+  },
+
+  async generateStrategyRecommendations(
+    donors: Donor[],
+    currentStrategies: FundraisingStrategy[],
+    historicalData: any
+  ): Promise<AIResponse> {
+    try {
+      const response = await makeAIRequest('generateStrategyRecommendations', {
+        donors,
+        currentStrategies,
+        historicalData,
+        metrics: {
+          totalDonors: donors.length,
+          totalStrategies: currentStrategies.length,
+          averageDonation: donors.reduce((sum, d) => sum + (d.total_given || 0), 0) / donors.length,
+          strategySuccessRate: historicalData?.successRate || 0,
+        }
+      });
+
+      if (response.success && response.content) {
+        const recommendations = JSON.parse(response.content);
+        return {
+          success: true,
+          content: recommendations
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Failed to generate strategy recommendations',
+        content: ''
+      };
+    } catch (error) {
+      console.error('Error generating strategy recommendations:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to generate strategy recommendations',
+        content: ''
+      };
+    }
+  },
+
+  async calculateStrategyAlignment(
+    donor: Donor,
+    strategies: FundraisingStrategy[],
+    historicalData: any
+  ): Promise<AIResponse> {
+    try {
+      const response = await makeAIRequest('analyzeDonorStrategyAlignment', {
+        donor,
+        strategies,
+        historicalData,
+        metrics: {
+          totalGiven: donor.total_given || 0,
+          interactionCount: donor.interaction_count || 0,
+          lastDonationDate: donor.last_donation_date,
+          averageDonation: historicalData?.averageDonation || 0,
+        }
+      });
+
+      if (response.success && response.content) {
+        const alignment = JSON.parse(response.content);
+        return {
+          success: true,
+          content: alignment
+        };
+      }
+
+      return {
+        success: false,
+        message: 'Failed to calculate strategy alignment',
+        content: ''
+      };
+    } catch (error) {
+      console.error('Error calculating strategy alignment:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to calculate strategy alignment',
+        content: ''
+      };
+    }
   }
 };
 

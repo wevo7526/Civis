@@ -18,15 +18,7 @@ interface Recipient {
   type: 'donor' | 'volunteer' | 'participant';
 }
 
-interface CampaignFormProps {
-  recipients: Recipient[];
-  onSubmit: (data: CampaignFormData) => Promise<void>;
-  onCancel: () => void;
-  campaign?: CampaignFormData;
-}
-
-export interface CampaignFormData {
-  id?: string;
+interface CampaignFormData {
   name: string;
   subject: string;
   content: string;
@@ -43,9 +35,40 @@ export interface CampaignFormData {
   type: 'donor' | 'volunteer' | 'both';
 }
 
-export function CampaignForm({ recipients, onSubmit, onCancel, campaign }: CampaignFormProps) {
+interface CampaignFormProps {
+  recipients: Recipient[];
+  onSubmit: (data: CampaignFormData) => Promise<void>;
+  onCancel: () => void;
+  campaign?: {
+    id: string;
+    name: string;
+    subject: string;
+    content: string;
+    fromName: string;
+    fromEmail: string;
+    replyTo: string;
+    scheduleTime: Date | null;
+    organizationName: string;
+    organizationAddress: string;
+    organizationPhone: string;
+    organizationWebsite: string;
+    isDefault: boolean;
+    recipients: Recipient[];
+    type: 'donor' | 'volunteer' | 'both';
+  };
+  template?: {
+    id: string;
+    name: string;
+    description: string;
+    type: 'donor' | 'volunteer' | 'both';
+    subject: string;
+    content: string;
+    status: 'draft' | 'active' | 'paused';
+  };
+}
+
+export function CampaignForm({ recipients, onSubmit, onCancel, campaign, template }: CampaignFormProps) {
   const [formData, setFormData] = useState<CampaignFormData>({
-    id: campaign?.id,
     name: campaign?.name || '',
     subject: campaign?.subject || '',
     content: campaign?.content || '',
@@ -59,7 +82,7 @@ export function CampaignForm({ recipients, onSubmit, onCancel, campaign }: Campa
     organizationWebsite: campaign?.organizationWebsite || '',
     isDefault: campaign?.isDefault || false,
     recipients: campaign?.recipients || [],
-    type: campaign?.type || 'donor'
+    type: campaign?.type || 'both'
   });
 
   useEffect(() => {
