@@ -1,4 +1,4 @@
-import { Project } from './types';
+import { Project, GrantDocument, GrantSection } from '@/app/lib/types';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
@@ -6,24 +6,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
-
-export interface GrantSection {
-  id: string;
-  title: string;
-  content: string;
-  status: 'draft' | 'generated';
-  last_updated: string;
-}
-
-export interface GrantDocument {
-  id: string;
-  project_id: string;
-  title?: string;
-  sections: GrantSection[];
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  created_at: string;
-  updated_at: string;
-}
 
 export interface AIResponse {
   success: boolean;
@@ -283,6 +265,7 @@ export const grantWriterService = {
         id: data.id,
         project_id: data.project_id,
         title: data.title,
+        type: 'standard',
         sections: data.sections,
         status: data.status,
         created_at: data.created_at,

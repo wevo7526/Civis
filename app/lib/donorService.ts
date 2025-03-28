@@ -25,9 +25,10 @@ export const createDonorService = (supabase: SupabaseClient) => {
       console.log('Raw donor data:', JSON.stringify(donor, null, 2));
       
       // Validate required fields
-      if (!donor.name || !donor.email || !donor.last_gift_date || !donor.user_id || !donor.last_gift_amount) {
+      if (!donor.first_name || !donor.last_name || !donor.email || !donor.last_gift_date || !donor.user_id || !donor.last_gift_amount) {
         console.error('Missing required fields:', {
-          name: !!donor.name,
+          first_name: !!donor.first_name,
+          last_name: !!donor.last_name,
           email: !!donor.email,
           last_gift_date: !!donor.last_gift_date,
           user_id: !!donor.user_id,
@@ -38,7 +39,8 @@ export const createDonorService = (supabase: SupabaseClient) => {
 
       // Clean up the donor data by removing undefined values and formatting the date
       const cleanDonor = {
-        name: donor.name.trim(),
+        first_name: donor.first_name.trim(),
+        last_name: donor.last_name.trim(),
         email: donor.email.trim(),
         phone: donor.phone?.trim() || null,
         type: donor.type || 'individual',
@@ -48,8 +50,8 @@ export const createDonorService = (supabase: SupabaseClient) => {
         last_gift_date: donor.last_gift_date,
         last_gift_amount: Number(donor.last_gift_amount),
         preferred_communication: donor.preferred_communication || 'email',
-        notes: donor.notes?.trim() || '',
-        user_id: donor.user_id,
+        notes: donor.notes?.trim() || null,
+        user_id: donor.user_id
       };
 
       console.log('Cleaned donor data:', JSON.stringify(cleanDonor, null, 2));
@@ -178,7 +180,7 @@ export const createDonorService = (supabase: SupabaseClient) => {
 
       // Store donor info for activity record
       const donorInfo = {
-        name: donor.name,
+        name: donor.first_name + ' ' + donor.last_name,
         email: donor.email
       };
 

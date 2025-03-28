@@ -318,24 +318,23 @@ export interface ChatConfig {
 export interface Donor {
   id: string;
   user_id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
-  phone: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  country: string;
+  phone?: string;
+  type: 'individual' | 'organization';
+  status: 'active' | 'inactive';
+  giving_history: Array<{
+    date: string;
+    amount: number;
+    type: string;
+    notes?: string;
+  }>;
+  total_given: number;
+  last_gift_date: string;
+  last_gift_amount: number;
+  preferred_communication: 'email' | 'phone' | 'mail';
+  notes?: string;
   created_at: string;
   updated_at: string;
-  total_given: number;
-  donation_date: string;
-  payment_method: 'online' | 'check' | 'cash' | 'other';
-  recurring: boolean;
-  frequency: 'monthly' | 'quarterly' | 'annual' | 'one-time';
-  last_donation_date: string;
-  interaction_count: number;
-  notes: string;
-  tags: string[];
-  status: 'active' | 'inactive' | 'lapsed';
 } 

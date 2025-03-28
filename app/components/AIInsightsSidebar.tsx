@@ -33,17 +33,17 @@ export default function AIInsightsSidebar({ donorData, onClose }: AIInsightsSide
   const transformToDonorAnalysisData = (donor: Donor): DonorAnalysisData => {
     return {
       id: donor.id,
-      name: donor.name,
+      name: `${donor.first_name} ${donor.last_name}`,
       email: donor.email,
       donation_history: [{
-        date: donor.donation_date || new Date().toISOString(),
-        amount: donor.amount,
-        campaign: 'General Donation'
+        date: donor.last_gift_date || new Date().toISOString(),
+        amount: donor.last_gift_amount || 0,
+        campaign: 'General Fund'
       }],
       engagement_metrics: {
-        last_interaction: donor.last_contact || new Date().toISOString(),
-        total_donations: donor.amount,
-        average_donation: donor.amount
+        last_interaction: donor.last_gift_date || new Date().toISOString(),
+        total_donations: donor.total_given || 0,
+        average_donation: donor.last_gift_amount || 0
       }
     };
   };
@@ -64,8 +64,7 @@ export default function AIInsightsSidebar({ donorData, onClose }: AIInsightsSide
         response = "I notice there's no donor data available at the moment. Please add some donor information to get started with the analysis.";
       } else {
         // Generate AI response based on the user's query
-        const donorAnalysisData = transformToDonorAnalysisData(donorData[0]);
-        const aiResponse = await aiService.analyzeDonorEngagement(donorAnalysisData);
+        const aiResponse = await aiService.analyzeDonorEngagement(donorData);
         response = aiResponse.content;
       }
 

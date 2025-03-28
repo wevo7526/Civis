@@ -23,7 +23,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GrantSection, GrantDocument } from '@/app/lib/types';
-import { Project } from '@/app/lib/types';
+import { Project } from '@/lib/types';
 import { grantWriterService, AIResponse } from '@/app/lib/grantWriterService';
 import dynamic from 'next/dynamic';
 
@@ -131,14 +131,10 @@ const GRANT_SECTIONS: GrantSectionTemplate[] = [
 
 const getSectionStatusIcon = (status: GrantSection['status']) => {
   switch (status) {
-    case 'approved':
+    case 'generated':
       return <CheckCircleIcon className="h-4 w-4 text-green-500" />;
     case 'draft':
       return <PencilIcon className="h-4 w-4 text-yellow-500" />;
-    case 'in_review':
-      return <ClockIcon className="h-4 w-4 text-blue-500" />;
-    case 'rejected':
-      return <XCircleIcon className="h-4 w-4 text-red-500" />;
     default:
       return <ClockIcon className="h-4 w-4 text-gray-400" />;
   }
@@ -152,7 +148,7 @@ interface GrantDocumentEditorProps {
   onSave: (document: GrantDocument) => void;
   onGenerateSection: (sectionId: string, customPrompt?: string) => Promise<void>;
   isGenerating?: boolean;
-  progressMessage?: string;
+  progressMessage?: string | null;
 }
 
 const SECTION_TEMPLATES: Record<SectionTemplateKey, string> = {
@@ -322,7 +318,7 @@ export default function GrantDocumentEditor({
   onSave,
   onGenerateSection,
   isGenerating: externalIsGenerating = false,
-  progressMessage: externalProgressMessage = '',
+  progressMessage: externalProgressMessage = null,
 }: GrantDocumentEditorProps) {
   const [document, setDocument] = useState<GrantDocument>(initialDocument);
   const [previewMode, setPreviewMode] = useState(false);
@@ -551,6 +547,13 @@ export default function GrantDocumentEditor({
   const handleTitleChange = (value: string | null) => {
     if (!selectedSection) return;
     handleSectionTitleUpdate(selectedSection, value || '');
+  };
+
+  const handleStatusChange = (newStatus: 'draft' | 'submitted' | 'approved' | 'rejected') => {
+    setDocument(prev => ({
+      ...prev,
+      status: newStatus
+    }));
   };
 
   if (!isOpen || !document) return null;

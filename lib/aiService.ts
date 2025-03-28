@@ -59,10 +59,8 @@ async function makeAIRequest(action: AIRequest, data: unknown): Promise<AIRespon
     console.error('Error making AI request:', error);
     return {
       success: false,
-      content: [{
-        text: error instanceof Error ? error.message : 'An unexpected error occurred'
-      }],
-      error: error instanceof Error ? error.message : 'Unknown error'
+      content: error instanceof Error ? error.message : 'An unexpected error occurred',
+      message: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
@@ -99,88 +97,45 @@ export const aiService = {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new Error('No reader available');
+        throw new Error('Response body is not readable');
       }
 
-      let buffer = '';
-      let currentStructuredData = '';
-      let isCollectingJson = false;
-      let hasError = false;
-
+      let result = '';
       while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        result += chunk;
+        onChunk(chunk);
+
+        // Try to parse structured data from the chunk
         try {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = new TextDecoder().decode(value);
-          buffer += chunk;
-
-          // Process complete chunks
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                continue;
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.choices?.[0]?.delta?.content) {
-                  const content = parsed.choices[0].delta.content;
-                  onChunk(content);
-
-                  // Handle structured data collection
-                  if (content.includes('<json>')) {
-                    isCollectingJson = true;
-                    currentStructuredData = '';
-                  } else if (content.includes('</json>')) {
-                    isCollectingJson = false;
-                    try {
-                      const structuredData = JSON.parse(currentStructuredData);
-                      onStructuredData(structuredData);
-                    } catch (e) {
-                      console.error('Failed to parse structured data:', e);
-                      hasError = true;
-                    }
-                    currentStructuredData = '';
-                  } else if (isCollectingJson) {
-                    currentStructuredData += content;
-                  }
-                }
-              } catch (e) {
-                console.error('Failed to parse chunk:', e);
-                hasError = true;
-              }
-            }
+          const jsonMatch = chunk.match(/<json>([\s\S]*?)<\/json>/);
+          if (jsonMatch) {
+            const structuredData = JSON.parse(jsonMatch[1]);
+            onStructuredData(structuredData);
           }
-        } catch (error) {
-          console.error('Error reading stream:', error);
-          hasError = true;
-          break;
+        } catch (e) {
+          console.warn('Failed to parse structured data:', e);
         }
       }
 
       return {
-        success: !hasError,
-        content: buffer,
-        status: response.status,
+        success: true,
+        content: result
       };
     } catch (error) {
-      console.error('Error in streaming chat:', error);
+      console.error('Error in streamChat:', error);
       return {
         success: false,
         content: error instanceof Error ? error.message : 'An unexpected error occurred',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        status: error instanceof Error && 'status' in error ? (error as any).status : 500,
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   },
@@ -195,44 +150,26 @@ export const aiService = {
     return makeAIRequest('analyze_donors', donors);
   },
 
-  async analyzeDonorEngagement(donor: DonorAnalysisData): Promise<AIResponse> {
-    // Ensure donor data has required fields
-    const validatedData = {
-      ...donor,
-      name: donor.name || '',
-      email: donor.email || ''
-    };
-    return makeAIRequest('analyzeDonorEngagement', validatedData);
+  async analyzeDonorEngagement(donors: Donor[]): Promise<AIResponse> {
+    return makeAIRequest('analyzeDonorEngagement', donors);
   },
 
-  async generateDonorReport(donor: Donor): Promise<AIResponse> {
-    // Ensure donor data has required fields
-    const validatedData = {
-      ...donor,
-      name: donor.name || '',
-      email: donor.email || ''
-    };
-    return makeAIRequest('generate_donor_report', validatedData);
+  async generateDonorReport(donors: Donor[]): Promise<AIResponse> {
+    return makeAIRequest('generate_donor_report', donors);
   },
 
   async generateOutreachMessage(donor: Donor): Promise<AIResponse> {
-    // Ensure donor data has required fields
-    const validatedData = {
+    return makeAIRequest('generateOutreachMessage', {
       ...donor,
-      name: donor.name || '',
-      email: donor.email || ''
-    };
-    return makeAIRequest('generateOutreachMessage', validatedData);
+      name: `${donor.first_name} ${donor.last_name}`
+    });
   },
 
   async generateDonorMessage(donor: Donor): Promise<AIResponse> {
-    // Ensure donor data has required fields
-    const validatedData = {
+    return makeAIRequest('generateDonorMessage', {
       ...donor,
-      name: donor.name || '',
-      email: donor.email || ''
-    };
-    return makeAIRequest('generateDonorMessage', validatedData);
+      name: `${donor.first_name} ${donor.last_name}`
+    });
   },
 
   // Project Analysis

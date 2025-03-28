@@ -6,8 +6,9 @@ import { ChartBarIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { Project, WritingItem } from '@/app/lib/types';
 import DocumentEditor from '@/app/components/DocumentEditor';
 import SavedItemCard from '@/app/components/SavedItemCard';
-import { aiService } from '@/app/lib/aiService';
+import { aiService } from '@/lib/aiService';
 import { toast } from 'react-hot-toast';
+import { AIResponse } from '@/lib/types';
 
 interface ProjectFundraisingStrategyProps {
   project: Project;
@@ -24,6 +25,9 @@ export default function ProjectFundraisingStrategy({ project }: ProjectFundraisi
     fundraisingStrategy: false
   });
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [strategy, setStrategy] = useState<string>('');
   const supabase = createClientComponentClient();
 
   useEffect(() => {
@@ -54,32 +58,35 @@ export default function ProjectFundraisingStrategy({ project }: ProjectFundraisi
     setShowEditor(true);
   };
 
-  const handleGenerateContent = async (prompt: string) => {
+  const handleGenerateStrategy = async () => {
+    if (!project) return;
+
     try {
-      setLoadingStates(prev => ({ ...prev, fundraisingStrategy: true }));
+      setIsGenerating(true);
+      setError(null);
       setProgressMessage('Generating fundraising strategy...');
 
-      const response = await aiService.generateFundraisingStrategy(project);
+      const response = await aiService.analyzeFundraising({
+        donors: [], // We'll add donor data later if needed
+        projects: [project],
+        events: [] // We'll add event data later if needed
+      });
+
       if (!response.success) {
         throw new Error(response.message ?? 'Failed to generate fundraising strategy');
       }
 
-      handleOpenEditor();
-      setEditorItem({
-        id: '',
-        title: 'New Fundraising Strategy',
-        content: response.content,
-        type: 'fundraising',
-        project_id: project.id,
-        status: 'draft',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
+      const content = Array.isArray(response.content) 
+        ? response.content[0]?.text || ''
+        : response.content;
+
+      setStrategy(content);
+      setSuccessMessage('Strategy generated successfully!');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate fundraising strategy');
-      toast.error('Failed to generate fundraising strategy');
+      console.error('Error generating strategy:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate strategy');
     } finally {
-      setLoadingStates(prev => ({ ...prev, fundraisingStrategy: false }));
+      setIsGenerating(false);
       setProgressMessage(null);
     }
   };
@@ -232,11 +239,29 @@ export default function ProjectFundraisingStrategy({ project }: ProjectFundraisi
           initialData={editorItem || undefined}
           type="fundraising"
           projectName={project.name || ''}
-          onGenerate={handleGenerateContent}
+          onGenerate={handleGenerateStrategy}
           isGenerating={loadingStates.fundraisingStrategy}
           progressMessage={progressMessage}
           isEditing={isEditing}
         />
+      )}
+
+      {successMessage && (
+        <div className="mt-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-md">
+          {successMessage}
+        </div>
+      )}
+
+      {progressMessage && (
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 text-blue-700 rounded-md">
+          {progressMessage}
+        </div>
+      )}
+
+      {strategy && (
+        <div className="prose max-w-none">
+          <div dangerouslySetInnerHTML={{ __html: strategy }} />
+        </div>
       )}
     </div>
   );

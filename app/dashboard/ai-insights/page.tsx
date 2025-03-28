@@ -9,7 +9,7 @@ import {
   CalendarIcon,
   SparklesIcon
 } from '@heroicons/react/24/outline';
-import { Donor, Project, Event } from '@/app/lib/types';
+import { Donor, Project, Event } from '@/lib/types';
 import { aiService } from '@/lib/aiService';
 
 interface Insights {

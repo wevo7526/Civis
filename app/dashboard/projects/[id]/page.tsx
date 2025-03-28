@@ -82,7 +82,7 @@ export default function ProjectDetails() {
     grantProposal: false,
     insights: false,
   });
-  const [progressMessage, setProgressMessage] = useState<string | undefined>(undefined);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [savedItems, setSavedItems] = useState<SavedItems>({
     grants: [],
@@ -237,49 +237,49 @@ export default function ProjectDetails() {
   };
 
   const handleGenerateSection = async (sectionType: string, customPrompt?: string) => {
-    if (!project) return;
-    
+    if (!currentGrantDocument || !project) {
+      setError('No grant document or project selected');
+      return;
+    }
+
     try {
       setLoadingStates(prev => ({ ...prev, grantProposal: true }));
       setProgressMessage('Generating section...');
       setError(null);
 
-      const response = await grantWriterService.generateSection(sectionType, project, customPrompt);
-      
-      if (!response || !response.success || !response.content) {
-        throw new Error('Invalid response from AI service');
+      const response = await grantWriterService.generateSection(
+        sectionType,
+        project,
+        customPrompt
+      );
+
+      if (response.success && response.content.length > 0) {
+        const content = response.content[0].text;
+        const newSection: GrantSection = {
+          id: crypto.randomUUID(),
+          title: sectionType === 'custom' ? 'Custom Section' : sectionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+          content,
+          status: 'draft',
+          last_updated: new Date().toISOString(),
+        };
+
+        const updatedDocument: GrantDocument = {
+          ...currentGrantDocument,
+          sections: [...currentGrantDocument.sections, newSection],
+          updated_at: new Date().toISOString(),
+        };
+
+        setCurrentGrantDocument(updatedDocument);
+        setSuccessMessage('Section generated successfully!');
+      } else {
+        setError(response.message || 'Failed to generate section');
       }
-
-      const content = Array.isArray(response.content) 
-        ? response.content[0]?.text || ''
-        : response.content;
-
-      const newSection: GrantSection = {
-        id: crypto.randomUUID(),
-        title: sectionType === 'custom' ? 'Custom Section' : sectionType.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-        content,
-        status: 'draft',
-        last_updated: new Date().toISOString(),
-      };
-
-      if (!currentGrantDocument) {
-        throw new Error('No current grant document');
-      }
-
-      const updatedDocument: GrantDocument = {
-        ...currentGrantDocument,
-        sections: [...currentGrantDocument.sections, newSection],
-        updated_at: new Date().toISOString(),
-      };
-
-      setCurrentGrantDocument(updatedDocument);
-      setProgressMessage('Section generated successfully! Click Save to store your changes.');
     } catch (err) {
       console.error('Error generating section:', err);
       setError('Failed to generate section');
-      setProgressMessage(undefined);
     } finally {
       setLoadingStates(prev => ({ ...prev, grantProposal: false }));
+      setProgressMessage(null);
     }
   };
 

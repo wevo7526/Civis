@@ -175,7 +175,7 @@ export default function MatrixChatInterface() {
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(cell.content).map(([key, value]) => (
                 <div key={key} className="text-xs">
-                  <span className="font-medium">{key}:</span> {value}
+                  <span className="font-medium">{key}:</span> {String(value)}
                 </div>
               ))}
             </div>

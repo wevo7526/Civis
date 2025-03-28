@@ -1,4 +1,4 @@
-import { Donor } from '@/app/lib/types';
+import { Donor } from '@/lib/types';
 import { UserCircleIcon, PencilIcon, ChartBarIcon, EnvelopeIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface DonorCardProps {
@@ -10,93 +10,68 @@ interface DonorCardProps {
   generatingMessage: boolean;
 }
 
-export default function DonorCard({
-  donor,
-  onEdit,
-  onGenerateMessage,
-  onAnalyze,
-  onDelete,
-  generatingMessage
-}: DonorCardProps) {
+export function DonorCard({ donor, onEdit, onGenerateMessage, onAnalyze, onDelete, generatingMessage }: DonorCardProps) {
+  const fullName = `${donor.first_name} ${donor.last_name}`.trim();
+  
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <div className="flex items-center justify-between">
+    <div className="bg-white rounded-lg shadow p-4">
+      <div className="flex items-start justify-between">
         <div className="flex items-center space-x-3">
           <UserCircleIcon className="h-10 w-10 text-gray-400" />
           <div>
-            <h3 className="text-lg font-medium text-gray-900">{donor.name}</h3>
+            <h3 className="text-lg font-medium text-gray-900">{fullName}</h3>
             <p className="text-sm text-gray-500">{donor.email}</p>
             {donor.phone && <p className="text-sm text-gray-500">{donor.phone}</p>}
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex space-x-2">
           <button
             onClick={() => onEdit(donor)}
-            className="p-2 text-gray-400 hover:text-gray-500"
+            className="p-1 text-gray-400 hover:text-gray-500"
           >
             <PencilIcon className="h-5 w-5" />
           </button>
           <button
             onClick={() => onGenerateMessage(donor)}
             disabled={generatingMessage}
-            className="p-2 text-gray-400 hover:text-gray-500 disabled:opacity-50"
+            className="p-1 text-gray-400 hover:text-gray-500 disabled:opacity-50"
           >
             <EnvelopeIcon className="h-5 w-5" />
           </button>
           <button
             onClick={() => onAnalyze(donor)}
-            className="p-2 text-gray-400 hover:text-gray-500"
+            className="p-1 text-gray-400 hover:text-gray-500"
           >
             <ChartBarIcon className="h-5 w-5" />
           </button>
           <button
             onClick={() => onDelete(donor.id)}
-            className="p-2 text-gray-400 hover:text-gray-500"
+            className="p-1 text-gray-400 hover:text-red-500"
           >
             <TrashIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div>
-          <p className="text-sm font-medium text-gray-500">Total Given</p>        
-          <p className="mt-1 text-sm text-gray-900">${donor.total_given.toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Last Gift</p>
-          <p className="mt-1 text-sm text-gray-900">
-            {donor.last_gift_date ? new Date(donor.last_gift_date).toLocaleDateString() : 'No gifts yet'}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Last Gift Amount</p>
-          <p className="mt-1 text-sm text-gray-900">${donor.last_gift_amount?.toLocaleString() || '0'}</p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Status</p>
-          <p className="mt-1">
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-              donor.status === 'active' 
-                ? 'bg-green-100 text-green-800'
-                : 'bg-gray-100 text-gray-800'
-            }`}>
-              {donor.status}
-            </span>
-          </p>
-        </div>
-        <div>
-          <p className="text-sm font-medium text-gray-500">Preferred Contact</p>
-          <p className="mt-1 text-sm text-gray-900 capitalize">{donor.preferred_communication}</p>
+      <div className="mt-4">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-gray-500">Total Given</p>
+            <p className="font-medium">${donor.total_given.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Last Gift</p>
+            <p className="font-medium">${donor.last_gift_amount.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Last Gift Date</p>
+            <p className="font-medium">{new Date(donor.last_gift_date).toLocaleDateString()}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Preferred Contact</p>
+            <p className="font-medium capitalize">{donor.preferred_communication}</p>
+          </div>
         </div>
       </div>
-
-      {donor.notes && (
-        <div className="mt-4">
-          <p className="text-sm font-medium text-gray-500">Notes</p>
-          <p className="mt-1 text-sm text-gray-900">{donor.notes}</p>
-        </div>
-      )}
     </div>
   );
 } 

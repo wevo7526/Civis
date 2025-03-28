@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Event, Donor, Project } from '@/app/lib/types';
+import { Event, Donor, Project } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   BarChart,
@@ -179,6 +179,14 @@ export default function AnalyticsContent() {
       const trends = calculateTrends(events, donors, timeRange);
       const eventTypes = calculateEventTypes(events);
       const donorSegments = calculateDonorSegments(donors);
+
+      const donorEngagement = donors.map(donor => ({
+        name: `${donor.first_name} ${donor.last_name}`,
+        total_given: donor.total_given,
+        interaction_count: donor.interaction_count || 0,
+        last_gift_date: donor.last_gift_date,
+        status: donor.status
+      }));
 
       setData({
         events,
@@ -548,7 +556,7 @@ export default function AnalyticsContent() {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
     const lapsedDonors = donors.filter(donor => {
-      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      const lastDonation = new Date(donor.last_gift_date || donor.created_at);
       return lastDonation < twelveMonthsAgo;
     });
     
@@ -561,12 +569,12 @@ export default function AnalyticsContent() {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
     const lapsedDonors = donors.filter(donor => {
-      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      const lastDonation = new Date(donor.last_gift_date || donor.created_at);
       return lastDonation < twelveMonthsAgo;
     });
     
     const reactivatedDonors = lapsedDonors.filter(donor => {
-      const lastDonation = new Date(donor.last_donation_date || donor.created_at);
+      const lastDonation = new Date(donor.last_gift_date || donor.created_at);
       return lastDonation > twelveMonthsAgo;
     });
     
@@ -574,13 +582,36 @@ export default function AnalyticsContent() {
   };
 
   const calculateDonorEngagement = (donors: Donor[]) => {
-    if (donors.length === 0) return { high: 0, medium: 0, low: 0 };
-    
-    return {
-      high: donors.filter(donor => donor.interaction_count >= 5).length,
-      medium: donors.filter(donor => donor.interaction_count >= 2 && donor.interaction_count < 5).length,
-      low: donors.filter(donor => donor.interaction_count < 2).length
+    const engagementLevels = {
+      high: 0,
+      medium: 0,
+      low: 0
     };
+
+    donors.forEach(donor => {
+      const interactionCount = donor.interaction_count || 0;
+      const totalGiven = donor.total_given || 0;
+      const lastGiftDate = donor.last_gift_date ? new Date(donor.last_gift_date) : null;
+      const now = new Date();
+      const monthsSinceLastGift = lastGiftDate ? (now.getTime() - lastGiftDate.getTime()) / (1000 * 60 * 60 * 24 * 30) : Infinity;
+
+      // Calculate engagement score based on multiple factors
+      const interactionScore = Math.min(interactionCount / 10, 1); // Normalize to 0-1
+      const recencyScore = Math.max(1 - (monthsSinceLastGift / 12), 0); // 0-1, higher for more recent gifts
+      const amountScore = Math.min(totalGiven / 1000, 1); // Normalize to 0-1
+
+      const engagementScore = (interactionScore * 0.4) + (recencyScore * 0.3) + (amountScore * 0.3);
+
+      if (engagementScore >= 0.7) {
+        engagementLevels.high++;
+      } else if (engagementScore >= 0.4) {
+        engagementLevels.medium++;
+      } else {
+        engagementLevels.low++;
+      }
+    });
+
+    return engagementLevels;
   };
 
   const calculateDonorFrequency = (donors: Donor[]) => {

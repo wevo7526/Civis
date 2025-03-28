@@ -102,7 +102,8 @@ export type AIRequest =
   | 'review_grant_proposal'
   | 'optimize_fundraising_strategy'
   | 'generate_grant_budget'
-  | 'generate_fundraising_timeline';
+  | 'generate_fundraising_timeline'
+  | 'chat';
 
 export interface AIResponse {
   success: boolean;
@@ -202,17 +203,22 @@ export interface Event {
 export interface Donor {
   id: string;
   user_id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
-  phone?: string;
-  status: 'active' | 'inactive';
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
   total_given: number;
-  last_gift_amount?: number;
-  last_gift_date?: string;
-  preferred_communication?: 'email' | 'phone' | 'mail';
-  notes?: string;
-  donation_date: string;
-  amount: number;
+  last_gift_date: string;
+  last_gift_amount: number;
+  preferred_communication: 'email' | 'phone' | 'mail';
+  frequency?: 'monthly' | 'quarterly' | 'annual' | 'one-time';
+  recurring?: boolean;
+  payment_method?: 'online' | 'check' | 'cash';
+  interaction_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -285,4 +291,30 @@ export interface StreamResponse {
   content: string;
   structuredData?: StructuredResponse[];
   error?: string;
+}
+
+export interface ChatConfig {
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  system?: string;
+}
+
+export interface GrantSection {
+  id: string;
+  title: string;
+  content: string;
+  status: 'draft' | 'generated';
+  last_updated: string;
+}
+
+export interface GrantDocument {
+  id: string;
+  project_id: string;
+  title?: string;
+  sections: GrantSection[];
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  success_status?: 'successful' | 'unsuccessful' | null;
+  created_at: string;
+  updated_at: string;
 } 

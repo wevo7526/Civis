@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     const message = await anthropic.messages.create({
       model: config?.model || 'claude-3-opus-20240229',
-      max_tokens: config?.maxTokens || 2000,
+      max_tokens: config?.max_tokens || 2000,
       temperature: config?.temperature || 0.7,
       system: systemPrompt,
       messages: [{ role: 'user', content: prompt }],

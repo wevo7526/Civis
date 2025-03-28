@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  Donor, 
   Grant, 
   Volunteer, 
   Event, 
@@ -10,8 +9,9 @@ import {
   CommunityStakeholder, 
   FundraisingCampaign, 
   Project, 
-  VolunteerActivity
-} from '@/app/lib/types';
+  VolunteerActivity,
+  Donor
+} from '@/lib/types';
 import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 
@@ -499,7 +499,7 @@ Please provide:
         const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
         
         prompt = `Generate a personalized email message for a donor with the following details:
-- Name: ${donor.name}
+- Name: ${donor.first_name} ${donor.last_name}
 - Last Donation Amount: $${donor.last_gift_amount}
 - Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
 - Total Given: $${donor.total_given}
@@ -700,7 +700,7 @@ Please format the response in a clear, structured manner with bullet points for 
         const daysSinceLastContact = Math.floor((new Date().getTime() - new Date(lastContactDate).getTime()) / (1000 * 60 * 60 * 24));
         
         prompt = `Generate a personalized email message for a donor with the following details:
-- Name: ${donor.name}
+- Name: ${donor.first_name} ${donor.last_name}
 - Last Donation Amount: $${donor.last_gift_amount}
 - Last Donation Date: ${new Date(lastDonationDate).toLocaleDateString()}
 - Total Given: $${donor.total_given}

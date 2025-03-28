@@ -37,31 +37,43 @@ import { Label } from '@/app/components/ui/label';
 import AIInsightsSidebar from '@/app/components/AIInsightsSidebar';
 
 interface DonorFormData {
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone: string;
-  status: 'active' | 'inactive';
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
   total_given: number;
   last_gift_amount: number;
   last_gift_date: string;
   preferred_communication: 'email' | 'phone' | 'mail';
-  notes: string;
-  donation_date: string;
-  amount: number;
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'one-time';
+  recurring: boolean;
+  payment_method: 'online' | 'check' | 'cash';
+  interaction_count: number;
+  user_id: string;
 }
 
 const initialFormData: DonorFormData = {
-  name: '',
+  first_name: '',
+  last_name: '',
   email: '',
   phone: '',
-  status: 'active',
+  address: '',
+  city: '',
+  state: '',
+  zip_code: '',
   total_given: 0,
   last_gift_amount: 0,
   last_gift_date: new Date().toISOString().split('T')[0],
   preferred_communication: 'email',
-  notes: '',
-  donation_date: new Date().toISOString().split('T')[0],
-  amount: 0
+  frequency: 'one-time',
+  recurring: false,
+  payment_method: 'online',
+  interaction_count: 0,
+  user_id: ''
 };
 
 export default function DonorsPage() {
@@ -76,7 +88,6 @@ export default function DonorsPage() {
   const [formData, setFormData] = useState<DonorFormData>(initialFormData);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showInsights, setShowInsights] = useState(false);
   const [generatingMessage, setGeneratingMessage] = useState(false);
   const router = useRouter();
@@ -89,22 +100,28 @@ export default function DonorsPage() {
 
   useEffect(() => {
     filterDonors();
-  }, [donors, searchQuery, filterType, filterStatus]);
+  }, [donors, searchQuery, filterType]);
 
   useEffect(() => {
     if (donorToEdit) {
       setFormData({
-        name: donorToEdit.name || '',
+        first_name: donorToEdit.first_name || '',
+        last_name: donorToEdit.last_name || '',
         email: donorToEdit.email || '',
         phone: donorToEdit.phone || '',
-        status: donorToEdit.status || 'active',
+        address: donorToEdit.address || '',
+        city: donorToEdit.city || '',
+        state: donorToEdit.state || '',
+        zip_code: donorToEdit.zip_code || '',
         total_given: donorToEdit.total_given || 0,
         last_gift_amount: donorToEdit.last_gift_amount || 0,
         last_gift_date: donorToEdit.last_gift_date || new Date().toISOString().split('T')[0],
         preferred_communication: donorToEdit.preferred_communication || 'email',
-        notes: donorToEdit.notes || '',
-        donation_date: donorToEdit.donation_date || new Date().toISOString().split('T')[0],
-        amount: donorToEdit.amount || 0
+        frequency: donorToEdit.frequency || 'one-time',
+        recurring: donorToEdit.recurring || false,
+        payment_method: donorToEdit.payment_method || 'online',
+        interaction_count: donorToEdit.interaction_count || 0,
+        user_id: donorToEdit.user_id || ''
       });
       setIsModalOpen(true);
     }
@@ -113,17 +130,17 @@ export default function DonorsPage() {
   const filterDonors = () => {
     let filtered = [...donors];
 
-    // Apply search
+    // Apply search filter
     if (searchQuery) {
       filtered = filtered.filter(donor =>
-        donor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        `${donor.first_name} ${donor.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
         donor.email.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
-    // Apply status filter
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(donor => donor.status === filterStatus);
+    // Apply type filter
+    if (filterType !== 'all') {
+      filtered = filtered.filter(donor => donor.frequency === filterType);
     }
 
     setFilteredDonors(filtered);
@@ -160,17 +177,23 @@ export default function DonorsPage() {
   const handleEditDonor = (donor: Donor) => {
     setDonorToEdit(donor);
     setFormData({
-      name: donor.name || '',
+      first_name: donor.first_name || '',
+      last_name: donor.last_name || '',
       email: donor.email || '',
       phone: donor.phone || '',
-      status: donor.status || 'active',
+      address: donor.address || '',
+      city: donor.city || '',
+      state: donor.state || '',
+      zip_code: donor.zip_code || '',
       total_given: donor.total_given || 0,
       last_gift_amount: donor.last_gift_amount || 0,
       last_gift_date: donor.last_gift_date || new Date().toISOString().split('T')[0],
       preferred_communication: donor.preferred_communication || 'email',
-      notes: donor.notes || '',
-      donation_date: donor.donation_date || new Date().toISOString().split('T')[0],
-      amount: donor.amount || 0
+      frequency: donor.frequency || 'one-time',
+      recurring: donor.recurring || false,
+      payment_method: donor.payment_method || 'online',
+      interaction_count: donor.interaction_count || 0,
+      user_id: donor.user_id || ''
     });
     setIsModalOpen(true);
   };
@@ -188,8 +211,11 @@ export default function DonorsPage() {
         last_gift_date: formData.last_gift_date || null,
         phone: formData.phone || null,
         preferred_communication: formData.preferred_communication || 'email',
-        notes: formData.notes || null,
-        amount: Number(formData.amount) || 0
+        frequency: formData.frequency || 'one-time',
+        recurring: formData.recurring || false,
+        payment_method: formData.payment_method || 'online',
+        interaction_count: formData.interaction_count || 0,
+        user_id: user.id
       };
 
       if (donorToEdit) {
@@ -210,7 +236,7 @@ export default function DonorsPage() {
       } else {
         const { data: newDonor, error: insertError } = await supabase
           .from('donors')
-          .insert([{ ...donorData, user_id: user.id }])
+          .insert([donorData])
           .select()
           .single();
 
@@ -309,12 +335,21 @@ export default function DonorsPage() {
 
   const stats = {
     totalDonors: donors.length,
-    activeDonors: donors.filter(d => d.status === 'active').length,
+    recurringDonors: donors.filter(d => d.recurring).length,
     totalDonations: donors.reduce((acc, d) => acc + d.total_given, 0),
     averageDonation: donors.length > 0 
       ? donors.reduce((acc, d) => acc + d.total_given, 0) / donors.length 
       : 0,
   };
+
+  const donorEngagement = donors.map(donor => ({
+    name: `${donor.first_name} ${donor.last_name}`,
+    total_given: donor.total_given,
+    interaction_count: donor.interaction_count || 0,
+    last_gift_date: donor.last_gift_date,
+    frequency: donor.frequency,
+    recurring: donor.recurring
+  }));
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -335,12 +370,42 @@ export default function DonorsPage() {
         </div>
       )}
 
+      <div className="flex items-center space-x-4 mb-6">
+        <div className="flex-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search donors..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by frequency" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Frequencies</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
+            <SelectItem value="quarterly">Quarterly</SelectItem>
+            <SelectItem value="annual">Annual</SelectItem>
+            <SelectItem value="one-time">One-time</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button onClick={() => setIsModalOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Donor
+        </Button>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frequency</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Given</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Gift</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -352,16 +417,16 @@ export default function DonorsPage() {
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{donor.name}</div>
+                      <div className="text-sm font-medium text-gray-900">{donor.first_name} {donor.last_name}</div>
                       <div className="text-sm text-gray-500">{donor.email}</div>
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    donor.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    donor.recurring ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                   }`}>
-                    {donor.status}
+                    {donor.frequency}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -412,11 +477,21 @@ export default function DonorsPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="first_name">First Name</Label>
                   <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    id="first_name"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name</Label>
+                  <Input
+                    id="last_name"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
                     required
                   />
                 </div>
@@ -443,19 +518,39 @@ export default function DonorsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as 'active' | 'inactive' }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    value={formData.city}
+                    onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input
+                    id="state"
+                    value={formData.state}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="zip_code">Zip Code</Label>
+                  <Input
+                    id="zip_code"
+                    value={formData.zip_code}
+                    onChange={(e) => setFormData(prev => ({ ...prev, zip_code: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -491,17 +586,6 @@ export default function DonorsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="donation_date">Donation Date</Label>
-                  <Input
-                    type="date"
-                    id="donation_date"
-                    value={formData.donation_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, donation_date: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="preferred_communication">Preferred Communication</Label>
                   <Select
                     value={formData.preferred_communication}
@@ -519,27 +603,65 @@ export default function DonorsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Amount</Label>
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select
+                    value={formData.frequency}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, frequency: value as 'monthly' | 'quarterly' | 'annual' | 'one-time' }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                      <SelectItem value="annual">Annual</SelectItem>
+                      <SelectItem value="one-time">One-Time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="recurring">Recurring</Label>
+                  <Select
+                    value={formData.recurring ? 'yes' : 'no'}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, recurring: value === 'yes' }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select recurring" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payment_method">Payment Method</Label>
+                  <Select
+                    value={formData.payment_method}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value as 'online' | 'check' | 'cash' }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="online">Online</SelectItem>
+                      <SelectItem value="check">Check</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="interaction_count">Interaction Count</Label>
                   <Input
                     type="number"
-                    id="amount"
-                    value={formData.amount || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value === '' ? 0 : Number(e.target.value) }))}
-                    min="0"
-                    step="0.01"
-                    required
+                    id="interaction_count"
+                    value={formData.interaction_count || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, interaction_count: e.target.value === '' ? 0 : Number(e.target.value) }))}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  className="min-h-[100px]"
-                />
               </div>
 
               <div className="flex justify-end space-x-3 pt-4 border-t">
@@ -581,7 +703,7 @@ export default function DonorsPage() {
 
             <div className="p-6">
               <p className="text-sm text-gray-500">
-                Are you sure you want to delete {donorToDelete?.name}? This action cannot be undone.
+                Are you sure you want to delete {donorToDelete?.first_name} {donorToDelete?.last_name}? This action cannot be undone.
               </p>
             </div>
 
